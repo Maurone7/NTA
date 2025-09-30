@@ -1,0 +1,134 @@
+{
+  "name": "note-taking-app",
+  "version": "0.0.1",
+  "description": "Cross-platform Markdown note taking app with PDF viewing support",
+  "main": "src/main.js",
+  "homepage": "https://github.com/Maurone7/NoteTakingApp",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electronmon .",
+    "test": "node scripts/smoke-test.js",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:win32": "electron-builder --win --ia32",
+    "build:win64": "electron-builder --win --x64",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder --mac --win --linux",
+    "build:publish": "electron-builder --publish=always",
+    "dist": "npm run build",
+    "pack": "electron-builder --dir"
+  },
+  "author": "Maurone7",
+  "license": "MIT",
+  "dependencies": {
+    "dompurify": "^3.1.6",
+    "electron-updater": "^6.6.2",
+    "katex": "^0.16.11",
+    "marked": "^12.0.2",
+    "turndown": "^7.2.1"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^26.0.12",
+    "electronmon": "^2.0.2",
+    "eslint": "^8.57.0"
+  },
+  "build": {
+    "appId": "com.maurone7.notetakingapp",
+    "productName": "NoteTakingApp",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "Maurone7",
+      "repo": "NoteTakingApp"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist"
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "contents": [
+        {
+          "x": 410,
+          "y": 150,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 130,
+          "y": 150,
+          "type": "file"
+        }
+      ],
+      "background": null
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "NoteTaking App",
+      "uninstallDisplayName": "NoteTaking App",
+      "license": "LICENSE.txt",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "deleteAppDataOnUninstall": false,
+      "perMachine": false,
+      "allowElevation": true
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Office"
+    }
+  }
+}
