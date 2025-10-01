@@ -42,7 +42,6 @@
     },
     "files": [
       "src/**/*",
-      "node_modules/**/*",
       "package.json"
     ],
     "publish": {
