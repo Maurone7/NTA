@@ -1430,76 +1430,6 @@ button.small {
   overflow-y: auto; /* Allow scrolling in editor pane */
 }
 
-.editor-pane-2 {
-  flex: 0 0 calc(var(--local-editor-ratio) * 100%);
-  min-width: clamp(220px, 40vw, 640px);
-  display: flex;
-  flex-direction: column;
-  border-right: none;
-  position: relative;
-  min-height: 0;
-  overflow-y: auto; /* Allow scrolling in editor pane */
-}
-
-.editor-pane-2__header {
-  display: flex;
-  align-items: center;
-  padding: 8px 12px;
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--text-secondary);
-  gap: 8px;
-}
-
-.editor-pane-2__label {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.editor-pane-2__filename {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Dual editor mode styles */
-.workspace__content.dual-editor-mode .editor-pane {
-  flex: 0 0 30%;
-  min-width: clamp(200px, 30vw, 500px);
-}
-
-.workspace__content.dual-editor-mode .editor-pane-2 {
-  flex: 0 0 30%;
-  min-width: clamp(200px, 30vw, 500px);
-  display: flex !important;
-}
-
-.workspace__content.dual-editor-mode .preview-pane {
-  flex: 1 0 40%;
-  min-width: clamp(200px, 30vw, 500px);
-}
-
-.workspace__content.dual-editor-mode #workspace-splitter-2 {
-  display: flex !important;
-}
-
-/* Hide preview when in dual editor mode and preview is collapsed */
-.workspace__content.dual-editor-mode.preview-collapsed .workspace__splitter,
-.workspace__content.dual-editor-mode.preview-collapsed #workspace-splitter-2,
-.workspace__content.dual-editor-mode.preview-collapsed .preview-pane {
-  display: none;
-}
-
-.workspace__content.dual-editor-mode.preview-collapsed .editor-pane {
-  flex: 1 0 50%;
-}
-
-.workspace__content.dual-editor-mode.preview-collapsed .editor-pane-2 {
-  flex: 1 0 50%;
-  display: flex !important;
-}
 
 /* Drag and drop styles */
 .tree-node--dragging {
@@ -1572,19 +1502,6 @@ button.small {
   overflow-y: auto; /* Ensure editor can scroll */
 }
 
-#note-editor-2 {
-  flex: 1;
-  border: none;
-  resize: none;
-  padding: 24px 16px 24px 24px; /* More padding on right to move scrollbar */
-  font-size: 15px;
-  line-height: 1.6;
-  background: transparent;
-  color: var(--fg);
-  position: relative;
-  z-index: 1;
-  overflow-y: auto; /* Ensure editor can scroll */
-}
 
 /* Move editor scrollbar further to the right */
 #note-editor::-webkit-scrollbar {
@@ -1592,20 +1509,12 @@ button.small {
   margin-right: 8px; /* Additional space from right edge */
 }
 
-#note-editor-2::-webkit-scrollbar {
-  width: 4px;
-  margin-right: 8px; /* Additional space from right edge */
-}
 
 #note-editor::-webkit-scrollbar-track {
   background: transparent;
   margin-right: 8px;
 }
 
-#note-editor-2::-webkit-scrollbar-track {
-  background: transparent;
-  margin-right: 8px;
-}
 
 #note-editor::-webkit-scrollbar-thumb {
   background: var(--border);
@@ -1613,19 +1522,11 @@ button.small {
   margin-right: 8px;
 }
 
-#note-editor-2::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
-  margin-right: 8px;
-}
 
 #note-editor::-webkit-scrollbar-thumb:hover {
   background: var(--fg-soft);
 }
 
-#note-editor-2::-webkit-scrollbar-thumb:hover {
-  background: var(--fg-soft);
-}
 
 .editor-search-highlights {
   position: absolute;
@@ -1709,23 +1610,8 @@ button.small {
   outline: none;
 }
 
-#note-editor-2:focus {
-  outline: none;
-}
 
-/* Ensure both editors have consistent styling */
-#note-editor,
-#note-editor-2 {
-  font-family: var(--editor-font-family, var(--font-family));
-  font-size: var(--editor-font-size, 15px);
-  color: var(--editor-text-color, var(--fg));
-  background: var(--editor-bg-color, transparent);
-  font-style: var(--editor-font-style, normal);
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  box-sizing: border-box;
-}
+/* Secondary editor removed */
 
 .preview-scroll {
   flex: 1;

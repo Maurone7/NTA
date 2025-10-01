@@ -5,14 +5,10 @@ const elements = {
   workspacePath: document.getElementById('workspace-path'),
   workspaceContent: document.querySelector('.workspace__content'),
   workspaceSplitter: document.getElementById('workspace-splitter'),
-  workspaceSplitter2: document.getElementById('workspace-splitter-2'),
   sidebarResizeHandle: document.querySelector('.sidebar-resize-handle'),
   hashtagResizeHandle: document.getElementById('hashtag-resize-handle'),
   explorer: document.querySelector('.explorer'),
   editor: document.getElementById('note-editor'),
-  editor2: document.getElementById('note-editor-2'),
-  editor2Filename: document.getElementById('editor-2-filename'),
-  editorPane2: document.querySelector('.editor-pane-2'),
   preview: document.getElementById('markdown-preview'),
   pdfViewer: document.getElementById('pdf-viewer'),
   codeViewer: document.getElementById('code-viewer'),
@@ -29,17 +25,14 @@ const elements = {
   htmlViewerFrame: document.getElementById('html-viewer-frame'),
   htmlViewerError: document.getElementById('html-viewer-error'),
   wikiSuggestions: document.getElementById('wikilink-suggestions'),
-  wikiSuggestions2: document.getElementById('wikilink-suggestions-2'),
   hashtagSuggestions: document.getElementById('hashtag-suggestions'),
-  hashtagSuggestions2: document.getElementById('hashtag-suggestions-2'),
   fileSuggestions: document.getElementById('file-suggestions'),
-  fileSuggestions2: document.getElementById('file-suggestions-2'),
   statusText: document.getElementById('status-text'),
   fileName: document.getElementById('file-name'),
   filePath: document.getElementById('file-path'),
   createFileButton: document.getElementById('create-file-button'),
   toggleSidebarButton: document.getElementById('toggle-sidebar-button'),
-  toggleDualEditorButton: document.getElementById('toggle-dual-editor-button'),
+  // dual editor removed
   togglePreviewButton: document.getElementById('toggle-preview-button'),
   renameFileForm: document.getElementById('rename-file-form'),
   renameFileInput: document.getElementById('rename-file-input'),
@@ -184,8 +177,7 @@ const elements = {
   codePopoverSuggestions: document.getElementById('code-block-suggestions'),
   codePopoverCancel: document.querySelector('#code-block-popover [data-action="cancel"]'),
   openFolderButtons: [
-    document.getElementById('open-folder-button'),
-    document.getElementById('open-folder-button-secondary')
+    document.getElementById('open-folder-button')
   ].filter(Boolean),
   hashtagPanel: document.getElementById('hashtag-panel'),
   hashtagList: document.getElementById('hashtag-list'),
@@ -294,8 +286,6 @@ const state = {
   notes: new Map(),
   tree: null,
   activeNoteId: null,
-  activeNoteId2: null, // Second editor active note
-  dualEditorMode: false, // Dual editor mode state
   collapsedFolders: new Set(),
   editorRatio: 0.5,
   resizingEditor: false,
@@ -2408,38 +2398,7 @@ const togglePreviewCollapsed = () => {
   setStatus(next ? 'Preview hidden.' : 'Preview shown.', true);
 };
 
-const toggleDualEditorMode = () => {
-  console.log('Toggle dual editor mode called, current state:', state.dualEditorMode);
-  state.dualEditorMode = !state.dualEditorMode;
-  applyDualEditorMode();
-  if (state.dualEditorMode) {
-    setStatus('Dual editor mode enabled. Drag files to editors or Cmd/Ctrl+click to open in second editor.', true);
-  } else {
-    setStatus('Dual editor mode disabled.', true);
-  }
-};
-
-const applyDualEditorMode = () => {
-  if (state.dualEditorMode) {
-    elements.workspaceContent?.classList.add('dual-editor-mode');
-    elements.editorPane2?.removeAttribute('hidden');
-    elements.workspaceSplitter2?.removeAttribute('hidden');
-    elements.toggleDualEditorButton?.setAttribute('aria-pressed', 'true');
-    elements.toggleDualEditorButton?.setAttribute('title', 'Disable dual editor mode (⌘⇧E)');
-    renderSecondEditor();
-  } else {
-    elements.workspaceContent?.classList.remove('dual-editor-mode');
-    elements.editorPane2?.setAttribute('hidden', '');
-    elements.workspaceSplitter2?.setAttribute('hidden', '');
-    elements.toggleDualEditorButton?.setAttribute('aria-pressed', 'false');
-    elements.toggleDualEditorButton?.setAttribute('title', 'Enable dual editor mode (⌘⇧E)');
-    // Clear second editor when disabling dual mode
-    if (elements.editor2) {
-      elements.editor2.value = '';
-      state.activeNoteId2 = null;
-    }
-  }
-};
+// dual editor support removed
 
 // Export dropdown functions
 const toggleExportDropdown = () => {
@@ -2550,12 +2509,7 @@ const getActiveNote = () => {
   return state.notes.get(state.activeNoteId) ?? null;
 };
 
-const getActiveNote2 = () => {
-  if (!state.activeNoteId2) {
-    return null;
-  }
-  return state.notes.get(state.activeNoteId2) ?? null;
-};
+// second editor removed
 
 const rebuildNotesMap = (notesArray) => {
   state.notes = new Map();
@@ -2740,24 +2694,7 @@ const handleEditor1Drop = (event) => {
   }
 };
 
-const handleEditor2Drop = (event) => {
-  event.preventDefault();
-  event.target.classList.remove('editor-drop-target');
-  
-  if (!state.dualEditorMode) {
-    setStatus('Enable dual editor mode first.', false);
-    return;
-  }
-  
-  const noteId = event.dataTransfer.getData('text/noteId');
-  if (noteId && state.notes.has(noteId)) {
-    state.activeNoteId2 = noteId;
-    renderWorkspaceTree();
-    renderActiveNote();
-    renderSecondEditor();
-    setStatus('File opened in second editor.', true);
-  }
-};
+// second editor drag/drop removed
 
 const renderWorkspaceTree = () => {
   if (!elements.workspaceTree || !elements.workspaceEmpty) {
@@ -4813,39 +4750,7 @@ const adoptWorkspace = (payload, preferredActiveId = null) => {
   renderActiveNote();
 };
 
-const renderSecondEditor = () => {
-  const note = getActiveNote2();
-  
-  if (!note || !state.dualEditorMode) {
-    if (elements.editor2) {
-      elements.editor2.value = '';
-      elements.editor2.disabled = true;
-    }
-    if (elements.editor2Filename) {
-      elements.editor2Filename.textContent = 'No file selected';
-    }
-    return;
-  }
-
-  if (note.type === 'markdown') {
-    if (elements.editor2) {
-      elements.editor2.disabled = false;
-      elements.editor2.value = note.content ?? '';
-    }
-    if (elements.editor2Filename) {
-      elements.editor2Filename.textContent = note.name || 'Untitled';
-    }
-  } else {
-    // For non-markdown files, disable second editor
-    if (elements.editor2) {
-      elements.editor2.value = '';
-      elements.editor2.disabled = true;
-    }
-    if (elements.editor2Filename) {
-      elements.editor2Filename.textContent = 'Unsupported file type';
-    }
-  }
-};
+// second editor UI removed
 
 const handleWorkspaceTreeClick = (event) => {
   event.preventDefault();
@@ -4886,19 +4791,9 @@ const handleWorkspaceTreeClick = (event) => {
 
     const noteId = nodeElement.dataset.noteId;
     if (noteId && state.notes.has(noteId)) {
-      // Check if dual editor mode is enabled and user holds Cmd/Ctrl key
-      const openInSecondEditor = state.dualEditorMode && (event.metaKey || event.ctrlKey);
-      
-      if (openInSecondEditor) {
-        state.activeNoteId2 = noteId;
-        renderWorkspaceTree();
-        renderActiveNote();
-        renderSecondEditor();
-      } else {
-        state.activeNoteId = noteId;
-        renderWorkspaceTree();
-        renderActiveNote();
-      }
+      state.activeNoteId = noteId;
+      renderWorkspaceTree();
+      renderActiveNote();
     }
   }
 };
@@ -5004,39 +4899,7 @@ const handleEditorInput = (event) => {
   }
 };
 
-const handleEditor2Input = (event) => {
-  // Set typing flag and clear it after a delay
-  state.userTyping = true;
-  clearTimeout(state.typingTimer);
-  state.typingTimer = setTimeout(() => {
-    state.userTyping = false;
-  }, 1500);
-
-  const note = getActiveNote2();
-  if (!note || note.type !== 'markdown') {
-    return;
-  }
-
-  // Check for LaTeX auto-completion before updating note content
-  const latexCompleted = handleLatexAutoCompletion(event.target, event.inputType);
-  
-  note.content = event.target.value;
-  note.updatedAt = new Date().toISOString();
-  note.dirty = true;
-  refreshBlockIndexForNote(note);
-  refreshHashtagsForNote(note);
-  // Note: We don't update the preview for the second editor - preview shows first editor
-  scheduleSave();
-
-  updateWikiSuggestions(event.target, 'editor2');
-  updateHashtagSuggestions(event.target, 'editor2');
-  updateFileSuggestions(event.target, 'editor2');
-  
-  // If LaTeX was auto-completed, trigger another input event to update everything with the new content
-  if (latexCompleted) {
-    note.content = event.target.value;
-  }
-};
+// second editor input handling removed
 
 const inlineCommandPattern = /^\s*&(?<command>[a-z]+)(?:(?::|\s+)(?<argument>[^\s]+))?\s*$/i;
 const inlineCommandNames = ['code', 'math', 'table', 'matrix', 'bmatrix', 'pmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix', 'quote'];
@@ -5929,7 +5792,9 @@ const applyInlineCommandTriggerIfNeeded = (textarea, note) => {
   return applyInlineCommandTrigger(textarea, note, trigger);
 };
 
+// keyboard handling for editor (simplified)
 const handleEditorKeydown = (event) => {
+  // Wiki suggestions navigation
   if (state.wikiSuggest.open) {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
@@ -5953,6 +5818,7 @@ const handleEditorKeydown = (event) => {
     }
   }
 
+  // Tag suggestions
   if (state.tagSuggest.open) {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
@@ -5976,6 +5842,7 @@ const handleEditorKeydown = (event) => {
     }
   }
 
+  // File suggestions
   if (state.fileSuggest.open) {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
@@ -6005,6 +5872,7 @@ const handleEditorKeydown = (event) => {
     return;
   }
 
+  // Inline command Enter handling (only when no suggestions open)
   if (
     event.key === 'Enter' &&
     !event.shiftKey &&
@@ -6058,42 +5926,17 @@ const handleEditorKeyup = (event) => {
   }
 };
 
-const handleEditorClick = () => {
-  updateWikiSuggestions(elements.editor);
-  updateHashtagSuggestions(elements.editor);
-  checkInlineCommandAtCursor();
-
-  if (state.search.open) {
-    const textarea = elements.editor;
-    if (textarea) {
-      state.search.lastCaret = textarea.selectionStart ?? state.search.lastCaret ?? 0;
-    }
+// Lightweight click handler for the editor to refresh suggestions and cursor-dependent UI
+const handleEditorClick = (event) => {
+  // Update wiki and hashtag suggestions based on cursor position
+  if (elements.editor) {
+    updateWikiSuggestions(elements.editor);
+    updateHashtagSuggestions(elements.editor);
+    updateFileSuggestions(elements.editor);
   }
 };
 
-const handleEditorBlur = () => {
-  closeWikiSuggestions();
-  closeHashtagSuggestions();
-};
-
-const handleEditorScroll = () => {
-  const textarea = elements.editor;
-  if (!textarea) {
-    return;
-  }
-
-  if (state.wikiSuggest.open) {
-    computeWikiSuggestionPosition(textarea, textarea.selectionEnd ?? 0);
-    renderWikiSuggestions();
-  }
-
-  if (state.tagSuggest.open) {
-    computeHashtagSuggestionPosition(textarea, textarea.selectionEnd ?? 0);
-    renderHashtagSuggestions();
-  }
-
-  syncEditorSearchHighlightScroll();
-};
+// second editor input handling removed
 
 const handleEditorSelect = () => {
   if (!state.search.open) {
@@ -6104,6 +5947,19 @@ const handleEditorSelect = () => {
     return;
   }
   state.search.lastCaret = textarea.selectionStart ?? state.search.lastCaret ?? 0;
+};
+
+// Minimal blur handler: persist notes and close suggestion UI
+const handleEditorBlur = (event) => {
+  persistNotes();
+  closeWikiSuggestions();
+  closeHashtagSuggestions();
+  closeFileSuggestions();
+};
+
+// Minimal scroll handler used to sync any sticky UI; currently a noop but kept for future logic
+const handleEditorScroll = (event) => {
+  // Placeholder: could sync preview scroll or position sticky toolbars
 };
 
 const handleWikiSuggestionPointerDown = (event) => {
@@ -6348,6 +6204,14 @@ const handleHashtagPanelResizeEnd = (event) => {
 
 const handleOpenFolder = async () => {
   try {
+    // Defensive: ensure the preload/native API is available
+    if (!window.api || typeof window.api.chooseFolder !== 'function') {
+      console.error('Native API missing: window.api.chooseFolder is not available');
+      setStatus('Cannot open folders: native file-chooser API is unavailable.', false);
+      return;
+    }
+
+    console.debug('Invoking native folder chooser (window.api.chooseFolder)');
     const result = await window.api.chooseFolder();
     if (!result) {
       setStatus('Folder selection cancelled.', true);
@@ -6374,7 +6238,7 @@ const extractFileNameFromPath = (fullPath) => {
   return segments[segments.length - 1] ?? null;
 };
 
-const closeWikiSuggestions = (editorType = 'editor1') => {
+const closeWikiSuggestions = () => {
   state.wikiSuggest.open = false;
   state.wikiSuggest.items = [];
   state.wikiSuggest.selectedIndex = 0;
@@ -6386,7 +6250,7 @@ const closeWikiSuggestions = (editorType = 'editor1') => {
   state.wikiSuggest.position.left = 24;
   state.wikiSuggest.suppress = false;
 
-  const suggestionsElement = editorType === 'editor2' ? elements.wikiSuggestions2 : elements.wikiSuggestions;
+  const suggestionsElement = elements.wikiSuggestions;
   if (suggestionsElement) {
     suggestionsElement.hidden = true;
     suggestionsElement.innerHTML = '';
@@ -6395,7 +6259,7 @@ const closeWikiSuggestions = (editorType = 'editor1') => {
   }
 };
 
-const closeHashtagSuggestions = (editorType = 'editor1') => {
+const closeHashtagSuggestions = () => {
   state.tagSuggest.open = false;
   state.tagSuggest.items = [];
   state.tagSuggest.selectedIndex = 0;
@@ -6406,7 +6270,7 @@ const closeHashtagSuggestions = (editorType = 'editor1') => {
   state.tagSuggest.position.left = 24;
   state.tagSuggest.suppress = false;
 
-  const suggestionsElement = editorType === 'editor2' ? elements.hashtagSuggestions2 : elements.hashtagSuggestions;
+  const suggestionsElement = elements.hashtagSuggestions;
   if (suggestionsElement) {
     suggestionsElement.hidden = true;
     suggestionsElement.innerHTML = '';
@@ -6695,15 +6559,15 @@ const openHashtagSuggestions = (trigger, textarea) => {
   renderHashtagSuggestions();
 };
 
-const updateHashtagSuggestions = (textarea = elements.editor, editorType = 'editor1') => {
+const updateHashtagSuggestions = (textarea = elements.editor) => {
   if (!textarea || textarea !== document.activeElement) {
-    closeHashtagSuggestions(editorType);
+    closeHashtagSuggestions();
     return;
   }
 
   if (state.tagSuggest.suppress) {
     state.tagSuggest.suppress = false;
-    closeHashtagSuggestions(editorType);
+    closeHashtagSuggestions();
     return;
   }
 
@@ -6797,9 +6661,9 @@ const getFileSuggestionTrigger = (value, caret) => {
   return null;
 };
 
-const updateFileSuggestions = (textarea = elements.editor, editorType = 'editor1') => {
+const updateFileSuggestions = (textarea = elements.editor) => {
   if (!textarea || textarea !== document.activeElement) {
-    closeFileSuggestions(editorType);
+    closeFileSuggestions();
     return;
   }
 
@@ -6832,7 +6696,7 @@ const updateFileSuggestions = (textarea = elements.editor, editorType = 'editor1
   openFileSuggestions(trigger, textarea);
 };
 
-const closeFileSuggestions = (editorType = 'editor1') => {
+const closeFileSuggestions = () => {
   if (!state.fileSuggest.open) {
     return;
   }
@@ -6845,7 +6709,7 @@ const closeFileSuggestions = (editorType = 'editor1') => {
   state.fileSuggest.query = '';
   state.fileSuggest.suppress = false;
 
-  const suggestionsElement = editorType === 'editor2' ? elements.fileSuggestions2 : elements.fileSuggestions;
+  const suggestionsElement = elements.fileSuggestions;
   if (suggestionsElement) {
     suggestionsElement.hidden = true;
     suggestionsElement.innerHTML = '';
@@ -8579,10 +8443,7 @@ const handleGlobalShortcuts = (event) => {
       toggleSidebarCollapsed();
     }
   } else if (key === 'e') {
-    if (event.shiftKey) {
-      event.preventDefault();
-      toggleDualEditorMode();
-    }
+    // dual editor removed
   } else if (key === 'f') {
     if (isOtherEditableTarget) {
       return;
@@ -9782,9 +9643,7 @@ const initialize = () => {
   loadThemeSettings(); // Initialize theme on app start
   loadComponentSettings(); // Initialize component-specific settings
   
-  // Initialize dual editor mode
-  applyDualEditorMode();
-  renderSecondEditor();
+  // dual editor removed
   
   // Add platform class for platform-specific styling
   detectPlatform();
@@ -9817,31 +9676,7 @@ const initialize = () => {
     editorPane.addEventListener('drop', handleEditor1Drop);
   }
 
-  // Second editor event listeners
-  if (elements.editor2) {
-    elements.editor2.addEventListener('input', handleEditor2Input);
-    elements.editor2.addEventListener('keydown', handleEditorKeydown);
-    elements.editor2.addEventListener('keyup', handleEditorKeyup);
-    elements.editor2.addEventListener('focus', () => {
-      updateWikiSuggestions(elements.editor2, 'editor2');
-      updateHashtagSuggestions(elements.editor2, 'editor2');
-    });
-    elements.editor2.addEventListener('blur', persistNotes);
-    
-    // Drag and drop event listeners for second editor
-    elements.editor2.addEventListener('dragover', handleEditorDragOver);
-    elements.editor2.addEventListener('dragenter', handleEditorDragEnter);
-    elements.editor2.addEventListener('dragleave', handleEditorDragLeave);
-    elements.editor2.addEventListener('drop', handleEditor2Drop);
-    
-    // Also add drop listeners to the second editor pane
-    if (elements.editorPane2) {
-      elements.editorPane2.addEventListener('dragover', handleEditorDragOver);
-      elements.editorPane2.addEventListener('dragenter', handleEditorDragEnter);
-      elements.editorPane2.addEventListener('dragleave', handleEditorDragLeave);
-      elements.editorPane2.addEventListener('drop', handleEditor2Drop);
-    }
-  }
+  // second editor removed
 
   if (elements.codePopover) {
     elements.codePopover.setAttribute('aria-hidden', elements.codePopover.hidden ? 'true' : 'false');
@@ -9888,10 +9723,7 @@ const initialize = () => {
     event.preventDefault();
     toggleSidebarCollapsed();
   });
-  elements.toggleDualEditorButton?.addEventListener('click', (event) => {
-    event.preventDefault();
-    toggleDualEditorMode();
-  });
+  // dual editor toggle removed
   elements.togglePreviewButton?.addEventListener('click', (event) => {
     event.preventDefault();
     togglePreviewCollapsed();
@@ -10355,7 +10187,14 @@ updateDownloadButton.addEventListener('click', async () => {
   updateDownloadButton.disabled = true;
   updateDownloadButton.textContent = 'Downloading...';
   try {
-    await window.api.invoke('app:checkForUpdates');
+    // Prefer direct method if available, fall back to invoke-style if present
+    if (window.api && typeof window.api.checkForUpdates === 'function') {
+      await window.api.checkForUpdates();
+    } else if (window.api && typeof window.api.invoke === 'function') {
+      await window.api.invoke('app:checkForUpdates');
+    } else {
+      throw new Error('Update API unavailable');
+    }
   } catch (error) {
     console.error('Error starting download:', error);
     updateDownloadButton.disabled = false;
@@ -10364,7 +10203,11 @@ updateDownloadButton.addEventListener('click', async () => {
 });
 
 updateInstallButton.addEventListener('click', async () => {
-  await window.api.invoke('app:quitAndInstall');
+  if (window.api && typeof window.api.quitAndInstall === 'function') {
+    await window.api.quitAndInstall();
+  } else if (window.api && typeof window.api.invoke === 'function') {
+    await window.api.invoke('app:quitAndInstall');
+  }
 });
 
 updateDismissButton.addEventListener('click', () => {
@@ -10374,7 +10217,11 @@ updateDismissButton.addEventListener('click', () => {
 // Check for updates on app startup (only once)
 window.addEventListener('load', async () => {
   try {
-    await window.api.invoke('app:checkForUpdates');
+    if (window.api && typeof window.api.checkForUpdates === 'function') {
+      await window.api.checkForUpdates();
+    } else if (window.api && typeof window.api.invoke === 'function') {
+      await window.api.invoke('app:checkForUpdates');
+    }
   } catch (error) {
     console.log('Startup update check failed:', error);
   }
@@ -10735,7 +10582,12 @@ function switchToTab(targetTabId) {
 
 async function loadAppVersion() {
   try {
-    const version = await window.api.invoke('app:getVersion');
+    let version = 'Unknown';
+    if (window.api && typeof window.api.getVersion === 'function') {
+      version = await window.api.getVersion();
+    } else if (window.api && typeof window.api.invoke === 'function') {
+      version = await window.api.invoke('app:getVersion');
+    }
     if (elements.appVersion) {
       elements.appVersion.textContent = version;
     }
@@ -12072,8 +11924,13 @@ async function checkForUpdatesManually() {
     
     try {
       // Check if running in development mode
-      const version = await window.api.invoke('app:getVersion');
-      if (version.includes('dev') || process.env.NODE_ENV === 'development') {
+      let version = 'Unknown';
+      if (window.api && typeof window.api.getVersion === 'function') {
+        version = await window.api.getVersion();
+      } else if (window.api && typeof window.api.invoke === 'function') {
+        version = await window.api.invoke('app:getVersion');
+      }
+      if (String(version).includes('dev') || process.env.NODE_ENV === 'development') {
         elements.checkUpdatesButton.textContent = 'Dev Mode - N/A';
         setTimeout(() => {
           elements.checkUpdatesButton.disabled = false;
@@ -12082,7 +11939,11 @@ async function checkForUpdatesManually() {
         return;
       }
       
-      await window.api.invoke('app:checkForUpdates');
+      if (window.api && typeof window.api.checkForUpdates === 'function') {
+        await window.api.checkForUpdates();
+      } else if (window.api && typeof window.api.invoke === 'function') {
+        await window.api.invoke('app:checkForUpdates');
+      }
       elements.checkUpdatesButton.textContent = 'Check Complete';
       setTimeout(() => {
         elements.checkUpdatesButton.disabled = false;

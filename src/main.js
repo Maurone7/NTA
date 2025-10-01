@@ -207,6 +207,27 @@ const createMainWindow = () => {
   const startPage = path.join(__dirname, 'renderer', 'index.html');
   mainWindow.loadFile(startPage);
 
+  // Forward renderer console messages to the main process terminal in development
+  try {
+    mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+      const levels = ['debug', 'info', 'warn', 'error'];
+      const lvl = levels[level] ?? `level-${level}`;
+      console.log(`[renderer:${lvl}] ${message} (${sourceId}:${line})`);
+    });
+  } catch (err) {
+    // Older/newer electron versions may not emit console-message; ignore if unsupported
+  }
+
+  // Also listen for the 'console' event if available (newer electron versions)
+  try {
+    mainWindow.webContents.on('console', (event, level, ...args) => {
+      // Level may be 'log', 'warn', 'error', etc.
+      console.log('[renderer:console]', level, ...args);
+    });
+  } catch (err) {
+    // ignore if not supported
+  }
+
   // Show window when ready to prevent visual flash
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
