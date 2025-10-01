@@ -178,7 +178,7 @@ const createMainWindow = () => {
     height: 800,
     minWidth: 960,
     minHeight: 600,
-    title: 'NoteTakingApp',
+  title: 'NTA',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -912,6 +912,49 @@ ${rootVariables}
     }
   });
 
+  // Import font bytes from renderer and save to userData/fonts
+  ipcMain.handle('fonts:import', async (_event, payload) => {
+    try {
+      if (!payload || !payload.buffer || !payload.filename) {
+        throw new Error('Invalid font payload');
+      }
+
+      const userData = app.getPath('userData');
+      const fontsDir = path.join(userData, 'fonts');
+      await fsp.mkdir(fontsDir, { recursive: true });
+
+      // Sanitize filename
+      const original = path.basename(payload.filename);
+      const safeName = original.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
+      const destPath = path.join(fontsDir, safeName);
+
+      // Convert buffer (which may be a plain object) into a Buffer
+      let buf;
+      if (Buffer.isBuffer(payload.buffer)) {
+        buf = payload.buffer;
+      } else if (payload.buffer && payload.buffer.data) {
+        // When transferred via structured clone, Node gets an object with 'data' array
+        buf = Buffer.from(payload.buffer.data);
+      } else {
+        buf = Buffer.from(payload.buffer);
+      }
+
+      await fsp.writeFile(destPath, buf);
+
+      // Create a file:// URL for renderer use
+      const fileUrl = toFileUrl(destPath);
+
+      // Generate a font-family identifier based on displayName or filename
+      const display = (payload.displayName || path.parse(safeName).name).replace(/[^a-zA-Z0-9\- ]/g, '').slice(0, 60) || 'ImportedFont';
+      const familyName = `NTA-${display.replace(/\s+/g, '-')}`;
+
+      return { success: true, path: destPath, url: fileUrl, family: familyName };
+    } catch (error) {
+      console.error('fonts:import failed', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Traffic light positioning handlers
   ipcMain.handle('window:setTrafficLightPosition', async (_event, position) => {
     const windows = BrowserWindow.getAllWindows();
@@ -924,19 +967,25 @@ ${rootVariables}
     try {
       const options = {};
       
-      switch (position) {
-        case 'center':
-          options.trafficLightPosition = { x: 20, y: 12 };
-          break;
-        case 'top-left':
-          options.trafficLightPosition = { x: 12, y: 8 };
-          break;
-        case 'custom':
-          const offset = parseInt(localStorage?.getItem?.('trafficLightOffset') || '8');
-          options.trafficLightPosition = { x: 12, y: offset };
-          break;
-        default:
-          options.trafficLightPosition = { x: 20, y: 12 };
+      // Position can be a string ('center'|'top-left'|'custom') or an object {x,y,mode:'absolute'}
+      if (position && typeof position === 'object' && position.mode === 'absolute') {
+        options.trafficLightPosition = { x: position.x, y: position.y };
+      } else {
+        switch (position) {
+          case 'center':
+            options.trafficLightPosition = { x: 20, y: 12 };
+            break;
+          case 'top-left':
+            options.trafficLightPosition = { x: 12, y: 8 };
+            break;
+          case 'custom':
+            // Main process cannot access window.localStorage. Use a sensible default here.
+            // The renderer will call 'window:setTrafficLightOffset' separately when the user adjusts the slider.
+            options.trafficLightPosition = { x: 12, y: 8 };
+            break;
+          default:
+            options.trafficLightPosition = { x: 20, y: 12 };
+        }
       }
       
       // Apply the new position

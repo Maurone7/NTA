@@ -5,7 +5,7 @@ const crypto = require('crypto');
 
 const NOTES_FILENAME = 'notes.json';
 const PDF_DIRECTORY = 'pdfs';
-const APP_NAMESPACE = 'NoteTakingApp';
+const APP_NAMESPACE = 'NTA';
 
 const defaultContent = JSON.stringify({ notes: [] }, null, 2);
 

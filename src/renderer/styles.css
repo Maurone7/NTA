@@ -1,5 +1,6 @@
 :root {
   color-scheme: light dark;
+  --title-bar-height: 0px; /* Default to 0 for non-mac platforms */
   --bg: #f7f8fa;
   --bg-elevated: #ffffff;
   --bg-sidebar: #eef1f6;
@@ -13,13 +14,15 @@
   --accent-weak: rgba(76, 110, 245, 0.12);
   --danger: #e03131;
   --editor-ratio: 0.5;
-  font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-size: 14px;
+  font-family: var(--font-family);
 }
 
 /* Custom Title Bar */
 .title-bar {
   display: none; /* Hidden by default, shown only on macOS */
-  height: 22px; /* Very minimal height */
+  height: var(--title-bar-height);
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
@@ -29,11 +32,12 @@
 
 .title-bar__content {
   display: flex;
-  align-items: center;
+  align-items: center; /* Vertical centering regardless of title-bar height */
   justify-content: center;
   height: 100%;
   width: 100%;
   padding: 0 70px; /* Minimal space for traffic light buttons */
+  box-sizing: border-box;
 }
 
 .title-bar__title {
@@ -41,6 +45,11 @@
   font-weight: 500;
   color: var(--fg-soft);
   text-align: center;
+  line-height: 1; /* Let flex centering handle vertical alignment */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--title-bar-height) * 1); /* Ensure title occupies the full bar height for perfect centering */
 }
 
 /* Show title bar only on macOS */
@@ -49,9 +58,9 @@ body.platform-darwin .title-bar {
   align-items: center; /* Center traffic lights vertically */
 }
 
-/* Adjust app shell when title bar is visible */
-body.platform-darwin .app-shell {
-  height: calc(100vh - 22px); /* Match actual title bar height */
+/* On macOS set the title bar height so layout can account for it */
+body.platform-darwin {
+  --title-bar-height: 22px;
 }
 
 /* Title bar theme adjustments */
@@ -114,41 +123,7 @@ body.platform-win32 ::-webkit-scrollbar-thumb:hover {
   position: fixed;
   top: 20px;
   right: 20px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
-  width: 360px;
-  animation: slideInFromRight 0.3s ease-out;
 }
-
-/* Adjust notification position on macOS to account for title bar */
-body.platform-darwin .update-notification {
-  top: 48px; /* 28px title bar + 20px margin */
-}
-
-.update-notification__content {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 16px;
-}
-
-.update-notification__icon {
-  font-size: 24px;
-  flex-shrink: 0;
-}
-
-.update-notification__text {
-  flex: 1;
-  min-width: 0;
-}
-
-.update-notification__title {
-  font-weight: 600;
-  margin-bottom: 4px;
-  color: var(--fg);
 }
 
 .update-notification__message {
@@ -189,6 +164,45 @@ body.platform-darwin .update-notification {
   flex-shrink: 0;
 }
 
+/* Math WYSIWYG panel */
+.math-wysiwyg-panel {
+  position: absolute;
+  right: 12px;
+  top: 80px;
+  width: 360px;
+  max-height: 60vh;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  z-index: 900;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.math-wysiwyg__header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:12px;
+  border-bottom:1px solid var(--border);
+}
+.math-wysiwyg__list { padding:8px; display:flex; flex-direction:column; gap:8px; }
+.math-wysiwyg__item { padding:8px; border-radius:6px; background:var(--bg); border:1px solid var(--border); display:flex; gap:8px; align-items:flex-start; }
+.math-wysiwyg__item pre { margin:0; white-space:pre-wrap; word-break:break-word; font-family:var(--font-family); }
+.math-wysiwyg__actions { margin-left:auto; display:flex; gap:6px; }
+.math-wysiwyg-panel[hidden] { display: none; }
+
+/* Modal */
+.modal { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.35); z-index:10000; }
+.modal[hidden] { display: none; }
+.modal__content { background:var(--bg-elevated); border-radius:8px; width:640px; max-width:calc(100% - 40px); box-shadow:0 10px 40px rgba(0,0,0,0.3); overflow:hidden; }
+.modal__header { padding:12px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.modal__body { padding:12px; display:flex; gap:12px; }
+#math-edit-textarea { width:50%; min-height:160px; font-family:var(--font-family); font-size:13px; }
+#math-edit-preview { width:50%; padding:8px; border:1px dashed var(--border); border-radius:6px; min-height:160px; overflow:auto; }
+.modal__footer { padding:12px; display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--border); }
+
 @keyframes slideInFromRight {
   from {
     transform: translateX(100%);
@@ -214,8 +228,98 @@ body {
   overflow: hidden; /* Disable scrolling globally */
 }
 
+/* Editor math live-preview overlay */
+.editor-pane { position: relative; }
+.editor-math-overlay {
+  position: absolute;
+  inset: 0 0 0 0;
+  /* By default don't capture pointer events so the editor remains interactive.
+     We selectively enable pointer events for interactive children (like iframes)
+     so embeds can be clicked/scrolled while most overlay content remains inert. */
+  pointer-events: none;
+  overflow: auto;
+  padding: 12px; /* align with textarea padding if present */
+  white-space: pre-wrap;
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  background: transparent;
+  z-index: 2; /* sit above textarea visually but remain inert unless children allow pointer events */
+  -webkit-overflow-scrolling: touch; /* smoother touch scrolling */
+  touch-action: pan-y; /* allow vertical swiping on touch devices */
+}
+.editor-math-overlay .math-inline, .editor-math-overlay .math-block {
+  pointer-events: auto; /* allow clicking math blocks if needed */
+  color: inherit;
+}
+.editor-math-overlay .katex, .editor-math-overlay .katex-display { color: inherit; }
+.editor-math-overlay .editor-math-block {
+  display: block;
+  margin: 8px 0;
+}
+.editor-math-block { background: transparent; }
+
+.editor-heading { margin: 10px 0 6px; }
+.editor-heading--h1 { font-size: 1.6em; font-weight: 700; }
+.editor-heading--h2 { font-size: 1.4em; font-weight: 600; }
+.editor-heading--h3 { font-size: 1.2em; font-weight: 600; }
+.editor-heading--h4 { font-size: 1.1em; font-weight: 600; }
+.editor-heading--h5 { font-size: 1em; font-weight: 600; }
+.editor-heading--h6 { font-size: 0.95em; font-weight: 600; }
+
+.editor-inline-code { background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+.editor-block-code { background: rgba(0,0,0,0.03); padding: 8px; border-radius: 6px; font-family: monospace; overflow: auto; }
+.editor-list-item { margin-left: 18px; }
+.editor-overlay-image { max-width: 60%; display: inline-block; margin: 6px 0; }
+
+/* Overlay videos: make responsive and constrain to overlay width/height so they don't overflow */
+.editor-overlay-video {
+  display: block;
+  width: 100%; /* take available overlay width */
+  max-width: min(900px, 100%); /* cap super-wide videos while staying responsive */
+  height: auto;
+  margin: 8px 0;
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 8px;
+  box-shadow: 0 12px 24px rgba(15, 17, 23, 0.08);
+  background: #000; /* video background while loading */
+  max-height: 70vh; /* avoid very tall videos that overflow the window */
+  object-fit: contain; /* preserve aspect ratio */
+  box-sizing: border-box;
+}
+
+/* If you prefer inline smaller videos, add a helper class 'inline-video' to reduce width */
+.editor-overlay-video.inline-video {
+  display: inline-block;
+  width: auto;
+  max-width: 60%;
+}
+.editor-table { display: block; background: rgba(0,0,0,0.02); padding: 6px; border-radius: 6px; }
+
+.editor-math-inline { display: inline-block; vertical-align: middle; }
+
+.editor-wikilink { display: inline; }
+
+.editor-html-block, .editor-html-block iframe {
+  touch-action: auto;
+}
+
+.editor-html-block iframe {
+  width: 100%;
+  height: 420px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: white;
+  /* allow pointer events on iframe so users can interact with embedded pages */
+  pointer-events: auto;
+}
+
+/* Toggle button active state */
+.icon-button.active { background: var(--accent-weak); border-radius:6px; }
+.icon-button.active .icon { color: var(--accent); }
+
 body {
-  font-size: 15px;
+  font-size: var(--font-size);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -250,7 +354,7 @@ textarea {
 
 .app-shell {
   display: flex;
-  height: 100vh;
+  height: calc(100vh - var(--title-bar-height));
   width: 100vw;
   overflow: hidden;
 }
@@ -733,33 +837,18 @@ button[data-tooltip]:hover::after {
 }
 
 .tree-empty {
-  padding: 18px 16px;
-  color: var(--fg-soft);
-  font-size: 13px;
-  text-align: center;
-}
-
-.explorer__empty[hidden] {
-  display: none !important;
-}
-
-.explorer__tree::-webkit-scrollbar {
+  flex: 1;
+  border: none;
+  resize: none;
+  padding: 24px 16px 24px 24px; /* More padding on right to move scrollbar */
+  font-size: 15px;
+  line-height: 1.6;
+  background: transparent;
+  color: var(--fg);
+  position: relative;
+  z-index: 2; /* Keep textarea above overlay so caret remains visible */
+  overflow-y: auto; /* Ensure editor can scroll */
   width: 8px;
-}
-
-.explorer__tree::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 999px;
-}
-
-.sidebar {
-  width: 320px;
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  padding: 20px 18px 16px;
-  gap: 16px;
 }
 
 .sidebar__header {
@@ -2374,6 +2463,31 @@ button.small {
   opacity: 1;
   max-height: 2000px; /* Increased to accommodate new sections */
   overflow: visible;
+}
+
+.font-preview-sample {
+  display: inline-block;
+  margin-left: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.02);
+  font-size: 14px;
+  color: var(--fg);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-family-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.font-family-group .settings-select {
+  min-width: 80px; /* make the closed select wider so the dropdown button looks roomy */
+  max-width: 120px;
 }
 
 /* Settings Divider */

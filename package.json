@@ -36,7 +36,7 @@
   },
   "build": {
     "appId": "com.maurone7.notetakingapp",
-    "productName": "NoteTakingApp",
+  "productName": "NTA",
     "directories": {
       "output": "dist"
     },
@@ -47,7 +47,7 @@
     "publish": {
       "provider": "github",
       "owner": "Maurone7",
-      "repo": "NoteTakingApp"
+  "repo": "NoteTakingApp"
     },
     "mac": {
       "category": "public.app-category.productivity",

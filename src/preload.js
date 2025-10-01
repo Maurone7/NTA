@@ -49,3 +49,11 @@ const api = {
 };
 
 contextBridge.exposeInMainWorld('api', api);
+
+// Expose a dedicated font import helper that accepts a display name, filename and an ArrayBuffer
+contextBridge.exposeInMainWorld('fontImporter', {
+  importFont: async (displayName, filename, arrayBuffer) => {
+    // We transfer the buffer to the main process; ipcRenderer will serialize the ArrayBuffer
+    return ipcRenderer.invoke('fonts:import', { displayName, filename, buffer: arrayBuffer });
+  }
+});

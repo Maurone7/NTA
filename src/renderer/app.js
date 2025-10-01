@@ -192,7 +192,7 @@ const elements = {
   inlineChatClose: document.getElementById('inline-chat-close')
 };
 
-const storagePrefix = 'noteTakingApp.';
+const storagePrefix = 'NTA.';
 const storageKeys = {
   workspaceFolder: `${storagePrefix}lastWorkspaceFolder`,
   codeLanguage: `${storagePrefix}lastCodeLanguage`,
@@ -434,7 +434,8 @@ const blockTokenTypesForMapping = new Set([
   'code',
   'table',
   'tablecell',
-  'mathBlock'
+  'mathBlock',
+  'htmlCodeBlock'
 ]);
 let activeSourceMapCollector = null;
 
@@ -8888,6 +8889,23 @@ const renderWikiEmbed = (token, targetInfo, context) => {
   };
 
   if (!noteId) {
+    // If no note found but target looks like an HTML resource, render as iframe embed
+    try {
+      const ext = getFileExtension(token.target || '') || '';
+      if (ext && htmlExtensions.has(ext.toLowerCase())) {
+        const iframeId = `html-embed-${Math.random().toString(36).substr(2, 9)}`;
+        const attributes = [
+          `id="${iframeId}"`,
+          `data-raw-src="${escapeHtml(token.target)}"`,
+          'sandbox="allow-scripts allow-same-origin allow-forms allow-popups"',
+          'loading="lazy"',
+          'class="html-embed-iframe"'
+        ];
+        return `<iframe ${attributes.join(' ')}>Your browser does not support iframes.</iframe>`;
+      }
+    } catch (e) {
+      // fall through to missing note handling
+    }
     const header = buildHeader(null, 'Missing note', 'wikilink--embed', false, false);
     const message = escapeHtml(`No note found for [[${token.target}]]. Click the link above to create it.`);
     return `<section class="wikilink-embed wikilink-embed--missing" data-wiki-target="${targetAttr}">
@@ -8987,6 +9005,17 @@ const renderWikiEmbed = (token, targetInfo, context) => {
     </section>`;
   }
 
+  if (note.type === 'html') {
+    const header = buildHeader(noteId, 'HTML');
+    const rawSrc = escapeHtml(note.absolutePath ?? note.storedPath ?? '');
+    return `<section class="wikilink-embed" data-note-id="${noteId}" data-wiki-target="${targetAttr}" data-embed-depth="${depth}">
+      ${header}
+      <div class="wikilink-embed__body">
+        <iframe class="html-embed-iframe" data-raw-src="${rawSrc}" data-note-id="${noteId}" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" style="width:100%; height:600px; border:1px solid #ddd; border-radius:4px; background:#f5f5f5; transition:height 0.3s ease;">Your browser does not support iframes.</iframe>
+      </div>
+    </section>`;
+  }
+
   if (note.type === 'image') {
     const header = buildHeader(noteId, 'Image');
     const rawSrc = escapeHtml(note.absolutePath ?? note.storedPath ?? '');
@@ -9015,6 +9044,24 @@ const renderWikiEmbed = (token, targetInfo, context) => {
       ${header}
       <div class="wikilink-embed__body"><p class="wikilink-embed__message">Notebook embeds are not available yet. Use the link above to open the file.</p></div>
     </section>`;
+  }
+
+  // If note exists but type isn't explicitly supported above, check file extension and fall back to HTML embed
+  try {
+    const potentialPath = note.absolutePath ?? note.storedPath ?? token.target ?? '';
+    const ext = getFileExtension(potentialPath) || '';
+    if (ext && htmlExtensions.has(ext.toLowerCase())) {
+      const header = buildHeader(noteId, 'HTML');
+      const rawSrc = escapeHtml(potentialPath);
+      return `<section class="wikilink-embed" data-note-id="${noteId}" data-wiki-target="${targetAttr}" data-embed-depth="${depth}">
+        ${header}
+        <div class="wikilink-embed__body">
+          <iframe class="html-embed-iframe" data-raw-src="${rawSrc}" data-note-id="${noteId}" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" style="width:100%; height:600px; border:1px solid #ddd; border-radius:4px; background:#f5f5f5; transition:height 0.3s ease;">Your browser does not support iframes.</iframe>
+        </div>
+      </section>`;
+    }
+  } catch (e) {
+    // ignore and fall through
   }
 
   const header = buildHeader(noteId, 'Preview unavailable');
@@ -9728,6 +9775,840 @@ const initialize = () => {
     event.preventDefault();
     togglePreviewCollapsed();
   });
+  // Math WYSIWYG toggle and handlers
+  const mathWysiwygButton = document.getElementById('toggle-math-wysiwyg-button');
+  const mathPanel = document.getElementById('math-wysiwyg-panel');
+  const mathList = document.getElementById('math-wysiwyg-list');
+  const mathPanelClose = document.getElementById('math-wysiwyg-close');
+  const mathEditModal = document.getElementById('math-edit-modal');
+  const mathEditClose = document.getElementById('math-edit-close');
+  const mathEditTextarea = document.getElementById('math-edit-textarea');
+  const mathEditPreview = document.getElementById('math-edit-preview');
+  const mathEditCancel = document.getElementById('math-edit-cancel');
+  const mathEditSave = document.getElementById('math-edit-save');
+
+  const scanMathBlocks = () => {
+    if (!elements.preview) return [];
+    const blocks = Array.from(elements.preview.querySelectorAll('.math-block'));
+    return blocks.map((el, idx) => ({ el, idx, source: el.dataset.mathSource ?? '' }));
+  };
+
+  const renderMathList = () => {
+    if (!mathList) return;
+    mathList.innerHTML = '';
+    const blocks = scanMathBlocks();
+    if (!blocks.length) {
+      const empty = document.createElement('div');
+      empty.className = 'math-wysiwyg__empty';
+      empty.textContent = 'No math blocks found in the preview.';
+      mathList.appendChild(empty);
+      return;
+    }
+
+    blocks.forEach((b, i) => {
+      const item = document.createElement('div');
+      item.className = 'math-wysiwyg__item';
+      const pre = document.createElement('pre');
+      pre.textContent = b.source;
+      const actions = document.createElement('div');
+      actions.className = 'math-wysiwyg__actions';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'ghost small';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => openMathEdit(b));
+      actions.appendChild(editBtn);
+      item.appendChild(pre);
+      item.appendChild(actions);
+      mathList.appendChild(item);
+    });
+  };
+
+  const openMathPanel = () => {
+    if (!mathPanel) return;
+    mathPanel.hidden = false;
+    mathWysiwygButton?.setAttribute('aria-pressed', 'true');
+    renderMathList();
+  };
+
+  const closeMathPanel = () => {
+    if (!mathPanel) return;
+    mathPanel.hidden = true;
+    mathWysiwygButton?.setAttribute('aria-pressed', 'false');
+  };
+
+  // Toggle between listing panel and editor live-preview. Default: enable live-preview overlay.
+  const mathOverlay = document.getElementById('editor-math-overlay');
+  let mathOverlayEnabled = false;
+  let mathOverlayTimer = null;
+
+  const parseMathBlocksFromEditor = (text) => {
+    const blocks = [];
+    const regex = /\$\$([\s\S]*?)\$\$/gm;
+    let m;
+    while ((m = regex.exec(text)) !== null) {
+      blocks.push({ text: m[1].trim(), start: m.index, end: regex.lastIndex });
+    }
+    return blocks;
+  };
+
+  // Build ordered segments for overlay rendering and masking.
+  // Segments can be: { type: 'text', text }
+  // or { type: 'block', text, raw, start, end }
+  // or { type: 'inline', text, raw, start, end }
+  // or { type: 'heading', text, raw, level, start, end }
+  const buildOverlaySegments = (content) => {
+    const matches = [];
+
+    // Use renderMarkdownToHtml to collect block-level source map information
+    let collector = null;
+    try {
+      const result = renderMarkdownToHtml(content, null, { collectSourceMap: true });
+      collector = result.collector;
+    } catch (err) {
+      collector = null;
+    }
+
+    // add block-level tokens from collector (if available)
+    if (collector && Array.isArray(collector.blocks)) {
+      // Only include structural blocks that should be rendered/masked specially.
+      const specialBlocks = new Set(['mathBlock', 'code', 'heading', 'list_item', 'blockquote', 'table', 'tablecell', 'htmlCodeBlock']);
+      for (const b of collector.blocks) {
+        if (!b || typeof b.start !== 'number' || typeof b.end !== 'number') continue;
+        if (!specialBlocks.has(b.type)) {
+          // leave ordinary paragraphs and inline text to be treated as normal text
+          continue;
+        }
+        const raw = content.slice(b.start, b.end);
+        const type = b.type === 'mathBlock' ? 'block' : b.type;
+        const skipInline = b.type === 'mathBlock' || b.type === 'code';
+        matches.push({ type, text: (b.plainText ?? raw).trim(), raw, start: b.start, end: b.end, level: b.depth ?? undefined, skipInline });
+      }
+    } else {
+      // fallback: detect headings and block math with regex
+      const blockRe = /\$\$([\s\S]*?)\$\$/gm;
+      let m;
+      while ((m = blockRe.exec(content)) !== null) {
+        matches.push({ type: 'block', text: m[1].trim(), raw: m[0], start: m.index, end: blockRe.lastIndex, skipInline: true });
+      }
+      const headingRe = /(^|\n)(#{1,6})[ \t]+([^\n]+)/gm;
+      while ((m = headingRe.exec(content)) !== null) {
+        const leadLen = (m[1] || '').length;
+        const s = m.index + leadLen;
+        const raw = m[0].slice(leadLen);
+        const e = s + raw.length;
+        matches.push({ type: 'heading', text: m[3].trim(), raw, level: m[2].length, start: s, end: e });
+      }
+    }
+
+  // helper to check if a position is inside an existing block range that should skip inline parsing
+  const insideBlock = (s, e) => matches.some((r) => r.skipInline && !(e <= r.start || s >= r.end));
+
+    // inline patterns (skip those inside block ranges)
+    const inlineMatchers = [
+      { type: 'inline-math', re: /(?<!\$)\$([^\n$]+?)\$(?!\$)/gm },
+      { type: 'inlinecode', re: /`([^`\n]+?)`/gm },
+      { type: 'bold', re: /\*\*([^\n*]+?)\*\*/gm },
+      { type: 'italic', re: /\*([^\n*]+?)\*/gm },
+      { type: 'image', re: /!\[([^\]]*?)\]\(([^)]+?)\)/gm },
+      { type: 'link', re: /\[([^\]]+?)\]\(([^)]+?)\)/gm },
+      { type: 'wikilink', re: /!\[\[([\s\S]+?)\]\]|\[\[([\s\S]+?)\]\]/gm }
+    ];
+
+    for (const im of inlineMatchers) {
+      try {
+        let mm;
+        while ((mm = im.re.exec(content)) !== null) {
+          const s = mm.index;
+          const e = im.re.lastIndex;
+          if (insideBlock(s, e)) continue;
+          // for capturing groups, pass relevant parts in text/raw
+          const raw = mm[0];
+          let text = mm[1] ?? raw;
+          // images and links have multiple groups
+          if (im.type === 'image' || (im.type === 'link' && mm[2])) {
+            // mm[1] = alt/text, mm[2] = url
+            matches.push({ type: im.type, text: mm[1], url: mm[2], raw, start: s, end: e });
+          } else if (im.type === 'inline-math') {
+            matches.push({ type: 'inline', text: mm[1], raw, start: s, end: e });
+          } else if (im.type === 'wikilink') {
+            // mm[1] will be defined for transclusion (![[...]]), mm[2] for normal [[...]]
+            const inner = mm[1] ?? mm[2] ?? '';
+            const isEmbed = !!mm[1] && mm[0].startsWith('!');
+            matches.push({ type: 'wikilink', raw, inner, target: inner.trim(), embed: isEmbed, start: s, end: e });
+          } else if (im.type === 'inlinecode') {
+            matches.push({ type: 'inlinecode', text: mm[1], raw, start: s, end: e });
+          } else if (im.type === 'bold') {
+            matches.push({ type: 'bold', text: mm[1], raw, start: s, end: e });
+          } else if (im.type === 'italic') {
+            // ignore italic matches that are part of bold (**...**)
+            const prevChar = content[s - 1];
+            if (prevChar === '*') continue;
+            matches.push({ type: 'italic', text: mm[1], raw, start: s, end: e });
+          } else if (im.type === 'link') {
+            matches.push({ type: 'link', text: mm[1], url: mm[2], raw, start: s, end: e });
+          }
+        }
+      } catch (err) {
+        // ignore regex issues
+      }
+    }
+
+    // sort matches by start index
+    matches.sort((a, b) => a.start - b.start || a.end - b.end);
+
+    // build segments array by walking through content
+    const segments = [];
+    let last = 0;
+    for (const mt of matches) {
+      if (mt.start > last) {
+        segments.push({ type: 'text', text: content.slice(last, mt.start) });
+      }
+      segments.push(mt);
+      last = mt.end;
+    }
+    if (last < content.length) segments.push({ type: 'text', text: content.slice(last) });
+    return segments;
+  };
+
+  const renderEditorMathOverlay = () => {
+    if (!mathOverlay || !elements.editor) return;
+    // use original content if masked, otherwise current editor value
+    const content = elements.editor.__originalContent ?? elements.editor.value ?? '';
+    // Build mirror content: use overlay segments that include block math, inline math, and headings
+    const segments = buildOverlaySegments(content);
+    // debug: show segments when troubleshooting
+    if (window.__debugMathOverlay) {
+      console.debug('[math-overlay] segments:', segments.map((s) => ({ t: s.type, start: s.start, end: s.end, raw: (s.raw || '').slice(0, 40) })));
+    }
+
+    const frag = document.createDocumentFragment();
+    segments.forEach((seg) => {
+      if (seg.type === 'text') {
+        const span = document.createElement('span');
+        span.className = 'mirror-text';
+        // escape HTML and preserve newlines as <br>
+        const escaped = seg.text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        span.innerHTML = escaped.replace(/\n/g, '<br>');
+        frag.appendChild(span);
+      } else if (seg.type === 'block' || seg.type === 'mathBlock') {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'editor-math-block';
+        try {
+          if (window.katex) {
+            wrapper.innerHTML = window.katex.renderToString(seg.text, { throwOnError: false, displayMode: true });
+          } else {
+            wrapper.textContent = seg.text;
+          }
+        } catch (err) {
+          wrapper.textContent = seg.text;
+        }
+        frag.appendChild(wrapper);
+      } else if (seg.type === 'inline') {
+        const span = document.createElement('span');
+        span.className = 'editor-math-inline';
+        try {
+          if (window.katex) {
+            span.innerHTML = window.katex.renderToString(seg.text, { throwOnError: false, displayMode: false });
+          } else {
+            span.textContent = seg.text;
+          }
+        } catch (err) {
+          span.textContent = seg.text;
+        }
+        frag.appendChild(span);
+      } else if (seg.type === 'inlinecode') {
+        const code = document.createElement('code');
+        code.className = 'editor-inline-code';
+        code.textContent = seg.text;
+        frag.appendChild(code);
+      } else if (seg.type === 'bold') {
+        const s = document.createElement('strong');
+        s.textContent = seg.text;
+        frag.appendChild(s);
+      } else if (seg.type === 'italic') {
+        const s = document.createElement('em');
+        s.textContent = seg.text;
+        frag.appendChild(s);
+      } else if (seg.type === 'link') {
+        const a = document.createElement('a');
+        a.href = seg.url || '#';
+        a.textContent = seg.text || seg.url || '';
+        a.target = '_blank';
+        frag.appendChild(a);
+      } else if (seg.type === 'image') {
+        // If the URL looks like a video file, render a video element instead of an <img>
+        const ext = getFileExtension(seg.url || '') || '';
+        if (videoExtensions.has(ext)) {
+          const video = document.createElement('video');
+          video.controls = true;
+          video.preload = 'metadata';
+          video.className = 'editor-overlay-video';
+          // store raw src so resolver can replace it with a file:// or blob URL
+          if (seg.url) video.setAttribute('data-raw-src', seg.url);
+          if (seg.text) video.setAttribute('title', seg.text);
+          // If a noteId is available via render context, attach it for resolver caching
+          try {
+            const ctx = getRenderContext();
+            if (ctx && ctx.noteId) video.setAttribute('data-note-id', String(ctx.noteId));
+          } catch (e) {
+            // ignore
+          }
+          // Allow interactions on the overlay video; temporarily disable textarea pointerEvents while interacting
+          video.style.pointerEvents = 'auto';
+          video.addEventListener('mouseenter', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
+          video.addEventListener('mouseleave', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+          video.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
+          video.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+          // Fallback text for browsers that don't support <video>
+          video.innerHTML = seg.text ? `Your browser does not support the video tag. ${escapeHtml(seg.text)}` : 'Your browser does not support the video tag.';
+          frag.appendChild(video);
+        } else {
+          const img = document.createElement('img');
+          img.src = seg.url || '';
+          img.alt = seg.text || '';
+          img.className = 'editor-overlay-image';
+          frag.appendChild(img);
+        }
+      } else if (seg.type === 'wikilink') {
+        const wrapper = document.createElement('span');
+        wrapper.className = 'editor-wikilink';
+        try {
+          const token = { target: seg.target, raw: seg.raw, embed: !!seg.embed };
+          const targetInfo = parseWikiTarget(token.target, null);
+          if (token.embed) {
+            wrapper.innerHTML = renderWikiEmbed(token, targetInfo, null);
+          } else {
+            const presentation = getWikiTargetPresentation(token, targetInfo);
+            const display = escapeHtml(presentation.display);
+            wrapper.innerHTML = renderWikiLinkSpan({
+              noteId: targetInfo.noteId,
+              targetAttr: escapeHtml(token.target),
+              display,
+              blockId: targetInfo.blockId,
+              blockMissing: Boolean(targetInfo.blockId && !targetInfo.hasBlock)
+            });
+          }
+        } catch (err) {
+          wrapper.textContent = seg.raw || '';
+        }
+        frag.appendChild(wrapper);
+      } else if (seg.type === 'htmlCodeBlock') {
+        // Render HTML code block as sandboxed iframe using a blob URL (same approach as preview renderer)
+        const container = document.createElement('div');
+        container.className = 'editor-html-block';
+        try {
+          let modifiedHtml = seg.text || '';
+          const autoResizeScript = `\n<script>function notifyParentOfResize(){const height=Math.max(document.body.scrollHeight,document.body.offsetHeight,document.documentElement.clientHeight,document.documentElement.scrollHeight,document.documentElement.offsetHeight);try{if(window.parent&&window.parent!==window){window.parent.postMessage({type:'iframe-resize',height:height,source:window.location.href},'*');}}catch(e){} }window.addEventListener('load',notifyParentOfResize);window.addEventListener('resize',notifyParentOfResize);document.addEventListener('DOMContentLoaded',notifyParentOfResize);setTimeout(notifyParentOfResize,100);setTimeout(notifyParentOfResize,500);setTimeout(notifyParentOfResize,1500);if(window.MutationObserver){const observer=new MutationObserver(()=>{setTimeout(notifyParentOfResize,50);});observer.observe(document.body,{childList:true,subtree:true,attributes:true});}</script>\n`;
+          if (modifiedHtml.includes('</body>')) {
+            modifiedHtml = modifiedHtml.replace('</body>', autoResizeScript + '</body>');
+          } else if (modifiedHtml.includes('</html>')) {
+            modifiedHtml = modifiedHtml.replace('</html>', autoResizeScript + '</html>');
+          } else {
+            modifiedHtml = modifiedHtml + autoResizeScript;
+          }
+
+          const blob = new Blob([modifiedHtml], { type: 'text/html' });
+          const blobUrl = URL.createObjectURL(blob);
+          if (!window.htmlBlobUrls) window.htmlBlobUrls = new Set();
+          window.htmlBlobUrls.add(blobUrl);
+
+          const iframe = document.createElement('iframe');
+          iframe.src = blobUrl;
+          // mark iframe for overlay processing/resizing
+          iframe.classList.add('html-embed-iframe');
+          iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
+          iframe.style.width = '100%';
+          iframe.style.border = '1px solid #ddd';
+          iframe.style.borderRadius = '4px';
+          iframe.style.height = '420px';
+          // allow pointer events so user can interact with embedded content
+          iframe.style.pointerEvents = 'auto';
+          // keep a record of original raw src for resolver flow if needed
+          iframe.setAttribute('data-raw-src', blobUrl);
+          // Ensure iframe interaction works when the overlay is sitting above the textarea.
+          // Temporarily disable textarea pointer events while hovering/touching the iframe so clicks go to the iframe.
+          iframe.addEventListener('mouseenter', () => {
+            try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {}
+          });
+          iframe.addEventListener('mouseleave', () => {
+            try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {}
+          });
+          iframe.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
+          iframe.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+          iframe.onload = function () { /* auto-resize handled via script in iframe */ };
+          container.appendChild(iframe);
+        } catch (err) {
+          container.textContent = seg.text || '';
+        }
+        frag.appendChild(container);
+      } else if (seg.type === 'code') {
+        const pre = document.createElement('pre');
+        const c = document.createElement('code');
+        c.textContent = seg.text;
+        pre.appendChild(c);
+        pre.className = 'editor-block-code';
+        frag.appendChild(pre);
+      } else if (seg.type === 'list_item') {
+        const li = document.createElement('div');
+        li.className = 'editor-list-item';
+        li.textContent = seg.text;
+        frag.appendChild(li);
+      } else if (seg.type === 'blockquote') {
+        const bq = document.createElement('blockquote');
+        bq.textContent = seg.text;
+        frag.appendChild(bq);
+      } else if (seg.type === 'table' || seg.type === 'tablecell') {
+        const span = document.createElement('span');
+        span.className = 'editor-table';
+        const escaped = (seg.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        span.innerHTML = escaped.replace(/\n/g, '<br>');
+        frag.appendChild(span);
+      } else if (seg.type === 'heading') {
+        const h = document.createElement('div');
+        h.className = `editor-heading editor-heading--h${seg.level}`;
+        // render heading text as plain text (escaped)
+        const escaped = seg.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        h.innerHTML = `<strong>${escaped}</strong>`;
+        frag.appendChild(h);
+      }
+    });
+
+    mathOverlay.innerHTML = '';
+    mathOverlay.appendChild(frag);
+    // ensure overlay scroll matches editor
+    mathOverlay.scrollTop = elements.editor.scrollTop;
+    // Resolve any iframe.html-embed-iframe[data-raw-src] inside the overlay (like preview)
+    try {
+      processOverlayHtmlIframes();
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const processOverlayHtmlIframes = async () => {
+    if (!mathOverlay || typeof window.api?.resolveResource !== 'function') return;
+    const iframes = Array.from(mathOverlay.querySelectorAll('iframe.html-embed-iframe[data-raw-src]'));
+    if (!iframes.length) return;
+
+    await Promise.all(iframes.map(async (iframe) => {
+      const rawSrc = iframe.getAttribute('data-raw-src');
+      if (!rawSrc) return;
+
+      if (isLikelyExternalUrl(rawSrc) || rawSrc.startsWith('data:') || rawSrc.startsWith('blob:')) {
+        iframe.src = rawSrc;
+        // mark interactive and wire pointer handling
+        try {
+          iframe.classList.add('html-embed-iframe');
+          iframe.style.pointerEvents = 'auto';
+          // add helpers so the underlying textarea doesn't steal pointer events while interacting with iframe
+          iframe.addEventListener('mouseenter', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
+          iframe.addEventListener('mouseleave', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+          iframe.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
+          iframe.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+        } catch (e) { /* ignore */ }
+        iframe.onload = () => { if (window.autoResizeIframe) window.autoResizeIframe(iframe); };
+        return;
+      }
+
+      const noteId = iframe.getAttribute('data-note-id') || state.activeNoteId;
+      const cacheKey = `${noteId ?? 'unknown'}::${rawSrc}`;
+      if (htmlResourceCache.has(cacheKey)) {
+        const cached = htmlResourceCache.get(cacheKey);
+        if (cached) {
+          iframe.src = cached;
+          iframe.onload = () => { if (window.autoResizeIframe) window.autoResizeIframe(iframe); };
+        }
+        return;
+      }
+
+      const note = noteId ? state.notes.get(noteId) ?? null : null;
+      const payload = { src: rawSrc, notePath: note?.absolutePath ?? null, folderPath: note?.folderPath ?? state.currentFolder ?? null };
+      try {
+        const result = await window.api.resolveResource(payload);
+        if (result?.value) {
+          htmlResourceCache.set(cacheKey, result.value);
+          iframe.src = result.value;
+          iframe.onload = () => { if (window.autoResizeIframe) window.autoResizeIframe(iframe); };
+        } else {
+          htmlResourceCache.set(cacheKey, null);
+        }
+      } catch (err) {
+        console.warn('Failed to resolve HTML resource (overlay)', rawSrc, err);
+        htmlResourceCache.set(cacheKey, null);
+      }
+    }));
+  };
+
+  const processOverlayVideos = async () => {
+    if (!mathOverlay || typeof window.api?.resolveResource !== 'function') return;
+    const videos = Array.from(mathOverlay.querySelectorAll('video[data-raw-src]'));
+    if (!videos.length) return;
+
+    await Promise.all(videos.map(async (video) => {
+      const rawSrc = video.getAttribute('data-raw-src');
+      if (!rawSrc) return;
+
+      if (isLikelyExternalUrl(rawSrc) || rawSrc.startsWith('data:') || rawSrc.startsWith('blob:')) {
+        try {
+          video.src = rawSrc;
+        } catch (e) {
+          // ignore
+        }
+        return;
+      }
+
+      const noteId = video.getAttribute('data-note-id') || state.activeNoteId;
+      const cacheKey = `${noteId ?? 'unknown'}::${rawSrc}`;
+      if (videoResourceCache.has(cacheKey)) {
+        const cached = videoResourceCache.get(cacheKey);
+        if (cached) video.src = cached;
+        return;
+      }
+
+      const note = noteId ? state.notes.get(noteId) ?? null : null;
+      const payload = { src: rawSrc, notePath: note?.absolutePath ?? null, folderPath: note?.folderPath ?? state.currentFolder ?? null };
+      try {
+        const result = await window.api.resolveResource(payload);
+        if (result?.value) {
+          videoResourceCache.set(cacheKey, result.value);
+          video.src = result.value;
+        } else {
+          videoResourceCache.set(cacheKey, null);
+        }
+      } catch (err) {
+        console.warn('Failed to resolve video resource (overlay)', rawSrc, err);
+        videoResourceCache.set(cacheKey, null);
+      }
+    }));
+  };
+
+  // Masking math blocks in the textarea with invisible placeholders while overlay is active
+  const maskMathInEditor = () => {
+    if (!elements.editor) return;
+    const orig = elements.editor.value || '';
+    const segments = buildOverlaySegments(orig);
+    const maskChar = '\u2800'; // braille blank
+    let masked = '';
+    const ranges = [];
+    let pos = 0;
+    for (const seg of segments) {
+      if (seg.type === 'text') {
+        masked += seg.text;
+        pos += seg.text.length;
+      } else {
+        // for block, inline, heading: mask the raw source length
+        const raw = seg.raw ?? (seg.type === 'block' ? `$$\n${seg.text}\n$$` : seg.text);
+        const len = raw.length;
+        const start = masked.length;
+        masked += maskChar.repeat(len);
+        const end = masked.length;
+        ranges.push({ start, end, type: seg.type });
+        pos += len;
+      }
+    }
+
+    // store original content and masked ranges
+    elements.editor.__originalContent = orig;
+    elements.editor.__maskedRanges = ranges;
+    elements.editor.value = masked;
+  };
+
+  const unmaskEditor = () => {
+    if (!elements.editor) return;
+    if (elements.editor.__originalContent !== undefined) {
+      elements.editor.value = elements.editor.__originalContent;
+    }
+    delete elements.editor.__originalContent;
+    delete elements.editor.__maskedRanges;
+  };
+
+  const isInMaskedRange = (pos) => {
+    const ranges = elements.editor?.__maskedRanges || [];
+    for (const r of ranges) {
+      if (pos >= r.start && pos <= r.end) return r;
+    }
+    return null;
+  };
+
+  const handleBeforeInput = (ev) => {
+    try {
+      const start = elements.editor.selectionStart;
+      const end = elements.editor.selectionEnd;
+      const inStart = isInMaskedRange(start);
+      const inEnd = isInMaskedRange(end);
+      if (inStart || inEnd) {
+        // prevent edits inside masked math; move caret to end of masked block
+        ev.preventDefault();
+        const r = inEnd || inStart;
+        elements.editor.selectionStart = elements.editor.selectionEnd = r.end;
+        return false;
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const enableMathOverlay = () => {
+    mathOverlayEnabled = true;
+    if (mathOverlay) {
+      mathOverlay.hidden = false;
+      mathOverlay.style.display = '';
+      mathOverlay.setAttribute('aria-hidden', 'false');
+        try { mathOverlay.style.pointerEvents = 'auto'; } catch (e) {}
+    }
+    // make editor text transparent so overlay shows through, but keep caret visible
+    if (elements.editor) {
+      elements.editor.__prevColor = elements.editor.style.color || '';
+      elements.editor.style.color = 'transparent';
+      elements.editor.style.caretColor = getComputedStyle(document.documentElement).getPropertyValue('--fg') || '#000';
+      // sync scroll
+      elements.editor.addEventListener('scroll', syncOverlayScroll);
+  // allow overlay interactions to scroll the editor: listen for wheel and touch events on overlay
+  mathOverlay.addEventListener('wheel', overlayWheelHandler, { passive: false });
+  mathOverlay.addEventListener('touchstart', overlayTouchStart, { passive: true });
+  mathOverlay.addEventListener('touchmove', overlayTouchMove, { passive: false });
+  // If user interacts directly with overlay scrollbar or scrollbar thumb, forward overlay scroll to editor
+  mathOverlay.addEventListener('scroll', overlayScrollHandler);
+      // mask math segments in editor so they temporarily disappear
+      maskMathInEditor();
+      // Prevent user from editing masked regions
+      elements.editor.addEventListener('beforeinput', handleBeforeInput, { capture: true });
+    }
+    // render overlay after masking so we base on original content
+    renderEditorMathOverlay();
+    try { void processOverlayVideos(); } catch (e) { /* ignore */ }
+  };
+
+  const disableMathOverlay = () => {
+    mathOverlayEnabled = false;
+    if (mathOverlay) {
+      mathOverlay.hidden = true;
+      mathOverlay.style.display = 'none';
+      mathOverlay.setAttribute('aria-hidden', 'true');
+      mathOverlay.innerHTML = '';
+        try { mathOverlay.style.pointerEvents = 'none'; } catch (e) {}
+    }
+    if (elements.editor) {
+      // restore editor content and styles
+      unmaskEditor();
+      elements.editor.style.color = elements.editor.__prevColor || '';
+      elements.editor.style.caretColor = '';
+      elements.editor.removeEventListener('scroll', syncOverlayScroll);
+      if (mathOverlay) {
+  mathOverlay.removeEventListener('wheel', overlayWheelHandler, { passive: false });
+  mathOverlay.removeEventListener('touchstart', overlayTouchStart, { passive: true });
+  mathOverlay.removeEventListener('touchmove', overlayTouchMove, { passive: false });
+  mathOverlay.removeEventListener('scroll', overlayScrollHandler);
+      }
+      elements.editor.removeEventListener('beforeinput', handleBeforeInput, { capture: true });
+    }
+      // revoke any blob URLs created for HTML blocks
+      if (window.htmlBlobUrls && window.htmlBlobUrls.size) {
+        try {
+          for (const u of window.htmlBlobUrls) {
+            try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ }
+          }
+        } finally {
+          window.htmlBlobUrls.clear();
+        }
+      }
+  };
+
+  const syncOverlayScroll = () => {
+    if (!mathOverlay || !elements.editor) return;
+    mathOverlay.scrollTop = elements.editor.scrollTop;
+    mathOverlay.scrollLeft = elements.editor.scrollLeft;
+  };
+
+  // Forward wheel events that occur on the overlay to the editor textarea so users can scroll
+  // when interacting with overlay content (e.g., embedded iframes).
+  let lastTouchY = 0;
+  const overlayWheelHandler = (ev) => {
+    try {
+      if (!elements.editor) return;
+      // If the event target is an element that should handle its own scroll (like an iframe),
+      // allow default behavior. We only intercept when the overlay itself or inert elements are targeted.
+      const target = ev.target;
+      if (target && (target.tagName === 'IFRAME' || target.closest && target.closest('iframe'))) {
+        // let iframe handle wheel normally; but also sync editor scroll if needed
+        return;
+      }
+      ev.preventDefault();
+      // Scroll the overlay by the wheel delta. This lets the overlay scroll even when it's taller
+      // than the underlying textarea content. We'll then sync the editor position proportionally.
+      if (mathOverlay) {
+        mathOverlay.scrollTop += ev.deltaY;
+        // Call overlay scroll handler to propagate proportional scroll to the editor
+        overlayScrollHandler();
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const overlayTouchStart = (ev) => {
+    if (!ev.touches || ev.touches.length === 0) return;
+    lastTouchY = ev.touches[0].clientY;
+  };
+
+  const overlayTouchMove = (ev) => {
+    try {
+      if (!mathOverlay || !ev.touches || ev.touches.length === 0) return;
+      // If the touch originated inside an iframe, don't intercept
+      const target = ev.target;
+      if (target && (target.tagName === 'IFRAME' || target.closest && target.closest('iframe'))) return;
+      const y = ev.touches[0].clientY;
+      const dy = lastTouchY - y;
+      if (Math.abs(dy) > 0) {
+        ev.preventDefault();
+        // Scroll the overlay itself and let the overlayScrollHandler map it proportionally
+        if (mathOverlay) {
+          mathOverlay.scrollTop += dy;
+          overlayScrollHandler();
+        }
+      }
+      lastTouchY = y;
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const overlayScrollHandler = (ev) => {
+    try {
+      if (!mathOverlay || !elements.editor) return;
+      // Map overlay scroll position to editor scroll proportionally so the editor follows
+      // even when overlay.scrollHeight != editor.scrollHeight.
+      const overlayTop = mathOverlay.scrollTop || 0;
+      const overlayScrollable = Math.max(0, mathOverlay.scrollHeight - mathOverlay.clientHeight);
+      const editorScrollable = Math.max(0, elements.editor.scrollHeight - elements.editor.clientHeight);
+
+      if (overlayScrollable <= 0 || editorScrollable <= 0) {
+        // Fallback to direct mapping when one side isn't scrollable
+        if (Math.abs(overlayTop - (elements.editor.scrollTop || 0)) > 2) {
+          elements.editor.scrollTop = overlayTop;
+        }
+        return;
+      }
+
+      const ratio = overlayTop / overlayScrollable;
+      const targetEditorTop = Math.round(ratio * editorScrollable);
+      if (Math.abs((elements.editor.scrollTop || 0) - targetEditorTop) > 2) {
+        elements.editor.scrollTop = targetEditorTop;
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  mathWysiwygButton?.addEventListener('click', (e) => {
+    e.preventDefault();
+    // Toggle overlay on button click
+    if (mathOverlayEnabled) {
+      disableMathOverlay();
+      mathWysiwygButton?.setAttribute('aria-pressed', 'false');
+      mathWysiwygButton?.classList.remove('active');
+      const icon = mathWysiwygButton?.querySelector('.icon');
+      if (icon) icon.textContent = '∑';
+      // keep panel closed
+      closeMathPanel();
+    } else {
+      enableMathOverlay();
+      mathWysiwygButton?.setAttribute('aria-pressed', 'true');
+      mathWysiwygButton?.classList.add('active');
+      const icon = mathWysiwygButton?.querySelector('.icon');
+      if (icon) icon.textContent = '∑';
+      // ensure panel is closed when showing overlay
+      closeMathPanel();
+    }
+  });
+
+  // Update overlay while editing (debounced)
+  elements.editor?.addEventListener('input', () => {
+    if (!mathOverlayEnabled) return;
+    if (mathOverlayTimer) clearTimeout(mathOverlayTimer);
+    mathOverlayTimer = setTimeout(() => {
+      renderEditorMathOverlay();
+      try { void processOverlayVideos(); } catch (e) { /* ignore */ }
+    }, 220);
+  });
+
+  mathPanelClose?.addEventListener('click', (e) => { e.preventDefault(); closeMathPanel(); });
+
+  // Modal helpers
+  let currentEdit = null; // {el, idx, source}
+  const openMathEdit = (block) => {
+    currentEdit = block;
+    if (!mathEditModal) return;
+    mathEditTextarea.value = block.source ?? '';
+    updateMathEditPreview();
+    mathEditModal.hidden = false;
+    mathEditModal.setAttribute('aria-hidden', 'false');
+  };
+
+  const closeMathEdit = () => {
+    currentEdit = null;
+    if (!mathEditModal) return;
+    mathEditModal.hidden = true;
+    mathEditModal.setAttribute('aria-hidden', 'true');
+  };
+
+  const updateMathEditPreview = () => {
+    if (!mathEditPreview) return;
+    const content = mathEditTextarea.value || '';
+    try {
+      const html = window.katex ? window.katex.renderToString(content, { throwOnError: false, displayMode: true }) : content;
+      mathEditPreview.innerHTML = html;
+    } catch (err) {
+      mathEditPreview.textContent = content;
+    }
+  };
+
+  mathEditTextarea?.addEventListener('input', updateMathEditPreview);
+  mathEditClose?.addEventListener('click', (e) => { e.preventDefault(); closeMathEdit(); });
+  mathEditCancel?.addEventListener('click', (e) => { e.preventDefault(); closeMathEdit(); });
+
+  mathEditSave?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!currentEdit) return closeMathEdit();
+    const newSource = mathEditTextarea.value || '';
+
+    // Replace in the editor textarea source: find the $$...$$ occurrence by matching original source
+    const editor = elements.editor;
+    if (editor) {
+      const original = currentEdit.source;
+      // Build regex to find $$<original>$$; escape special regex chars in original
+      const esc = original.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const re = new RegExp('\\$\\$\\s*' + esc + '\\s*\\$\\$', 'm');
+      if (re.test(editor.value)) {
+        editor.value = editor.value.replace(re, `$$\n${newSource}\n$$`);
+      } else {
+        // Fallback: try to replace the first math block occurrence
+        editor.value = editor.value.replace(/\$\$([\s\S]*?)\$\$/m, `$$\n${newSource}\n$$`);
+      }
+      // Trigger re-render of preview
+      renderActiveNote();
+    }
+
+    closeMathEdit();
+    // refresh list after update
+    setTimeout(renderMathList, 120);
+  });
+
+  // Close modal on outside click
+  mathEditModal?.addEventListener('click', (ev) => {
+    if (ev.target === mathEditModal) closeMathEdit();
+  });
+
+  // Re-scan math blocks whenever preview DOM changes using MutationObserver
+  if (elements.preview) {
+    const observer = new MutationObserver(() => {
+      try { renderMathList(); } catch (e) { /* ignore */ }
+    });
+    observer.observe(elements.preview, { childList: true, subtree: true, characterData: true });
+  }
   elements.fileName?.addEventListener('dblclick', handleFileNameDoubleClick);
   elements.fileName?.addEventListener('keydown', handleFileNameKeyDown);
   elements.renameFileForm?.addEventListener('submit', handleRenameFileFormSubmit);
@@ -9895,6 +10776,22 @@ const initialize = () => {
   elements.previewBgColorPicker?.addEventListener('change', handlePreviewBgColorChange);
   elements.resetPreviewBgColorButton?.addEventListener('click', resetPreviewBgColor);
   elements.previewFontFamilySelect?.addEventListener('change', handlePreviewFontFamilyChange);
+
+  // Attach preview updaters to font-family selects so users see a sample next to the select
+  [
+    elements.fontFamilySelect,
+    elements.workspaceFontFamilySelect,
+    elements.editorFontFamilySelect,
+    elements.previewFontFamilySelect,
+    elements.statusbarFontFamilySelect,
+    elements.titlebarFontFamilySelect
+  ].forEach(sel => {
+    if (!sel) return;
+    sel.addEventListener('change', () => updateSelectPreview(sel));
+  });
+
+  // Initialize previews for existing selections
+  setTimeout(() => updateAllFontPreviews(), 50);
   elements.resetPreviewFontFamilyButton?.addEventListener('click', resetPreviewFontFamily);
   elements.previewFontSizeSlider?.addEventListener('input', handlePreviewFontSizeChange);
   elements.resetPreviewFontSizeButton?.addEventListener('click', resetPreviewFontSize);
@@ -10237,6 +11134,60 @@ function openSettingsModal() {
   }
 }
 
+// Compute centered traffic light coordinates from the current DOM title bar and title text.
+function computeCenteredTrafficLightCoords() {
+  const titleBarEl = document.querySelector('.workspace__toolbar');
+  const titleEl = document.querySelector('.title-bar__title') || document.querySelector('.workspace__filemeta .workspace__filename') || titleBarEl;
+
+  // Defaults (in case DOM is not available)
+  let centerX = 12;
+  let y = 8;
+
+  try {
+    const titleBarRect = titleBarEl && typeof titleBarEl.getBoundingClientRect === 'function' ? titleBarEl.getBoundingClientRect() : null;
+
+    if (titleEl && typeof titleEl.getBoundingClientRect === 'function' && titleBarRect) {
+      const rect = titleEl.getBoundingClientRect();
+      // Compute title center in global (viewport) coordinates (use only for vertical alignment)
+      const titleCenterGlobalY = rect.top + rect.height / 2;
+
+      const titleBarTop = titleBarRect.top;
+
+      // Heuristic for traffic light height
+      const approxTrafficHeight = 16;
+
+      // X: keep a fixed left margin matching the top-left preset so switching modes doesn't jump
+      // Use 12px to match the main process's top-left default.
+      // Y: align vertically with the center of the title text inside the title bar
+      y = Math.round(titleCenterGlobalY - titleBarTop - Math.round(approxTrafficHeight / 2) - 2); // 2px upward correction
+      y = Math.max(4, y);
+    } else if (titleBarRect) {
+      // Fallback: center vertically within title bar, keep fixed X
+      centerX = 12;
+      y = Math.max(4, Math.round(titleBarRect.height / 2) - 2);
+    } else {
+      // Final fallback: use stored title bar size or 32px
+      const titleBarHeight = parseInt(localStorage.getItem('titleBarSize') || '32', 10);
+      centerX = 12;
+      y = Math.max(4, Math.round(titleBarHeight / 2) - 2);
+    }
+  } catch (err) {
+    console.warn('computeCenteredTrafficLightCoords: failed to calculate coords, using fallback', err);
+  }
+
+  // Debug output so we can verify values during testing
+  try {
+    console.info('Computed centered traffic light coords', JSON.stringify({ x: centerX, y }));
+  } catch (e) {}
+
+  // Ensure helper is reachable from other runtime code during reloads
+  if (typeof window !== 'undefined') {
+    window.computeCenteredTrafficLightCoords = computeCenteredTrafficLightCoords;
+  }
+
+  return { x: centerX, y, mode: 'absolute' };
+}
+
 function closeSettingsModal() {
   if (elements.settingsModal) {
     elements.settingsModal.classList.remove('visible');
@@ -10244,9 +11195,12 @@ function closeSettingsModal() {
 }
 
 function initializeSettingsTabs() {
+  // Idempotent: prevent double-registration of event listeners
+  if (typeof window._settingsTabsInitialized !== 'undefined' && window._settingsTabsInitialized) return;
+
   const navItems = document.querySelectorAll('.settings-nav__item');
   const tabs = document.querySelectorAll('.settings-tab');
-  
+
   // Add event listeners to navigation items
   navItems.forEach(item => {
     item.addEventListener('click', () => {
@@ -10254,9 +11208,11 @@ function initializeSettingsTabs() {
       switchToTab(targetTab);
     });
   });
-  
+
   // Initialize advanced settings toggles
   initializeAdvancedToggles();
+
+  window._settingsTabsInitialized = true;
 }
 
 function initializeAdvancedToggles() {
@@ -10296,12 +11252,67 @@ function initializeAdvancedToggles() {
       fontImportInput.click();
     });
     
-    fontImportInput.addEventListener('change', (event) => {
+    fontImportInput.addEventListener('change', async (event) => {
       const file = event.target.files[0];
-      if (file) {
-        fontImportBtn.textContent = file.name;
-        // TODO: Implement font loading functionality
-        console.log('Font file selected:', file.name);
+      if (!file) return;
+
+      fontImportBtn.textContent = file.name;
+
+      try {
+        // Read the file as ArrayBuffer
+        const arrayBuffer = await file.arrayBuffer();
+
+        // Send bytes to main process for saving
+        if (window.fontImporter && typeof window.fontImporter.importFont === 'function') {
+          const resp = await window.fontImporter.importFont(file.name, file.name, arrayBuffer);
+          if (resp && resp.success && resp.url && resp.family) {
+            // Register @font-face using the returned URL and family
+            const styleId = `imported-font-${resp.family}`;
+            if (!document.getElementById(styleId)) {
+              const s = document.createElement('style');
+              s.id = styleId;
+              s.textContent = `@font-face { font-family: "${resp.family}"; src: url("${resp.url}"); font-display: swap; }`;
+              document.head.appendChild(s);
+            }
+
+            // Add option to font-family select (if present) and select it
+            const select = document.getElementById('font-family-select');
+            if (select) {
+              // Use family name as value to apply later via applyFontFamily
+              const opt = document.createElement('option');
+              opt.value = resp.family;
+              opt.textContent = `${resp.family} (Imported)`;
+              select.appendChild(opt);
+              select.value = resp.family;
+
+              // Apply immediately using existing handler
+              if (typeof handleFontFamilyChange === 'function') {
+                // Create a fake event target to pass into the handler
+                handleFontFamilyChange({ target: { value: resp.family } });
+              } else {
+                applyFontFamily(resp.family);
+              }
+
+              // Update preview next to the select if exists
+              let preview = document.getElementById('font-preview-sample');
+              if (!preview) {
+                preview = document.createElement('span');
+                preview.id = 'font-preview-sample';
+                preview.className = 'font-preview-sample';
+                // Use the sample phrase for previewing the imported font
+                preview.textContent = 'The quick brown fox';
+                select.parentNode.appendChild(preview);
+              }
+              preview.style.fontFamily = resp.family;
+            }
+          } else {
+            console.warn('Font import failed', resp && resp.error);
+          }
+        } else {
+          console.warn('fontImporter importFont is not available');
+        }
+      } catch (err) {
+        console.error('Failed to import font:', err);
       }
     });
   }
@@ -10382,7 +11393,27 @@ function initializeSliders() {
           trafficLightCustomContainer.setAttribute('hidden', '');
         }
       }
+      // Disable offset slider when position is centered
+      const trafficLightSliderEl = document.getElementById('traffic-light-offset-slider');
+      if (trafficLightSliderEl) {
+        trafficLightSliderEl.disabled = (position === 'center');
+      }
+      // Update offset display to show locked state when centered
+      const trafficLightValueEl = document.getElementById('traffic-light-offset-value');
+      if (trafficLightValueEl) {
+        trafficLightValueEl.textContent = (position === 'center') ? 'locked' : `${localStorage.getItem('trafficLightOffset') || '8'}px`;
+      }
     });
+    // Ensure initial disabled state matches saved/initial position
+    try {
+      const initPos = trafficLightPosition.value || localStorage.getItem('trafficLightPosition') || 'center';
+      const trafficLightSliderEl = document.getElementById('traffic-light-offset-slider');
+      const trafficLightValueEl = document.getElementById('traffic-light-offset-value');
+      if (trafficLightSliderEl) trafficLightSliderEl.disabled = (initPos === 'center');
+      if (trafficLightValueEl) trafficLightValueEl.textContent = (initPos === 'center') ? 'locked' : `${localStorage.getItem('trafficLightOffset') || '8'}px`;
+    } catch (err) {
+      // ignore
+    }
   }
   
   // Traffic light offset slider
@@ -10462,7 +11493,20 @@ function applyTrafficLightPosition(position) {
   
   // Use the updated API
   if (window.api && window.api.setTrafficLightPosition) {
-    window.api.setTrafficLightPosition(position).then(result => {
+    // If user requested 'center' we compute coordinates based on the current title bar height
+    // so the traffic lights are vertically centered within the title bar instead of placed at the border.
+    let payload = position;
+    if (position === 'center') {
+      try {
+        payload = computeCenteredTrafficLightCoords();
+        console.info('Computed centered traffic light coords:', payload);
+      } catch (err) {
+        console.warn('Failed to compute centered traffic light coordinates, falling back to string mode', err);
+        payload = 'center';
+      }
+    }
+
+    window.api.setTrafficLightPosition(payload).then(result => {
       console.log('Traffic light position result:', result);
       if (!result.success) {
         console.warn('Failed to set traffic light position:', result.reason || result.error);
@@ -10480,6 +11524,22 @@ function applyTrafficLightOffset(offset) {
   
   // Store the setting
   localStorage.setItem('trafficLightOffset', offset);
+  // If the user chose to center the traffic lights, ignore offset changes.
+  const currentPosition = localStorage.getItem('trafficLightPosition') || 'center';
+  if (currentPosition === 'center') {
+    console.log('Ignoring traffic light offset because position is set to "center"');
+    // Re-apply center position to the main process in case offset previously moved them.
+    if (window.api && window.api.setTrafficLightPosition) {
+      const payload = computeCenteredTrafficLightCoords();
+      console.info('Re-applying computed centered coords after ignoring offset:', payload);
+      window.api.setTrafficLightPosition(payload).then(result => {
+        console.log('Re-applied center traffic light position after ignoring offset:', result);
+      }).catch(err => {
+        console.error('Failed to re-apply center traffic light position:', err);
+      });
+    }
+    return;
+  }
   
   // Add visual feedback
   const offsetSlider = document.getElementById('traffic-light-offset-slider');
@@ -10945,6 +12005,79 @@ function applyFontFamily(fontFamily) {
       font-family: ${fontStack} !important;
     }
   `;
+}
+
+// Return the CSS font-stack for a given fontFamily value (matches applyFontFamily logic)
+function getFontStackForName(fontFamily) {
+  if (!fontFamily) return getFontStackForName('system');
+
+  switch (fontFamily) {
+    case 'system':
+      if (window.currentPlatform === 'win32') {
+        return '"Segoe UI", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      } else if (window.currentPlatform === 'linux') {
+        return '"Ubuntu", "Liberation Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      } else {
+        return '"SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      }
+    case 'Inter':
+      return '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    case 'JetBrains Mono':
+    case 'Fira Code':
+    case 'Monaco':
+      if (window.currentPlatform === 'win32') {
+        return `"${fontFamily}", "Consolas", "Courier New", monospace`;
+      } else {
+        return `"${fontFamily}", "SF Mono", Monaco, monospace`;
+      }
+    default:
+      // If the value is an imported family (starts with 'NTA-' or contains spaces), use it directly
+      if (fontFamily.startsWith('NTA-') || fontFamily.includes(' ')) {
+        return `"${fontFamily}", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+      }
+      return `"${fontFamily}", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  }
+}
+
+// Ensure a small preview element exists next to a select and update its font
+function ensureFontPreview(selectEl) {
+  if (!selectEl || !selectEl.parentNode) return null;
+  let preview = selectEl.parentNode.querySelector('.font-preview-sample');
+  if (!preview) {
+    preview = document.createElement('span');
+    preview.className = 'font-preview-sample';
+    preview.id = `font-preview-${(selectEl.id || Math.random()).replace(/[^a-zA-Z0-9_-]/g, '')}`;
+    // Show a short label for the preview area
+    preview.textContent = 'Font';
+    selectEl.parentNode.appendChild(preview);
+  }
+  return preview;
+}
+
+function updateSelectPreview(selectEl) {
+  if (!selectEl) return;
+  const preview = ensureFontPreview(selectEl);
+  if (!preview) return;
+
+  const val = selectEl.value;
+  const stack = getFontStackForName(val);
+  // Apply the computed stack for preloaded fonts or direct family names
+  preview.style.fontFamily = stack;
+  // Keep the sample text but update the preview font used for rendering
+  // (do not change preview.textContent here)
+}
+
+function updateAllFontPreviews() {
+  const selects = [
+    elements.fontFamilySelect,
+    elements.workspaceFontFamilySelect,
+    elements.editorFontFamilySelect,
+    elements.previewFontFamilySelect,
+    elements.statusbarFontFamilySelect,
+    elements.titlebarFontFamilySelect
+  ].filter(Boolean);
+
+  selects.forEach(sel => updateSelectPreview(sel));
 }
 
 function resetFontFamily() {
@@ -11757,7 +12890,7 @@ function updateTitleBarDisplay() {
       titleElement.textContent = fileName;
     }
   } else if (titleElement) {
-    titleElement.textContent = 'NoteTaking App';
+  titleElement.textContent = 'NTA';
   }
 }
 
@@ -12124,13 +13257,13 @@ function getAllSettings() {
   // Add export metadata
   settings['export-timestamp'] = new Date().toISOString();
   settings['export-version'] = '1.0';
-  settings['app-name'] = 'NoteTaking App';
+  settings['app-name'] = 'NTA';
   
   return settings;
 }
 
 function convertToYAML(obj) {
-  let yaml = '# NoteTaking App Settings Export\n';
+  let yaml = '# NTA Settings Export\n';
   yaml += `# Exported on: ${new Date().toLocaleString()}\n\n`;
   
   // Group settings by category for better organization
@@ -12177,7 +13310,7 @@ function convertToYAML(obj) {
 }
 
 function convertToText(obj) {
-  let text = 'NoteTaking App Settings Export\n';
+  let text = 'NTA Settings Export\n';
   text += '================================\n';
   text += `Exported on: ${new Date().toLocaleString()}\n\n`;
   
@@ -12425,7 +13558,7 @@ function handleDownloadSettings() {
   
   const a = document.createElement('a');
   a.href = url;
-  a.download = `notetaking-app-settings.${format}`;
+  a.download = `nta-settings.${format}`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NoteTakingApp</title>
+  <title>NTA</title>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="../../node_modules/katex/dist/katex.min.css" />
   </head>
@@ -12,7 +12,7 @@
     <!-- Custom Title Bar for macOS -->
     <div id="title-bar" class="title-bar">
       <div class="title-bar__content">
-        <div class="title-bar__title">NoteTaking App</div>
+  <div class="title-bar__title">NTA</div>
       </div>
     </div>
 
@@ -134,6 +134,16 @@
             >
               <span class="icon" aria-hidden="true">▶</span>
             </button>
+            <button
+              id="toggle-math-wysiwyg-button"
+              type="button"
+              class="ghost icon-button"
+              title="Toggle Math WYSIWYG"
+              aria-label="Toggle Math WYSIWYG"
+              aria-pressed="false"
+            >
+              <span class="icon" aria-hidden="true">∑</span>
+            </button>
             <div class="export-dropdown">
               <button
                 id="export-dropdown-button"
@@ -210,6 +220,7 @@
               <div id="editor-search-highlights-content" class="editor-search-highlights__content"></div>
             </div>
             <textarea id="note-editor" spellcheck="true" aria-label="Markdown editor"></textarea>
+            <div id="editor-math-overlay" class="editor-math-overlay" aria-hidden="true" hidden></div>
             <div
               id="wikilink-suggestions"
               class="wiki-suggest"
@@ -298,6 +309,35 @@
             </div>
             <iframe id="pdf-viewer" class="pdf-viewer" title="PDF Viewer"></iframe>
           </section>
+
+          <!-- Math WYSIWYG Panel -->
+          <aside id="math-wysiwyg-panel" class="math-wysiwyg-panel" hidden aria-label="Math WYSIWYG" style="display:none;">
+            <div class="math-wysiwyg__header">
+              <h3>Math Blocks</h3>
+              <button id="math-wysiwyg-close" class="icon-button small" aria-label="Close" onclick="(function(){const p=document.getElementById('math-wysiwyg-panel'); if(p){p.hidden=true; p.style.display='none';}})()">✕</button>
+            </div>
+            <div id="math-wysiwyg-list" class="math-wysiwyg__list">
+              <!-- dynamically populated -->
+            </div>
+          </aside>
+
+          <!-- Math Edit Modal -->
+          <div id="math-edit-modal" class="modal" hidden aria-hidden="true" style="display:none;">
+            <div class="modal__content">
+              <div class="modal__header">
+                <h4>Edit Math Block</h4>
+                <button id="math-edit-close" class="icon-button small" aria-label="Close" onclick="(function(){const m=document.getElementById('math-edit-modal'); if(m){m.hidden=true; m.style.display='none'; m.setAttribute('aria-hidden','true');}})()">✕</button>
+              </div>
+              <div class="modal__body">
+                <textarea id="math-edit-textarea" rows="6"></textarea>
+                <div id="math-edit-preview" class="math-edit__preview"></div>
+              </div>
+              <div class="modal__footer">
+                <button id="math-edit-cancel" class="ghost small" onclick="(function(){const m=document.getElementById('math-edit-modal'); if(m){m.hidden=true; m.style.display='none'; m.setAttribute('aria-hidden','true');}})()">Cancel</button>
+                <button id="math-edit-save" class="primary small">Save</button>
+              </div>
+            </div>
+          </div>
         </div>
         <footer class="status-bar">
           <span id="status-text">Ready.</span>
@@ -363,6 +403,35 @@
                   <div class="color-picker-group">
                     <input type="color" id="bg-color-picker" class="color-picker" value="#f7f8fa">
                     <button id="reset-bg-color" class="settings-button--secondary">Reset</button>
+                  </div>
+                </div>
+
+                <div class="settings-item">
+                  <label class="settings-item__label">Font Family</label>
+                  <div class="font-family-group">
+                    <select id="font-family-select" class="settings-select">
+                      <option value="system">System Font (SF Pro)</option>
+                      <option value="Inter">Inter</option>
+                      <option value="Roboto">Roboto</option>
+                      <option value="Open Sans">Open Sans</option>
+                      <option value="Source Sans Pro">Source Sans Pro</option>
+                      <option value="Lato">Lato</option>
+                      <option value="Poppins">Poppins</option>
+                      <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
+                      <option value="Fira Code">Fira Code (Monospace)</option>
+                      <option value="Monaco">Monaco (Monospace)</option>
+                    </select>
+                    <span id="font-preview-sample" class="font-preview-sample"></span>
+                    <button id="reset-font-family" class="settings-button--secondary">Reset</button>
+                  </div>
+                </div>
+
+                <div class="settings-item">
+                  <label class="settings-item__label">Font Size</label>
+                  <div class="slider-group">
+                    <input type="range" id="font-size-slider" class="settings-slider" min="11" max="20" value="14" step="1">
+                    <span id="font-size-value" class="slider-value">14px</span>
+                    <button id="reset-font-size" class="settings-button--secondary">Reset</button>
                   </div>
                 </div>
                 
