@@ -212,7 +212,7 @@ const defaultKeybindings = {
   'toggle-sidebar': 'CmdOrCtrl+B',
   'toggle-preview': 'CmdOrCtrl+Shift+B',
   'search': 'CmdOrCtrl+F',
-  'export-pdf': 'CmdOrCtrl+E',
+  'export-pdf': 'CmdOrCtrl+L',
   'export-html': 'CmdOrCtrl+Shift+E',
   'settings': 'CmdOrCtrl+,',
   'bold': 'CmdOrCtrl+B',
