@@ -189,11 +189,18 @@ const elements = {
   inlineChatMessages: document.getElementById('inline-chat-messages'),
   inlineChatInput: document.getElementById('inline-chat-input'),
   inlineChatSend: document.getElementById('inline-chat-send'),
-  inlineChatClose: document.getElementById('inline-chat-close')
+  inlineChatClose: document.getElementById('inline-chat-close'),
+  // Math preview popup
+  mathPreviewPopup: document.getElementById('math-preview-popup'),
+  mathPreviewPopupContent: document.querySelector('#math-preview-popup .math-preview-popup__content')
 };
+
+// Global selection tracking for CMD+E functionality
+let activeSelections = []; // Array of {start, end} ranges for multi-selection math rendering
 
 const storagePrefix = 'NTA.';
 const storageKeys = {
+  workspaceFolder: `${storagePrefix}lastWorkspaceFolder`,
   workspaceFolder: `${storagePrefix}lastWorkspaceFolder`,
   codeLanguage: `${storagePrefix}lastCodeLanguage`,
   sidebarCollapsed: `${storagePrefix}sidebarCollapsed`,
@@ -2357,7 +2364,7 @@ const toggleSidebarCollapsed = () => {
   setStatus(next ? 'Sidebar hidden.' : 'Sidebar shown.', true);
 };
 
-const applyPreviewCollapsed = (collapsed) => {
+const applyPreviewState = (collapsed) => {
   state.previewCollapsed = collapsed;
 
   if (elements.workspaceContent) {
@@ -2365,14 +2372,25 @@ const applyPreviewCollapsed = (collapsed) => {
   }
 
   if (elements.togglePreviewButton) {
-    const label = collapsed ? 'Show preview' : 'Hide preview';
+    let label, title, icon;
+    
+    if (collapsed) {
+      label = 'Show preview';
+      title = 'Show preview (⌘⇧B)';
+      icon = '◀'; // Left arrow when collapsed
+    } else {
+      label = 'Hide preview';
+      title = 'Hide preview (⌘⇧B)';
+      icon = '▶'; // Right arrow when side-by-side
+    }
+    
     elements.togglePreviewButton.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
     elements.togglePreviewButton.setAttribute('aria-label', label);
-    elements.togglePreviewButton.setAttribute('title', `${collapsed ? 'Show' : 'Hide'} preview (⌘⇧B)`);
-    // Update icon based on state
-    const icon = elements.togglePreviewButton.querySelector('.icon');
-    if (icon) {
-      icon.textContent = collapsed ? '◀' : '▶'; // Show arrow pointing left when collapsed, right when expanded
+    elements.togglePreviewButton.setAttribute('title', title);
+    
+    const iconElement = elements.togglePreviewButton.querySelector('.icon');
+    if (iconElement) {
+      iconElement.textContent = icon;
     }
   }
 
@@ -2382,21 +2400,27 @@ const applyPreviewCollapsed = (collapsed) => {
   }
 
   if (elements.workspaceSplitter) {
-    if (collapsed) {
-      elements.workspaceSplitter.setAttribute('aria-hidden', 'true');
+    const shouldHide = collapsed;
+    elements.workspaceSplitter.setAttribute('aria-hidden', shouldHide ? 'true' : 'false');
+    if (shouldHide) {
       elements.workspaceSplitter.setAttribute('tabindex', '-1');
     } else {
-      elements.workspaceSplitter.setAttribute('aria-hidden', 'false');
       elements.workspaceSplitter.setAttribute('tabindex', '0');
     }
   }
 };
 
 const togglePreviewCollapsed = () => {
-  const next = !state.previewCollapsed;
-  applyPreviewCollapsed(next);
-  persistPreviewCollapsed(next);
-  setStatus(next ? 'Preview hidden.' : 'Preview shown.', true);
+  // Toggle between collapsed and side-by-side preview
+  const nextCollapsed = !state.previewCollapsed;
+  
+  applyPreviewState(nextCollapsed);
+  persistPreviewCollapsed(nextCollapsed);
+  
+  const statusMessage = nextCollapsed 
+    ? 'Preview hidden.' 
+    : 'Side-by-side preview shown.';
+  setStatus(statusMessage, true);
 };
 
 // dual editor support removed
@@ -3193,16 +3217,23 @@ const renderMarkdownPreview = (markdown, noteId = state.activeNoteId) => {
     }
     
     clearPreviewHighlight();
-    elements.preview.innerHTML = html;
+    
+    // Update main preview
+    if (elements.preview) {
+      elements.preview.innerHTML = html;
+    }
 
     if (collector && noteId) {
       try {
-        const blocksById = applyPreviewSourceBlocks(noteId, collector, elements.preview);
-        state.previewSourceBlocks.set(noteId, {
-          originalMarkdown: markdown,
-          blocksById,
-          collector
-        });
+        // Apply to main preview
+        if (elements.preview) {
+          const blocksById = applyPreviewSourceBlocks(noteId, collector, elements.preview);
+          state.previewSourceBlocks.set(noteId, {
+            originalMarkdown: markdown,
+            blocksById,
+            collector
+          });
+        }
       } catch (blockError) {
         console.error('Failed to apply preview source blocks', blockError);
         state.previewSourceBlocks.delete(noteId);
@@ -3231,7 +3262,9 @@ const renderMarkdownPreview = (markdown, noteId = state.activeNoteId) => {
     }
   } catch (renderError) {
     console.error('Failed to finalize markdown preview render', renderError);
-    elements.preview.innerHTML = renderBasicPreview(markdown);
+    if (elements.preview) {
+      elements.preview.innerHTML = renderBasicPreview(markdown);
+    }
     if (noteId) {
       state.previewSourceBlocks.delete(noteId);
     }
@@ -4539,6 +4572,11 @@ const renderActiveNote = () => {
   closeHashtagSuggestions();
   closeFileSuggestions();
 
+  // Disable math overlay when switching files to prevent display issues
+  if (window.disableMathOverlay) {
+    window.disableMathOverlay();
+  }
+
   if (!note || note.type !== 'markdown') {
     closeCodePopover(false);
   }
@@ -4859,6 +4897,291 @@ const handleLatexAutoCompletion = (textarea, inputType) => {
   return false;
 };
 
+const updateMathPreview = (textarea) => {
+  if (!elements.mathPreviewPopup || !elements.mathPreviewPopupContent) {
+    return;
+  }
+
+  const value = textarea.value;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  
+  let contentToRender = '';
+  let mathStartIndex = 0;
+  
+  // Check if text is selected
+  if (start !== end) {
+    // Show preview of selected text
+    contentToRender = value.substring(start, end);
+    mathStartIndex = start;
+  } else {
+    // No selection - show preview of current line only when cursor is at the end of the line
+    const lines = value.split('\n');
+    
+    // Find which line the cursor is on
+    let lineIndex = 0;
+    let charCount = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      // Check if cursor is within the line content or at the newline after it
+      if (start >= charCount && start <= charCount + lines[i].length) {
+        lineIndex = i;
+        break;
+      }
+      charCount += lines[i].length + 1; // +1 for newline
+    }
+    
+    contentToRender = lines[lineIndex] || '';
+    
+    // Find the start position of this line
+    mathStartIndex = 0;
+    for (let i = 0; i < lineIndex; i++) {
+      mathStartIndex += lines[i].length + 1;
+    }
+    
+    // Only show preview if cursor is at the end of the line (last character or at newline)
+    const currentLine = lines[lineIndex] || '';
+    const lineEndPos = mathStartIndex + currentLine.length - 1; // -1 to get last char position
+    const lineNewlinePos = mathStartIndex + currentLine.length; // Position of newline character
+    
+    if (start !== lineEndPos && start !== lineNewlinePos) {
+      contentToRender = ''; // Don't show preview unless cursor is at end of line
+    }
+  }
+  
+  // Only show preview if there's content to render
+  if (contentToRender.trim()) {
+    try {
+      // Check if content contains math expressions
+      const inlineMathRegex = /(?<!\$)\$([^\n$]+?)\$(?!\w)/gm;
+      const blockMathRegex = /\$\$([\s\S]*?)\$\$\s*/gm;
+      
+      const inlineMatches = [...contentToRender.matchAll(inlineMathRegex)];
+      const blockMatches = [...contentToRender.matchAll(blockMathRegex)];
+      
+      if (inlineMatches.length > 0 || blockMatches.length > 0) {
+        // Content contains math expressions - render them
+        let renderedContent = contentToRender;
+        
+        // Replace block math first (to avoid conflicts)
+        renderedContent = renderedContent.replace(blockMathRegex, (match, mathContent) => {
+          try {
+            const rendered = window.katex.renderToString(mathContent.trim(), { 
+              throwOnError: false, 
+              displayMode: true 
+            });
+            return rendered;
+          } catch (error) {
+            return match; // Return original on error
+          }
+        });
+        
+        // Then replace inline math
+        renderedContent = renderedContent.replace(inlineMathRegex, (match, mathContent) => {
+          try {
+            const rendered = window.katex.renderToString(mathContent.trim(), { 
+              throwOnError: false, 
+              displayMode: false 
+            });
+            return rendered;
+          } catch (error) {
+            return match; // Return original on error
+          }
+        });
+        
+        elements.mathPreviewPopupContent.innerHTML = renderedContent;
+      } else if (/^#{1,6}\s/.test(mathContent)) {
+        // Markdown header: # Title, ## Title, ### Title, etc.
+        const headerMatch = mathContent.match(/^(#{1,6})\s+(.*)$/);
+        if (headerMatch) {
+          const level = headerMatch[1].length;
+          const title = headerMatch[2];
+          elements.mathPreviewPopupContent.innerHTML = `<h${level}>${title}</h${level}>`;
+        } else {
+          // Fallback to plain text
+          elements.mathPreviewPopupContent.textContent = mathContent;
+        }
+      } else if (/^\!\[\[([^\]]+)\]\]$/.test(mathContent)) {
+        // Wiki-link: ![[filename]]
+        console.log('Wiki-link detected:', mathContent);
+        const wikiMatch = mathContent.match(/^\!\[\[([^\]]+)\]\]$/);
+        if (wikiMatch) {
+          const filename = wikiMatch[1];
+          const workspacePath = elements.workspacePath?.title || '';
+          console.log('Filename:', filename, 'Workspace path:', workspacePath);
+          
+          if (workspacePath) {
+            // Construct file path
+            const filePath = `file://${workspacePath}/${filename}`;
+            console.log('Constructed filePath:', filePath);
+            
+            // Determine file type and show appropriate preview
+            if (/\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(filename)) {
+              console.log('Detected as image');
+              elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">🖼️</div><div>Loading...</div></div><img src="${filePath}" alt="${filename}" style="display: none; max-width: 200px; max-height: 150px; object-fit: contain;" onload="console.log('Image loaded successfully:', this.src); this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="console.log('Image failed to load:', this.src); this.previousElementSibling.innerHTML='<div style=font-size:24px;>🖼️</div><div>Image not found</div><div style=font-size:10px;color:#6c757d;>${filename}</div>';">`;
+            } else if (/\.(mp4|webm|ogg|avi|mov|wmv|flv|m4v)$/i.test(filename)) {
+              console.log('Detected as video');
+              elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">🎥</div><div>Loading...</div></div><video controls style="display: none; max-width: 200px; max-height: 150px;" onload="console.log('Video loaded successfully:', this.src); this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="console.log('Video failed to load:', this.src); this.previousElementSibling.innerHTML='<div style=font-size:24px;>🎥</div><div>Video not found</div><div style=font-size:10px;color:#6c757d;>${filename}</div>';"><source src="${filePath}" type="video/mp4"></video>`;
+            } else if (/\.(pdf)$/i.test(filename)) {
+              console.log('Detected as PDF');
+              elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f0f0f0; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 12px;">📄 PDF: ${filename}</div>`;
+            } else if (/\.(html|htm)$/i.test(filename)) {
+              console.log('Detected as HTML');
+              const htmlPath = `file://${workspacePath}/${filename}`;
+              elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; overflow: hidden; border: 1px solid #ddd;"><iframe src="${htmlPath}" style="width: 400px; height: 300px; border: none; background: white; transform: scale(0.5); transform-origin: top left;" sandbox="allow-scripts"></iframe></div>`;
+            } else {
+              // No extension - try as image first (most common wiki-link use case)
+              console.log('No extension detected, trying as image');
+              const imageFilePath = `${filePath}.jpg`; // Try .jpg first
+              elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">�️</div><div>Loading...</div></div><img src="${imageFilePath}" alt="${filename}" style="display: none; max-width: 200px; max-height: 150px; object-fit: contain;" onload="console.log('Image loaded successfully:', this.src); this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="console.log('Image failed to load, trying PNG:', this.src); 
+                // Try PNG if JPG fails
+                const pngPath = this.src.replace('.jpg', '.png');
+                this.src = pngPath;
+                this.onerror = function() { 
+                  console.log('PNG also failed, trying GIF:', this.src);
+                  const gifPath = this.src.replace('.png', '.gif');
+                  this.src = gifPath;
+                  this.onerror = function() {
+                    console.log('GIF also failed, trying video:', '${filename}');
+                    // Try video format
+                    const videoContainer = this.previousElementSibling;
+                    videoContainer.innerHTML = '<div style=font-size:24px;>🎥</div><div>Loading video...</div>';
+                    
+                    // Create video element to show first frame
+                    const video = document.createElement('video');
+                    video.style.display = 'none';
+                    video.style.width = '200px';
+                    video.style.height = '150px';
+                    video.style.objectFit = 'contain';
+                    video.preload = 'metadata'; // Only load metadata, not full video
+                    
+                    video.onloadedmetadata = function() {
+                      console.log('Video metadata loaded, showing first frame');
+                      // Video loaded successfully, show it
+                      video.style.display = 'block';
+                      video.controls = true;
+                      videoContainer.style.display = 'none';
+                    };
+                    
+                    video.onerror = function() {
+                      console.log('Video failed to load:', '${filename}');
+                      videoContainer.innerHTML='<div style=font-size:24px;>📄</div><div>File not found</div><div style=font-size:10px;color:#6c757d;>${filename}</div>';
+                      video.style.display = 'none';
+                    };
+                    
+                    // Try MP4 first
+                    const source = document.createElement('source');
+                    source.src = '${filePath}.mp4';
+                    source.type = 'video/mp4';
+                    video.appendChild(source);
+                    
+                    // Insert video after the container
+                    videoContainer.parentNode.insertBefore(video, videoContainer.nextSibling);
+                  };
+                };">`;
+            }
+          } else {
+            console.log('No workspace path available');
+            // No workspace path available
+            elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; align-items: center; justify-content: center; font-size: 12px;">Wiki-link: ${filename}</div>`;
+          }
+        } else {
+          console.log('Wiki-link regex matched but no capture groups');
+          elements.mathPreviewPopupContent.textContent = mathContent;
+        }
+      } else if (/!\[.*?\]\(.*?\)/.test(mathContent)) {
+        // Markdown image: ![alt](url)
+        const imageMatch = mathContent.match(/!\[.*?\]\((.*?)\)/);
+        if (imageMatch) {
+          const imageUrl = imageMatch[1];
+          elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">🖼️</div><div>Loading...</div></div><img src="${imageUrl}" alt="Preview" style="display: none; max-width: 200px; max-height: 150px; object-fit: contain;" onload="this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="this.previousElementSibling.innerHTML='<div style=font-size:24px;>🖼️</div><div>Image not found</div>';">`;
+        } else {
+          elements.mathPreviewPopupContent.textContent = mathContent;
+        }
+      } else if (/^(https?:\/\/|file:\/\/)?[^\s]+\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)(\?.*)?$/i.test(mathContent) && !/\s/.test(mathContent)) {
+        // Direct image URL or file path (no spaces, looks like a URL/filename)
+        elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">🖼️</div><div>Loading...</div></div><img src="${mathContent}" alt="Preview" style="display: none; max-width: 200px; max-height: 150px; object-fit: contain;" onload="this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="this.previousElementSibling.innerHTML='<div style=font-size:24px;>🖼️</div><div>Image not found</div>';">`;
+      } else if (/^(https?:\/\/|file:\/\/)?[^\s]+\.(mp4|webm|ogg|avi|mov|wmv|flv|m4v)(\?.*)?$/i.test(mathContent) && !/\s/.test(mathContent)) {
+        // Video file URL or path (no spaces, looks like a URL/filename)
+        elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">🎥</div><div>Loading...</div></div><video controls style="display: none; max-width: 200px; max-height: 150px;" onload="this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="this.previousElementSibling.innerHTML='<div style=font-size:24px;>🎥</div><div>Video not found</div>';"><source src="${mathContent}" type="video/mp4"></video>`;
+      } else if (/^<.*>.*<\/.*>$/.test(mathContent) || /^<.*\/>$/.test(mathContent)) {
+        // HTML content (basic detection)
+        // For security, we'll show a sanitized preview
+        const sanitizedHtml = mathContent
+          .replace(/<script[^>]*>.*?<\/script>/gi, '[SCRIPT REMOVED]')
+          .replace(/<style[^>]*>.*?<\/style>/gi, '[STYLE REMOVED]')
+          .replace(/javascript:/gi, '')
+          .replace(/on\w+="[^"]*"/gi, '');
+        elements.mathPreviewPopupContent.innerHTML = `<div style="font-family: monospace; font-size: 12px; background: #f5f5f5; padding: 8px; border-radius: 4px; max-width: 200px; overflow: hidden;">${sanitizedHtml}</div>`;
+      } else {
+        // Plain text - display as-is
+        elements.mathPreviewPopupContent.textContent = mathContent;
+      }
+      
+      // Position the popup next to the current line/text
+      positionMathPreviewPopup(textarea, mathStartIndex);
+      
+      // Show the popup
+      elements.mathPreviewPopup.classList.add('visible');
+      elements.mathPreviewPopup.hidden = false;
+      
+      return;
+    } catch (error) {
+      console.error('Math preview render error:', error);
+      // Fallback to plain text on error
+      elements.mathPreviewPopupContent.textContent = contentToRender.trim();
+      
+      // Position the popup next to the current line/text
+      positionMathPreviewPopup(textarea, mathStartIndex);
+      
+      // Show the popup
+      elements.mathPreviewPopup.classList.add('visible');
+      elements.mathPreviewPopup.hidden = false;
+      
+      return;
+    }
+  }
+  
+  // Hide popup if no valid content found
+  elements.mathPreviewPopup.classList.remove('visible');
+  elements.mathPreviewPopup.hidden = true;
+};
+
+const positionMathPreviewPopup = (textarea, mathStartIndex) => {
+  if (!elements.mathPreviewPopup) return;
+  
+  // Get the text before the math expression to calculate line position
+  const textBeforeMath = textarea.value.substring(0, mathStartIndex);
+  const lines = textBeforeMath.split('\n');
+  const currentLineIndex = lines.length - 1;
+  const currentLineText = lines[currentLineIndex];
+  
+  // Create a temporary div to measure text width
+  const measureDiv = document.createElement('div');
+  measureDiv.style.position = 'absolute';
+  measureDiv.style.visibility = 'hidden';
+  measureDiv.style.whiteSpace = 'pre';
+  measureDiv.style.font = window.getComputedStyle(textarea).font;
+  measureDiv.style.fontSize = window.getComputedStyle(textarea).fontSize;
+  measureDiv.style.fontFamily = window.getComputedStyle(textarea).fontFamily;
+  measureDiv.textContent = currentLineText;
+  document.body.appendChild(measureDiv);
+  
+  const textWidth = measureDiv.getBoundingClientRect().width;
+  document.body.removeChild(measureDiv);
+  
+  // Get textarea position
+  const textareaRect = textarea.getBoundingClientRect();
+  const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight) || 20;
+  
+  // Position popup to the right of the current line
+  const popupX = textareaRect.left + textWidth + 10; // 10px offset
+  const popupY = textareaRect.top + (currentLineIndex * lineHeight) - (lineHeight / 2);
+  
+  elements.mathPreviewPopup.style.left = `${popupX}px`;
+  elements.mathPreviewPopup.style.top = `${popupY}px`;
+};
+
 const handleEditorInput = (event) => {
   // Set typing flag and clear it after a delay
   state.userTyping = true;
@@ -4872,6 +5195,9 @@ const handleEditorInput = (event) => {
     return;
   }
 
+  // Update math preview popup
+  updateMathPreview(event.target);
+  
   // Check for LaTeX auto-completion before updating note content
   // Pass the inputType to avoid triggering on delete operations
   const latexCompleted = handleLatexAutoCompletion(event.target, event.inputType);
@@ -5917,6 +6243,8 @@ const handleEditorKeyup = (event) => {
   // Check for inline command explanations on cursor movement or content changes
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Backspace', 'Delete'].includes(event.key)) {
     checkInlineCommandAtCursor();
+    // Update math preview on cursor movement
+    updateMathPreview(elements.editor);
   }
 
   if (state.search.open) {
@@ -5924,6 +6252,14 @@ const handleEditorKeyup = (event) => {
     if (textarea) {
       state.search.lastCaret = textarea.selectionStart ?? state.search.lastCaret ?? 0;
     }
+  }
+  
+  // Update stored selection for CMD+E functionality
+  const textarea = elements.editor;
+  if (textarea) {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    // Note: activeSelections is managed by toggleMathWysiwyg, this is just for reference
   }
 };
 
@@ -5934,6 +6270,12 @@ const handleEditorClick = (event) => {
     updateWikiSuggestions(elements.editor);
     updateHashtagSuggestions(elements.editor);
     updateFileSuggestions(elements.editor);
+    updateMathPreview(elements.editor);
+    
+    // Update stored selection for CMD+E functionality
+    const start = elements.editor.selectionStart;
+    const end = elements.editor.selectionEnd;
+    // Note: activeSelections is managed by toggleMathWysiwyg, this is just for reference
   }
 };
 
@@ -5948,6 +6290,14 @@ const handleEditorSelect = () => {
     return;
   }
   state.search.lastCaret = textarea.selectionStart ?? state.search.lastCaret ?? 0;
+  
+  // Update stored selection for CMD+E functionality
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  lastSelection = start !== end ? { start, end } : null;
+  
+  // Update math preview when selection changes
+  updateMathPreview(textarea);
 };
 
 // Minimal blur handler: persist notes and close suggestion UI
@@ -6575,7 +6925,7 @@ const updateHashtagSuggestions = (textarea = elements.editor) => {
   const selectionStart = textarea.selectionStart ?? 0;
   const selectionEnd = textarea.selectionEnd ?? 0;
   if (selectionStart !== selectionEnd) {
-    closeHashtagSuggestions(editorType);
+    closeHashtagSuggestions();
     return;
   }
 
@@ -6670,14 +7020,14 @@ const updateFileSuggestions = (textarea = elements.editor) => {
 
   if (state.fileSuggest.suppress) {
     state.fileSuggest.suppress = false;
-    closeFileSuggestions(editorType);
+    closeFileSuggestions();
     return;
   }
 
   const selectionStart = textarea.selectionStart ?? 0;
   const selectionEnd = textarea.selectionEnd ?? 0;
   if (selectionStart !== selectionEnd) {
-    closeFileSuggestions(editorType);
+    closeFileSuggestions();
     return;
   }
 
@@ -7102,16 +7452,43 @@ const getWikiSuggestionTrigger = (value, caret) => {
   }
 
   const before = value.slice(0, caret);
-  const lastOpen = before.lastIndexOf('[[');
+  
+  // Check for !![[ first
+  let lastOpen = before.lastIndexOf('!![[');
+  let embedType = 'inline';
   if (lastOpen === -1) {
+    // Check for ![[
+    lastOpen = before.lastIndexOf('![[');
+    embedType = true;
+    if (lastOpen === -1) {
+      // Check for [[
+      lastOpen = before.lastIndexOf('[[');
+      embedType = false;
+      if (lastOpen === -1) {
+        return null;
+      }
+    }
+  }
+
+  // For !![[, we need to check that it's not !!![[ or more
+  if (embedType === 'inline' && lastOpen > 0 && before[lastOpen - 1] === '!') {
+    // It's !!![[ or more, not valid
     return null;
   }
 
-  if (lastOpen > 0 && before[lastOpen - 1] === '[') {
+  // For ![[, check it's not !![[
+  if (embedType === true && lastOpen > 0 && before[lastOpen - 1] === '!') {
+    // It's !![[, which should be handled above
     return null;
   }
 
-  const sinceOpen = before.slice(lastOpen + 2);
+  // For [[, check it's not ![[ or !![[
+  if (embedType === false && lastOpen > 0 && (before[lastOpen - 1] === '!' || (lastOpen > 1 && before[lastOpen - 2] === '!' && before[lastOpen - 1] === '!'))) {
+    return null;
+  }
+
+  const openLength = embedType === 'inline' ? 4 : (embedType === true ? 3 : 2);
+  const sinceOpen = before.slice(lastOpen + openLength);
   if (sinceOpen.includes(']]')) {
     return null;
   }
@@ -7124,12 +7501,11 @@ const getWikiSuggestionTrigger = (value, caret) => {
     return null;
   }
 
-  const embed = lastOpen > 0 && before[lastOpen - 1] === '!';
   return {
-    start: lastOpen + 2,
+    start: lastOpen + openLength,
     end: caret,
     query: sinceOpen,
-    embed
+    embed: embedType
   };
 };
 
@@ -8444,7 +8820,13 @@ const handleGlobalShortcuts = (event) => {
       toggleSidebarCollapsed();
     }
   } else if (key === 'e') {
-    // dual editor removed
+    // Use current editor selection for CMD+E functionality
+    const hasSelection = elements.editor && elements.editor.selectionStart !== elements.editor.selectionEnd;
+    console.log('[handleGlobalShortcuts] Cmd+E pressed, hasSelection:', hasSelection, 'selectionStart:', elements.editor?.selectionStart, 'selectionEnd:', elements.editor?.selectionEnd);
+    event.preventDefault();
+    if (window.toggleMathWysiwyg) {
+      window.toggleMathWysiwyg(hasSelection);
+    }
   } else if (key === 'f') {
     if (isOtherEditableTarget) {
       return;
@@ -8846,6 +9228,41 @@ const renderWikiLinkSpan = ({
   return `<span class="${classes.join(' ')}" ${attributes.join(' ')} role="link" tabindex="0">${display}</span>`;
 };
 
+const renderInlineEmbed = (token, targetInfo, context) => {
+  const { noteId } = targetInfo;
+  const targetAttr = escapeHtml(token.target);
+
+  if (!noteId) {
+    // If no note found, render as broken link
+    return `<span class="wikilink wikilink--missing" data-wiki-target="${targetAttr}" role="link" tabindex="0">${escapeHtml(token.target)}</span>`;
+  }
+
+  const note = state.notes.get(noteId);
+  if (!note) {
+    return `<span class="wikilink wikilink--missing" data-wiki-target="${targetAttr}" role="link" tabindex="0">${escapeHtml(token.target)}</span>`;
+  }
+
+  if (note.type === 'image') {
+    const rawSrc = escapeHtml(note.absolutePath ?? note.storedPath ?? '');
+    const baseAlt = note.title || token.target;
+    const safeAlt = escapeHtml(baseAlt ?? '');
+    return `<img src="${rawSrc}" alt="${safeAlt}" data-note-id="${noteId}" data-raw-src="${rawSrc}" loading="lazy" style="max-width: 100%; height: auto;" />`;
+  }
+
+  if (note.type === 'video') {
+    const rawSrc = escapeHtml(note.absolutePath ?? note.storedPath ?? '');
+    const baseAlt = note.title || token.target;
+    const safeAlt = escapeHtml(baseAlt ?? '');
+    return `<video data-raw-src="${rawSrc}" data-note-id="${noteId}" controls preload="metadata" style="max-width: 100%; height: auto;">
+      <source src="${rawSrc}" type="video/mp4">
+      ${safeAlt}
+    </video>`;
+  }
+
+  // For other types, fall back to regular embed
+  return renderWikiEmbed(token, targetInfo, context);
+};
+
 const renderWikiEmbed = (token, targetInfo, context) => {
   const presentation = getWikiTargetPresentation(token, targetInfo);
   const display = escapeHtml(presentation.display);
@@ -8897,7 +9314,7 @@ const renderWikiEmbed = (token, targetInfo, context) => {
         const attributes = [
           `id="${iframeId}"`,
           `data-raw-src="${escapeHtml(token.target)}"`,
-          'sandbox="allow-scripts allow-same-origin allow-forms allow-popups"',
+          'sandbox="allow-scripts allow-forms allow-popups"',
           'loading="lazy"',
           'class="html-embed-iframe"'
         ];
@@ -9011,7 +9428,7 @@ const renderWikiEmbed = (token, targetInfo, context) => {
     return `<section class="wikilink-embed" data-note-id="${noteId}" data-wiki-target="${targetAttr}" data-embed-depth="${depth}">
       ${header}
       <div class="wikilink-embed__body">
-        <iframe class="html-embed-iframe" data-raw-src="${rawSrc}" data-note-id="${noteId}" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" style="width:100%; height:600px; border:1px solid #ddd; border-radius:4px; background:#f5f5f5; transition:height 0.3s ease;">Your browser does not support iframes.</iframe>
+        <iframe class="html-embed-iframe" data-raw-src="${rawSrc}" data-note-id="${noteId}" loading="lazy" sandbox="allow-scripts allow-forms allow-popups" style="width:100%; height:600px; border:1px solid #ddd; border-radius:4px; background:#f5f5f5; transition:height 0.3s ease;">Your browser does not support iframes.</iframe>
       </div>
     </section>`;
   }
@@ -9026,6 +9443,21 @@ const renderWikiEmbed = (token, targetInfo, context) => {
       <figure class="wikilink-embed__figure">
         <img src="${rawSrc}" alt="${safeAlt}" data-note-id="${noteId}" data-raw-src="${rawSrc}" loading="lazy" />
         <figcaption>${safeAlt}</figcaption>
+      </figure>
+    </section>`;
+  }
+
+  if (note.type === 'video') {
+    const header = buildHeader(noteId, 'Video');
+    const rawSrc = escapeHtml(note.absolutePath ?? note.storedPath ?? '');
+    const baseAlt = presentation.display || note.title || token.target;
+    const safeAlt = escapeHtml(baseAlt ?? '');
+    return `<section class="wikilink-embed" data-note-id="${noteId}" data-wiki-target="${targetAttr}" data-embed-depth="${depth}">
+      ${header}
+      <figure class="wikilink-embed__figure">
+        <video data-raw-src="${rawSrc}" data-note-id="${noteId}" controls preload="metadata" style="max-width: 100%; height: auto;">
+          <figcaption>${safeAlt}</figcaption>
+        </video>
       </figure>
     </section>`;
   }
@@ -9056,8 +9488,21 @@ const renderWikiEmbed = (token, targetInfo, context) => {
       return `<section class="wikilink-embed" data-note-id="${noteId}" data-wiki-target="${targetAttr}" data-embed-depth="${depth}">
         ${header}
         <div class="wikilink-embed__body">
-          <iframe class="html-embed-iframe" data-raw-src="${rawSrc}" data-note-id="${noteId}" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" style="width:100%; height:600px; border:1px solid #ddd; border-radius:4px; background:#f5f5f5; transition:height 0.3s ease;">Your browser does not support iframes.</iframe>
+          <iframe class="html-embed-iframe" data-raw-src="${rawSrc}" data-note-id="${noteId}" loading="lazy" sandbox="allow-scripts allow-forms allow-popups" style="width:100%; height:600px; border:1px solid #ddd; border-radius:4px; background:#f5f5f5; transition:height 0.3s ease;">Your browser does not support iframes.</iframe>
         </div>
+      </section>`;
+    } else if (ext && videoExtensions.has(ext.toLowerCase())) {
+      const header = buildHeader(noteId, 'Video');
+      const rawSrc = escapeHtml(potentialPath);
+      const baseAlt = presentation.display || note.title || token.target;
+      const safeAlt = escapeHtml(baseAlt ?? '');
+      return `<section class="wikilink-embed" data-note-id="${noteId}" data-wiki-target="${targetAttr}" data-embed-depth="${depth}">
+        ${header}
+        <figure class="wikilink-embed__figure">
+          <video data-raw-src="${rawSrc}" data-note-id="${noteId}" controls preload="metadata" style="max-width: 100%; height: auto;">
+            <figcaption>${safeAlt}</figcaption>
+          </video>
+        </figure>
       </section>`;
     }
   } catch (e) {
@@ -9075,11 +9520,21 @@ const createWikiLinkExtension = () => ({
   name: 'wikiLink',
   level: 'inline',
   start(src) {
+    const inlineEmbedIndex = src.indexOf('!![[', 0);
     const transclusionIndex = src.indexOf('![[', 0);
     const regularIndex = src.indexOf('[[', 0);
+    
+    // Check for inline embed first (!![[)
+    if (inlineEmbedIndex !== -1) {
+      return inlineEmbedIndex;
+    }
+    
+    // Then check for regular embed (![[)
     if (transclusionIndex !== -1 && (regularIndex === -1 || transclusionIndex <= regularIndex)) {
       return transclusionIndex;
     }
+    
+    // Finally check for regular link ([[)
     return regularIndex !== -1 ? regularIndex : undefined;
   },
   tokenizer(src) {
@@ -9107,6 +9562,18 @@ const createWikiLinkExtension = () => ({
 
       return { target: trimmed, alias: '' };
     };
+
+    const inlineEmbedMatch = /^!!\[\[([\s\S]+?)\]\]/.exec(src);
+    if (inlineEmbedMatch) {
+      const { target, alias } = parseInner(inlineEmbedMatch[1]);
+      return {
+        type: 'wikiLink',
+        raw: inlineEmbedMatch[0],
+        target,
+        alias,
+        embed: 'inline'
+      };
+    }
 
     const embedMatch = /^!\[\[([\s\S]+?)\]\]/.exec(src);
     if (embedMatch) {
@@ -9139,6 +9606,10 @@ const createWikiLinkExtension = () => ({
     const context = getRenderContext() ?? { depth: 0, visited: new Set() };
     const targetInfo = parseWikiTarget(token.target, context);
     const targetAttr = escapeHtml(token.target);
+
+    if (token.embed === 'inline') {
+      return renderInlineEmbed(token, targetInfo, context);
+    }
 
     if (token.embed) {
       return renderWikiEmbed(token, targetInfo, context);
@@ -9179,7 +9650,7 @@ const createRendererOverrides = () => {
     
     if (isVideo) {
       // Render as video element instead of image
-      const attributes = [`src="${rawSrc}"`, `data-raw-src="${rawSrc}"`, 'controls', 'preload="metadata"'];
+      const attributes = [`data-raw-src="${rawSrc}"`, 'controls', 'preload="metadata"'];
       
       if (noteId) {
         attributes.push(`data-note-id="${noteId}"`);
@@ -9206,7 +9677,7 @@ const createRendererOverrides = () => {
       const attributes = [
         `id="${iframeId}"`,
         `data-raw-src="${rawSrc}"`,
-        'sandbox="allow-scripts allow-same-origin allow-forms allow-popups"',
+        'sandbox="allow-scripts allow-forms allow-popups"',
         'loading="lazy"',
         'class="html-embed-iframe"'
       ];
@@ -9343,7 +9814,7 @@ const createHtmlCodeBlockExtension = () => {
       const attributes = [
         `id="${iframeId}"`,
         `src="${blobUrl}"`,
-        'sandbox="allow-scripts allow-same-origin allow-forms allow-popups"',
+        'sandbox="allow-scripts allow-forms allow-popups"',
         'style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 4px; background: white; transition: height 0.3s ease;"',
         'onload="autoResizeIframe(this)"'
       ];
@@ -9703,7 +10174,27 @@ const initialize = () => {
     updateWikiSuggestions(elements.editor);
     updateHashtagSuggestions(elements.editor);
   });
-  elements.editor.addEventListener('blur', persistNotes);
+  elements.editor.addEventListener('blur', () => {
+    persistNotes();
+    // Hide math preview popup when editor loses focus
+    if (elements.mathPreviewPopup) {
+      elements.mathPreviewPopup.classList.remove('visible');
+      elements.mathPreviewPopup.hidden = true;
+    }
+  });
+  
+  // Handle math preview popup on selection changes
+  document.addEventListener('selectionchange', () => {
+    if (document.activeElement === elements.editor) {
+      updateMathPreview(elements.editor);
+    } else {
+      // Hide popup if editor is not focused
+      if (elements.mathPreviewPopup) {
+        elements.mathPreviewPopup.classList.remove('visible');
+        elements.mathPreviewPopup.hidden = true;
+      }
+    }
+  });
   elements.editor.addEventListener('blur', handleEditorBlur);
   elements.editor.addEventListener('scroll', handleEditorScroll);
   elements.editor.addEventListener('select', handleEditorSelect);
@@ -9745,6 +10236,33 @@ const initialize = () => {
     elements.workspaceTree.addEventListener('dragend', handleTreeNodeDragEnd);
   }
 
+  // Workspace tree touch scrolling for swipe gestures
+  let workspaceTreeLastTouchY = 0;
+  const workspaceTreeTouchStart = (ev) => {
+    if (!ev.touches || ev.touches.length === 0) return;
+    workspaceTreeLastTouchY = ev.touches[0].clientY;
+  };
+
+  const workspaceTreeTouchMove = (ev) => {
+    try {
+      if (!elements.workspaceTree || !ev.touches || ev.touches.length === 0) return;
+      const y = ev.touches[0].clientY;
+      const dy = workspaceTreeLastTouchY - y;
+      if (Math.abs(dy) > 5) { // Minimum threshold to prevent accidental scrolling
+        ev.preventDefault();
+        elements.workspaceTree.scrollTop += dy;
+      }
+      workspaceTreeLastTouchY = y;
+    } catch (e) {
+      // ignore touch handling errors
+    }
+  };
+
+  if (elements.workspaceTree) {
+    elements.workspaceTree.addEventListener('touchstart', workspaceTreeTouchStart, { passive: true });
+    elements.workspaceTree.addEventListener('touchmove', workspaceTreeTouchMove, { passive: false });
+  }
+
   if (elements.workspaceContextMenu) {
     elements.workspaceContextMenu.addEventListener('click', handleContextMenuClick);
     
@@ -9774,6 +10292,10 @@ const initialize = () => {
   elements.togglePreviewButton?.addEventListener('click', (event) => {
     event.preventDefault();
     togglePreviewCollapsed();
+  });
+  elements.inlinePreviewClose?.addEventListener('click', (event) => {
+    event.preventDefault();
+    togglePreviewCollapsed(); // This will cycle to the next mode (from inline to collapsed)
   });
   // Math WYSIWYG toggle and handlers
   const mathWysiwygButton = document.getElementById('toggle-math-wysiwyg-button');
@@ -9839,11 +10361,13 @@ const initialize = () => {
   // Toggle between listing panel and editor live-preview. Default: enable live-preview overlay.
   const mathOverlay = document.getElementById('editor-math-overlay');
   let mathOverlayEnabled = false;
+  let mathOverlaySelectionOnly = false;
   let mathOverlayTimer = null;
+  let previousMasked = '';
 
   const parseMathBlocksFromEditor = (text) => {
     const blocks = [];
-    const regex = /\$\$([\s\S]*?)\$\$/gm;
+    const regex = /\$\$([\s\S]*?)\$\$\s*/gm;
     let m;
     while ((m = regex.exec(text)) !== null) {
       blocks.push({ text: m[1].trim(), start: m.index, end: regex.lastIndex });
@@ -9856,7 +10380,7 @@ const initialize = () => {
   // or { type: 'block', text, raw, start, end }
   // or { type: 'inline', text, raw, start, end }
   // or { type: 'heading', text, raw, level, start, end }
-  const buildOverlaySegments = (content) => {
+  const buildOverlaySegments = (content, offset = 0) => {
     const matches = [];
 
     // Use renderMarkdownToHtml to collect block-level source map information
@@ -9879,16 +10403,17 @@ const initialize = () => {
           continue;
         }
         const raw = content.slice(b.start, b.end);
-        const type = b.type === 'mathBlock' ? 'block' : b.type;
         const skipInline = b.type === 'mathBlock' || b.type === 'code';
-        matches.push({ type, text: (b.plainText ?? raw).trim(), raw, start: b.start, end: b.end, level: b.depth ?? undefined, skipInline });
+        // For math blocks, extract the content inside the $$ delimiters
+        const text = b.type === 'mathBlock' ? raw.slice(raw.indexOf('$$') + 2, raw.lastIndexOf('$$')).trim() : (b.plainText ?? raw).trim();
+        matches.push({ type: b.type, text, raw, start: b.start + offset, end: b.end + offset, level: b.depth ?? undefined, skipInline });
       }
     } else {
       // fallback: detect headings and block math with regex
-      const blockRe = /\$\$([\s\S]*?)\$\$/gm;
+      const blockRe = /\$\$([\s\S]*?)\$\$\s*/gm;
       let m;
       while ((m = blockRe.exec(content)) !== null) {
-        matches.push({ type: 'block', text: m[1].trim(), raw: m[0], start: m.index, end: blockRe.lastIndex, skipInline: true });
+        matches.push({ type: 'block', text: m[1].trim(), raw: m[0], start: m.index + offset, end: blockRe.lastIndex + offset, skipInline: true });
       }
       const headingRe = /(^|\n)(#{1,6})[ \t]+([^\n]+)/gm;
       while ((m = headingRe.exec(content)) !== null) {
@@ -9896,7 +10421,7 @@ const initialize = () => {
         const s = m.index + leadLen;
         const raw = m[0].slice(leadLen);
         const e = s + raw.length;
-        matches.push({ type: 'heading', text: m[3].trim(), raw, level: m[2].length, start: s, end: e });
+        matches.push({ type: 'heading', text: m[3].trim(), raw, level: m[2].length, start: s + offset, end: e + offset });
       }
     }
 
@@ -9905,13 +10430,13 @@ const initialize = () => {
 
     // inline patterns (skip those inside block ranges)
     const inlineMatchers = [
-      { type: 'inline-math', re: /(?<!\$)\$([^\n$]+?)\$(?!\$)/gm },
+      { type: 'inline-math', re: /(?<!\$)\$([^\n$]+?)\$(?!\w)/gm },
       { type: 'inlinecode', re: /`([^`\n]+?)`/gm },
       { type: 'bold', re: /\*\*([^\n*]+?)\*\*/gm },
       { type: 'italic', re: /\*([^\n*]+?)\*/gm },
       { type: 'image', re: /!\[([^\]]*?)\]\(([^)]+?)\)/gm },
       { type: 'link', re: /\[([^\]]+?)\]\(([^)]+?)\)/gm },
-      { type: 'wikilink', re: /!\[\[([\s\S]+?)\]\]|\[\[([\s\S]+?)\]\]/gm }
+      { type: 'wikilink', re: /!!\[\[([\s\S]+?)\]\]|!\[\[([\s\S]+?)\]\]|\[\[([\s\S]+?)\]\]/gm }
     ];
 
     for (const im of inlineMatchers) {
@@ -9920,32 +10445,34 @@ const initialize = () => {
         while ((mm = im.re.exec(content)) !== null) {
           const s = mm.index;
           const e = im.re.lastIndex;
-          if (insideBlock(s, e)) continue;
+          if (insideBlock(s + offset, e + offset)) continue;
           // for capturing groups, pass relevant parts in text/raw
           const raw = mm[0];
           let text = mm[1] ?? raw;
           // images and links have multiple groups
           if (im.type === 'image' || (im.type === 'link' && mm[2])) {
             // mm[1] = alt/text, mm[2] = url
-            matches.push({ type: im.type, text: mm[1], url: mm[2], raw, start: s, end: e });
+            matches.push({ type: im.type, text: mm[1], url: mm[2], raw, start: s + offset, end: e + offset });
           } else if (im.type === 'inline-math') {
-            matches.push({ type: 'inline', text: mm[1], raw, start: s, end: e });
+            matches.push({ type: 'inline', text: mm[1], raw, start: s + offset, end: e + offset });
           } else if (im.type === 'wikilink') {
-            // mm[1] will be defined for transclusion (![[...]]), mm[2] for normal [[...]]
-            const inner = mm[1] ?? mm[2] ?? '';
-            const isEmbed = !!mm[1] && mm[0].startsWith('!');
-            matches.push({ type: 'wikilink', raw, inner, target: inner.trim(), embed: isEmbed, start: s, end: e });
+            // mm[1] for !![[...]], mm[2] for ![[...]], mm[3] for [[...]]
+            const inner = mm[1] ?? mm[2] ?? mm[3] ?? '';
+            let embed = false;
+            if (mm[1]) embed = 'inline';  // !![[...]]
+            else if (mm[2]) embed = true;   // ![[...]]
+            matches.push({ type: 'wikilink', raw, inner, target: inner.trim(), embed, start: s + offset, end: e + offset });
           } else if (im.type === 'inlinecode') {
-            matches.push({ type: 'inlinecode', text: mm[1], raw, start: s, end: e });
+            matches.push({ type: 'inlinecode', text: mm[1], raw, start: s + offset, end: e + offset });
           } else if (im.type === 'bold') {
-            matches.push({ type: 'bold', text: mm[1], raw, start: s, end: e });
+            matches.push({ type: 'bold', text: mm[1], raw, start: s + offset, end: e + offset });
           } else if (im.type === 'italic') {
             // ignore italic matches that are part of bold (**...**)
             const prevChar = content[s - 1];
             if (prevChar === '*') continue;
-            matches.push({ type: 'italic', text: mm[1], raw, start: s, end: e });
+            matches.push({ type: 'italic', text: mm[1], raw, start: s + offset, end: e + offset });
           } else if (im.type === 'link') {
-            matches.push({ type: 'link', text: mm[1], url: mm[2], raw, start: s, end: e });
+            matches.push({ type: 'link', text: mm[1], url: mm[2], raw, start: s + offset, end: e + offset });
           }
         }
       } catch (err) {
@@ -9961,21 +10488,35 @@ const initialize = () => {
     let last = 0;
     for (const mt of matches) {
       if (mt.start > last) {
-        segments.push({ type: 'text', text: content.slice(last, mt.start) });
+        segments.push({ type: 'text', text: content.slice(last, mt.start - offset) });
       }
       segments.push(mt);
       last = mt.end;
     }
-    if (last < content.length) segments.push({ type: 'text', text: content.slice(last) });
+    if (last < content.length + offset) segments.push({ type: 'text', text: content.slice(last - offset) });
     return segments;
   };
 
-  const renderEditorMathOverlay = () => {
+  const renderEditorMathOverlay = (selectionOnly = false) => {
     if (!mathOverlay || !elements.editor) return;
     // use original content if masked, otherwise current editor value
-    const content = elements.editor.__originalContent ?? elements.editor.value ?? '';
+    const fullContent = elements.editor.__originalContent ?? elements.editor.value ?? '';
+    
+    let content = fullContent;
+    let offset = 0;
+    let selectionStartLine = 0;
+    let selectionEndLine = fullContent.length;
+    
+    console.log('[renderEditorMathOverlay] selectionOnly:', selectionOnly, 'activeSelections:', activeSelections);
+    
+    if (selectionOnly && activeSelections.length > 0) {
+      // For multi-selection mode, we don't modify content/offset but check against all active selections
+      content = fullContent;
+      offset = 0;
+    }
+    
     // Build mirror content: use overlay segments that include block math, inline math, and headings
-    const segments = buildOverlaySegments(content);
+    const segments = buildOverlaySegments(content, offset);
     // debug: show segments when troubleshooting
     if (window.__debugMathOverlay) {
       console.debug('[math-overlay] segments:', segments.map((s) => ({ t: s.type, start: s.start, end: s.end, raw: (s.raw || '').slice(0, 40) })));
@@ -9983,10 +10524,21 @@ const initialize = () => {
 
     const frag = document.createDocumentFragment();
     segments.forEach((seg) => {
+      // For selection-only mode, only render enhanced content (math, images, etc.) if the segment overlaps with any active selection
+      const isInSelection = !selectionOnly || activeSelections.some(sel => 
+        seg.start < sel.end && seg.end > sel.start
+      );
+      
+      console.log('[renderEditorMathOverlay] segment:', seg.type, 'start:', seg.start, 'end:', seg.end, 'isInSelection:', isInSelection, 'text:', JSON.stringify(seg.text?.slice(0, 50)));
+      
       if (seg.type === 'text') {
         const span = document.createElement('span');
         span.className = 'mirror-text';
-        // escape HTML and preserve newlines as <br>
+        if (selectionOnly) {
+          span.style.opacity = '0'; // transparent in selection-only mode
+          span.style.pointerEvents = 'none'; // allow interaction with editor underneath
+        }
+        // Always show text, even outside selection in selection-only mode
         const escaped = seg.text
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
@@ -9994,195 +10546,521 @@ const initialize = () => {
         span.innerHTML = escaped.replace(/\n/g, '<br>');
         frag.appendChild(span);
       } else if (seg.type === 'block' || seg.type === 'mathBlock') {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'editor-math-block';
-        try {
-          if (window.katex) {
-            wrapper.innerHTML = window.katex.renderToString(seg.text, { throwOnError: false, displayMode: true });
-          } else {
+        if (isInSelection) {
+          console.log('[renderEditorMathOverlay] rendering block math at position', seg.start, '-', seg.end, 'text:', JSON.stringify(seg.text));
+          const wrapper = document.createElement('div');
+          wrapper.className = 'editor-math-block';
+          try {
+            if (window.katex) {
+              wrapper.innerHTML = window.katex.renderToString(seg.text, { throwOnError: false, displayMode: true });
+            } else {
+              wrapper.textContent = seg.text;
+            }
+          } catch (err) {
             wrapper.textContent = seg.text;
           }
-        } catch (err) {
-          wrapper.textContent = seg.text;
+          console.log('[renderEditorMathOverlay] block math wrapper created, adding click handler');
+          wrapper.addEventListener('mousedown', (e) => {
+            console.log('[renderEditorMathOverlay] block math mousedown at', e.clientX, e.clientY);
+          });
+          wrapper.addEventListener('click', (e) => {
+            console.log('[renderEditorMathOverlay] block math clicked at', e.clientX, e.clientY, 'selecting range', seg.start, '-', seg.end);
+            e.stopPropagation();
+            // Set the editor selection to this math block range
+            if (elements.editor) {
+              elements.editor.focus();
+              elements.editor.setSelectionRange(seg.start, seg.end);
+            }
+            // Remove all selections that overlap with this segment
+            activeSelections = activeSelections.filter(sel => !(sel.start < seg.end && sel.end > seg.start));
+            console.log('[renderEditorMathOverlay] remaining selections:', activeSelections);
+            // Re-render overlay
+            renderEditorMathOverlay(true);
+            // Re-mask
+            maskSelectedRanges(activeSelections);
+            previousMasked = elements.editor.value;
+          });
+          frag.appendChild(wrapper);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          console.log('[renderEditorMathOverlay] rendering transparent block math');
+          const wrapper = document.createElement('div');
+          wrapper.className = 'editor-math-block';
+          wrapper.style.opacity = '0';
+          wrapper.style.pointerEvents = 'none'; // allow interaction with editor underneath
+          try {
+            if (window.katex) {
+              wrapper.innerHTML = window.katex.renderToString(seg.text, { throwOnError: false, displayMode: true });
+            } else {
+              wrapper.textContent = seg.text;
+            }
+          } catch (err) {
+            wrapper.textContent = seg.text;
+          }
+          frag.appendChild(wrapper);
+        } else {
+          // In full mode, don't render non-selected math blocks
         }
-        frag.appendChild(wrapper);
       } else if (seg.type === 'inline') {
-        const span = document.createElement('span');
-        span.className = 'editor-math-inline';
-        try {
-          if (window.katex) {
-            span.innerHTML = window.katex.renderToString(seg.text, { throwOnError: false, displayMode: false });
-          } else {
+        if (isInSelection) {
+          console.log('[renderEditorMathOverlay] rendering inline math');
+          const span = document.createElement('span');
+          span.className = 'editor-math-inline';
+          try {
+            if (window.katex) {
+              span.innerHTML = window.katex.renderToString(seg.text, { throwOnError: false, displayMode: false });
+            } else {
+              span.textContent = seg.text;
+            }
+          } catch (err) {
             span.textContent = seg.text;
           }
-        } catch (err) {
-          span.textContent = seg.text;
-        }
-        frag.appendChild(span);
-      } else if (seg.type === 'inlinecode') {
-        const code = document.createElement('code');
-        code.className = 'editor-inline-code';
-        code.textContent = seg.text;
-        frag.appendChild(code);
-      } else if (seg.type === 'bold') {
-        const s = document.createElement('strong');
-        s.textContent = seg.text;
-        frag.appendChild(s);
-      } else if (seg.type === 'italic') {
-        const s = document.createElement('em');
-        s.textContent = seg.text;
-        frag.appendChild(s);
-      } else if (seg.type === 'link') {
-        const a = document.createElement('a');
-        a.href = seg.url || '#';
-        a.textContent = seg.text || seg.url || '';
-        a.target = '_blank';
-        frag.appendChild(a);
-      } else if (seg.type === 'image') {
-        // If the URL looks like a video file, render a video element instead of an <img>
-        const ext = getFileExtension(seg.url || '') || '';
-        if (videoExtensions.has(ext)) {
-          const video = document.createElement('video');
-          video.controls = true;
-          video.preload = 'metadata';
-          video.className = 'editor-overlay-video';
-          // store raw src so resolver can replace it with a file:// or blob URL
-          if (seg.url) video.setAttribute('data-raw-src', seg.url);
-          if (seg.text) video.setAttribute('title', seg.text);
-          // If a noteId is available via render context, attach it for resolver caching
+          span.addEventListener('click', (e) => {
+            console.log('[renderEditorMathOverlay] inline math clicked, selecting range', seg.start, '-', seg.end);
+            e.stopPropagation();
+            // Set the editor selection to this math range
+            if (elements.editor) {
+              elements.editor.focus();
+              elements.editor.setSelectionRange(seg.start, seg.end);
+            }
+            // Remove all selections that overlap with this segment
+            activeSelections = activeSelections.filter(sel => !(sel.start < seg.end && sel.end > seg.start));
+            // Re-render overlay
+            renderEditorMathOverlay(true);
+            // Re-mask
+            maskSelectedRanges(activeSelections);
+            previousMasked = elements.editor.value;
+          });
+          frag.appendChild(span);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          console.log('[renderEditorMathOverlay] rendering transparent inline math');
+          const span = document.createElement('span');
+          span.className = 'editor-math-inline';
+          span.style.opacity = '0';
+          span.style.pointerEvents = 'none'; // allow interaction with editor underneath
           try {
-            const ctx = getRenderContext();
-            if (ctx && ctx.noteId) video.setAttribute('data-note-id', String(ctx.noteId));
-          } catch (e) {
-            // ignore
+            if (window.katex) {
+              span.innerHTML = window.katex.renderToString(seg.text, { throwOnError: false, displayMode: false });
+            } else {
+              span.textContent = seg.text;
+            }
+          } catch (err) {
+            span.textContent = seg.text;
           }
-          // Allow interactions on the overlay video; temporarily disable textarea pointerEvents while interacting
-          video.style.pointerEvents = 'auto';
-          video.addEventListener('mouseenter', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
-          video.addEventListener('mouseleave', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
-          video.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
-          video.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
-          // Fallback text for browsers that don't support <video>
-          video.innerHTML = seg.text ? `Your browser does not support the video tag. ${escapeHtml(seg.text)}` : 'Your browser does not support the video tag.';
-          frag.appendChild(video);
+          frag.appendChild(span);
         } else {
-          const img = document.createElement('img');
-          img.src = seg.url || '';
-          img.alt = seg.text || '';
-          img.className = 'editor-overlay-image';
-          frag.appendChild(img);
+          // In full mode, don't render non-selected inline math
+        }
+      } else if (seg.type === 'inlinecode') {
+        if (isInSelection) {
+          const code = document.createElement('code');
+          code.className = 'editor-inline-code';
+          code.textContent = seg.text;
+          frag.appendChild(code);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          const code = document.createElement('code');
+          code.className = 'editor-inline-code';
+          code.style.opacity = '0';
+          code.style.pointerEvents = 'none'; // allow interaction with editor underneath
+          code.textContent = seg.text;
+          frag.appendChild(code);
+        } else {
+          // In full mode, don't render non-selected inline code
+        }
+      } else if (seg.type === 'bold') {
+        if (isInSelection) {
+          const s = document.createElement('strong');
+          s.textContent = seg.text;
+          frag.appendChild(s);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          const s = document.createElement('strong');
+          s.style.opacity = '0';
+          s.style.pointerEvents = 'none'; // allow interaction with editor underneath
+          s.textContent = seg.text;
+          frag.appendChild(s);
+        } else {
+          // In full mode, don't render non-selected bold
+        }
+      } else if (seg.type === 'italic') {
+        if (isInSelection) {
+          const s = document.createElement('em');
+          s.textContent = seg.text;
+          frag.appendChild(s);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          const s = document.createElement('em');
+          s.style.opacity = '0';
+          s.style.pointerEvents = 'none'; // allow interaction with editor underneath
+          s.textContent = seg.text;
+          frag.appendChild(s);
+        } else {
+          // In full mode, don't render non-selected italic
+        }
+      } else if (seg.type === 'link') {
+        if (isInSelection) {
+          const a = document.createElement('a');
+          a.href = seg.url || '#';
+          a.textContent = seg.text || seg.url || '';
+          a.target = '_blank';
+          frag.appendChild(a);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          const a = document.createElement('a');
+          a.href = seg.url || '#';
+          a.style.opacity = '0';
+          a.style.pointerEvents = 'none'; // allow interaction with editor underneath
+          a.textContent = seg.text || seg.url || '';
+          a.target = '_blank';
+          frag.appendChild(a);
+        } else {
+          // In full mode, don't render non-selected links
+        }
+      } else if (seg.type === 'image') {
+        if (isInSelection) {
+          // If the URL looks like a video file, render a video element instead of an <img>
+          const ext = getFileExtension(seg.url || '') || '';
+          if (videoExtensions.has(ext)) {
+            const video = document.createElement('video');
+            video.controls = true;
+            video.preload = 'metadata';
+            video.className = 'editor-overlay-video';
+            // store raw src so resolver can replace it with a file:// or blob URL
+            if (seg.url) video.setAttribute('data-raw-src', seg.url);
+            if (seg.text) video.setAttribute('title', seg.text);
+            // If a noteId is available via render context, attach it for resolver caching
+            try {
+              const ctx = getRenderContext();
+              if (ctx && ctx.noteId) video.setAttribute('data-note-id', String(ctx.noteId));
+            } catch (e) {
+              // ignore
+            }
+            // Allow interactions on the overlay video; temporarily disable textarea pointerEvents while interacting
+            video.style.pointerEvents = 'auto';
+            video.addEventListener('mouseenter', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
+            video.addEventListener('mouseleave', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+            video.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
+            video.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+            // Fallback text for browsers that don't support <video>
+            video.innerHTML = seg.text ? `Your browser does not support the video tag. ${escapeHtml(seg.text)}` : 'Your browser does not support the video tag.';
+            frag.appendChild(video);
+          } else {
+            const img = document.createElement('img');
+            img.src = seg.url || '';
+            img.alt = seg.text || '';
+            img.className = 'editor-overlay-image';
+            frag.appendChild(img);
+          }
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          const ext = getFileExtension(seg.url || '') || '';
+          if (videoExtensions.has(ext)) {
+            const video = document.createElement('video');
+            video.controls = true;
+            video.preload = 'metadata';
+            video.className = 'editor-overlay-video';
+            video.style.opacity = '0';
+            video.style.pointerEvents = 'none'; // allow interaction with editor underneath
+            // store raw src so resolver can replace it with a file:// or blob URL
+            if (seg.url) video.setAttribute('data-raw-src', seg.url);
+            if (seg.text) video.setAttribute('title', seg.text);
+            // If a noteId is available via render context, attach it for resolver caching
+            try {
+              const ctx = getRenderContext();
+              if (ctx && ctx.noteId) video.setAttribute('data-note-id', String(ctx.noteId));
+            } catch (e) {
+              // ignore
+            }
+            // Allow interactions on the overlay video; temporarily disable textarea pointerEvents while interacting
+            video.style.pointerEvents = 'auto';
+            video.addEventListener('mouseenter', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
+            video.addEventListener('mouseleave', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+            video.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
+            video.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
+            video.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+            // Fallback text for browsers that don't support <video>
+            video.innerHTML = seg.text ? `Your browser does not support the video tag. ${escapeHtml(seg.text)}` : 'Your browser does not support the video tag.';
+            frag.appendChild(video);
+          } else {
+            const img = document.createElement('img');
+            img.src = seg.url || '';
+            img.alt = seg.text || '';
+            img.className = 'editor-overlay-image';
+            img.style.opacity = '0';
+            img.style.pointerEvents = 'none'; // allow interaction with editor underneath
+            frag.appendChild(img);
+          }
+        } else {
+          // In full mode, don't render non-selected images
         }
       } else if (seg.type === 'wikilink') {
-        const wrapper = document.createElement('span');
-        wrapper.className = 'editor-wikilink';
-        try {
-          const token = { target: seg.target, raw: seg.raw, embed: !!seg.embed };
-          const targetInfo = parseWikiTarget(token.target, null);
-          if (token.embed) {
-            wrapper.innerHTML = renderWikiEmbed(token, targetInfo, null);
-          } else {
-            const presentation = getWikiTargetPresentation(token, targetInfo);
-            const display = escapeHtml(presentation.display);
-            wrapper.innerHTML = renderWikiLinkSpan({
-              noteId: targetInfo.noteId,
-              targetAttr: escapeHtml(token.target),
-              display,
-              blockId: targetInfo.blockId,
-              blockMissing: Boolean(targetInfo.blockId && !targetInfo.hasBlock)
-            });
+        if (isInSelection) {
+          const wrapper = document.createElement('span');
+          wrapper.className = 'editor-wikilink';
+          try {
+            const token = { target: seg.target, raw: seg.raw, embed: seg.embed };
+            const targetInfo = parseWikiTarget(token.target, null);
+            if (token.embed === 'inline') {
+              wrapper.innerHTML = renderInlineEmbed(token, targetInfo, null);
+            } else if (token.embed) {
+              wrapper.innerHTML = renderWikiEmbed(token, targetInfo, null);
+            } else {
+              const presentation = getWikiTargetPresentation(token, targetInfo);
+              const display = escapeHtml(presentation.display);
+              wrapper.innerHTML = renderWikiLinkSpan({
+                noteId: targetInfo.noteId,
+                targetAttr: escapeHtml(token.target),
+                display,
+                blockId: targetInfo.blockId,
+                blockMissing: Boolean(targetInfo.blockId && !targetInfo.hasBlock)
+              });
+            }
+          } catch (err) {
+            wrapper.textContent = seg.raw || '';
           }
-        } catch (err) {
-          wrapper.textContent = seg.raw || '';
+          frag.appendChild(wrapper);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          const wrapper = document.createElement('span');
+          wrapper.className = 'editor-wikilink';
+          wrapper.style.opacity = '0';
+          wrapper.style.pointerEvents = 'none'; // allow interaction with editor underneath
+          try {
+            const token = { target: seg.target, raw: seg.raw, embed: seg.embed };
+            const targetInfo = parseWikiTarget(token.target, null);
+            if (token.embed === 'inline') {
+              wrapper.innerHTML = renderInlineEmbed(token, targetInfo, null);
+            } else if (token.embed) {
+              wrapper.innerHTML = renderWikiEmbed(token, targetInfo, null);
+            } else {
+              const presentation = getWikiTargetPresentation(token, targetInfo);
+              const display = escapeHtml(presentation.display);
+              wrapper.innerHTML = renderWikiLinkSpan({
+                noteId: targetInfo.noteId,
+                targetAttr: escapeHtml(token.target),
+                display,
+                blockId: targetInfo.blockId,
+                blockMissing: Boolean(targetInfo.blockId && !targetInfo.hasBlock)
+              });
+            }
+          } catch (err) {
+            wrapper.textContent = seg.raw || '';
+          }
+          frag.appendChild(wrapper);
+        } else {
+          // In full mode, don't render non-selected wikilinks
         }
-        frag.appendChild(wrapper);
       } else if (seg.type === 'htmlCodeBlock') {
-        // Render HTML code block as sandboxed iframe using a blob URL (same approach as preview renderer)
-        const container = document.createElement('div');
-        container.className = 'editor-html-block';
-        try {
-          let modifiedHtml = seg.text || '';
-          const autoResizeScript = `\n<script>function notifyParentOfResize(){const height=Math.max(document.body.scrollHeight,document.body.offsetHeight,document.documentElement.clientHeight,document.documentElement.scrollHeight,document.documentElement.offsetHeight);try{if(window.parent&&window.parent!==window){window.parent.postMessage({type:'iframe-resize',height:height,source:window.location.href},'*');}}catch(e){} }window.addEventListener('load',notifyParentOfResize);window.addEventListener('resize',notifyParentOfResize);document.addEventListener('DOMContentLoaded',notifyParentOfResize);setTimeout(notifyParentOfResize,100);setTimeout(notifyParentOfResize,500);setTimeout(notifyParentOfResize,1500);if(window.MutationObserver){const observer=new MutationObserver(()=>{setTimeout(notifyParentOfResize,50);});observer.observe(document.body,{childList:true,subtree:true,attributes:true});}</script>\n`;
-          if (modifiedHtml.includes('</body>')) {
-            modifiedHtml = modifiedHtml.replace('</body>', autoResizeScript + '</body>');
-          } else if (modifiedHtml.includes('</html>')) {
-            modifiedHtml = modifiedHtml.replace('</html>', autoResizeScript + '</html>');
-          } else {
-            modifiedHtml = modifiedHtml + autoResizeScript;
+        if (isInSelection) {
+          // Render HTML code block as sandboxed iframe using a blob URL (same approach as preview renderer)
+          const container = document.createElement('div');
+          container.className = 'editor-html-block';
+          try {
+            let modifiedHtml = seg.text || '';
+            const autoResizeScript = `\n<script>function notifyParentOfResize(){const height=Math.max(document.body.scrollHeight,document.body.offsetHeight,document.documentElement.clientHeight,document.documentElement.scrollHeight,document.documentElement.offsetHeight);try{if(window.parent&&window.parent!==window){window.parent.postMessage({type:'iframe-resize',height:height,source:window.location.href},'*');}}catch(e){} }window.addEventListener('load',notifyParentOfResize);window.addEventListener('resize',notifyParentOfResize);document.addEventListener('DOMContentLoaded',notifyParentOfResize);setTimeout(notifyParentOfResize,100);setTimeout(notifyParentOfResize,500);setTimeout(notifyParentOfResize,1500);if(window.MutationObserver){const observer=new MutationObserver(()=>{setTimeout(notifyParentOfResize,50);});observer.observe(document.body,{childList:true,subtree:true,attributes:true});}</script>\n`;
+            if (modifiedHtml.includes('</body>')) {
+              modifiedHtml = modifiedHtml.replace('</body>', autoResizeScript + '</body>');
+            } else if (modifiedHtml.includes('</html>')) {
+              modifiedHtml = modifiedHtml.replace('</html>', autoResizeScript + '</html>');
+            } else {
+              modifiedHtml = modifiedHtml + autoResizeScript;
+            }
+
+            const blob = new Blob([modifiedHtml], { type: 'text/html' });
+            const blobUrl = URL.createObjectURL(blob);
+            if (!window.htmlBlobUrls) window.htmlBlobUrls = new Set();
+            window.htmlBlobUrls.add(blobUrl);
+
+            const iframe = document.createElement('iframe');
+            iframe.src = blobUrl;
+            // mark iframe for overlay processing/resizing
+            iframe.classList.add('html-embed-iframe');
+            iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups');
+            iframe.style.width = '100%';
+            iframe.style.border = '1px solid #ddd';
+            iframe.style.borderRadius = '4px';
+            iframe.style.height = '420px';
+            // allow pointer events so user can interact with embedded content
+            iframe.style.pointerEvents = 'auto';
+            // keep a record of original raw src for resolver flow if needed
+            iframe.setAttribute('data-raw-src', blobUrl);
+            // Ensure iframe interaction works when the overlay is sitting above the textarea.
+            // Temporarily disable textarea pointer events while hovering/touching the iframe so clicks go to the iframe.
+            iframe.addEventListener('mouseenter', () => {
+              try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {}
+            });
+            iframe.addEventListener('mouseleave', () => {
+              try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {}
+            });
+            iframe.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
+            iframe.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+            iframe.onload = function () { /* auto-resize handled via script in iframe */ };
+            container.appendChild(iframe);
+          } catch (err) {
+            container.textContent = seg.text || '';
           }
+          frag.appendChild(container);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          const container = document.createElement('div');
+          container.className = 'editor-html-block';
+          container.style.opacity = '0';
+          container.style.pointerEvents = 'none'; // allow interaction with editor underneath
+          try {
+            let modifiedHtml = seg.text || '';
+            const autoResizeScript = `\n<script>function notifyParentOfResize(){const height=Math.max(document.body.scrollHeight,document.body.offsetHeight,document.documentElement.clientHeight,document.documentElement.scrollHeight,document.documentElement.offsetHeight);try{if(window.parent&&window.parent!==window){window.parent.postMessage({type:'iframe-resize',height:height,source:window.location.href},'*');}}catch(e){} }window.addEventListener('load',notifyParentOfResize);window.addEventListener('resize',notifyParentOfResize);document.addEventListener('DOMContentLoaded',notifyParentOfResize);setTimeout(notifyParentOfResize,100);setTimeout(notifyParentOfResize,500);setTimeout(notifyParentOfResize,1500);if(window.MutationObserver){const observer=new MutationObserver(()=>{setTimeout(notifyParentOfResize,50);});observer.observe(document.body,{childList:true,subtree:true,attributes:true});}</script>\n`;
+            if (modifiedHtml.includes('</body>')) {
+              modifiedHtml = modifiedHtml.replace('</body>', autoResizeScript + '</body>');
+            } else if (modifiedHtml.includes('</html>')) {
+              modifiedHtml = modifiedHtml.replace('</html>', autoResizeScript + '</html>');
+            } else {
+              modifiedHtml = modifiedHtml + autoResizeScript;
+            }
 
-          const blob = new Blob([modifiedHtml], { type: 'text/html' });
-          const blobUrl = URL.createObjectURL(blob);
-          if (!window.htmlBlobUrls) window.htmlBlobUrls = new Set();
-          window.htmlBlobUrls.add(blobUrl);
+            const blob = new Blob([modifiedHtml], { type: 'text/html' });
+            const blobUrl = URL.createObjectURL(blob);
+            if (!window.htmlBlobUrls) window.htmlBlobUrls = new Set();
+            window.htmlBlobUrls.add(blobUrl);
 
-          const iframe = document.createElement('iframe');
-          iframe.src = blobUrl;
-          // mark iframe for overlay processing/resizing
-          iframe.classList.add('html-embed-iframe');
-          iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
-          iframe.style.width = '100%';
-          iframe.style.border = '1px solid #ddd';
-          iframe.style.borderRadius = '4px';
-          iframe.style.height = '420px';
-          // allow pointer events so user can interact with embedded content
-          iframe.style.pointerEvents = 'auto';
-          // keep a record of original raw src for resolver flow if needed
-          iframe.setAttribute('data-raw-src', blobUrl);
-          // Ensure iframe interaction works when the overlay is sitting above the textarea.
-          // Temporarily disable textarea pointer events while hovering/touching the iframe so clicks go to the iframe.
-          iframe.addEventListener('mouseenter', () => {
-            try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {}
-          });
-          iframe.addEventListener('mouseleave', () => {
-            try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {}
-          });
-          iframe.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
-          iframe.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
-          iframe.onload = function () { /* auto-resize handled via script in iframe */ };
-          container.appendChild(iframe);
-        } catch (err) {
-          container.textContent = seg.text || '';
+            const iframe = document.createElement('iframe');
+            iframe.src = blobUrl;
+            // mark iframe for overlay processing/resizing
+            iframe.classList.add('html-embed-iframe');
+            iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups');
+            iframe.style.width = '100%';
+            iframe.style.border = '1px solid #ddd';
+            iframe.style.borderRadius = '4px';
+            iframe.style.height = '420px';
+            // allow pointer events so user can interact with embedded content
+            iframe.style.pointerEvents = 'auto';
+            // keep a record of original raw src for resolver flow if needed
+            iframe.setAttribute('data-raw-src', blobUrl);
+            // Ensure iframe interaction works when the overlay is sitting above the textarea.
+            // Temporarily disable textarea pointer events while hovering/touching the iframe so clicks go to the iframe.
+            iframe.addEventListener('mouseenter', () => {
+              try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {}
+            });
+            iframe.addEventListener('mouseleave', () => {
+              try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {}
+            });
+            iframe.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
+            iframe.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+            iframe.onload = function () { /* auto-resize handled via script in iframe */ };
+            container.appendChild(iframe);
+          } catch (err) {
+            container.textContent = seg.text || '';
+          }
+          frag.appendChild(container);
+        } else {
+          // In full mode, don't render non-selected HTML blocks
         }
-        frag.appendChild(container);
       } else if (seg.type === 'code') {
-        const pre = document.createElement('pre');
-        const c = document.createElement('code');
-        c.textContent = seg.text;
-        pre.appendChild(c);
-        pre.className = 'editor-block-code';
-        frag.appendChild(pre);
+        if (isInSelection) {
+          const pre = document.createElement('pre');
+          const c = document.createElement('code');
+          c.textContent = seg.text;
+          pre.appendChild(c);
+          pre.className = 'editor-block-code';
+          frag.appendChild(pre);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          const pre = document.createElement('pre');
+          const c = document.createElement('code');
+          c.textContent = seg.text;
+          pre.appendChild(c);
+          pre.className = 'editor-block-code';
+          pre.style.opacity = '0';
+          frag.appendChild(pre);
+        } else {
+          // In full mode, don't render non-selected code blocks
+        }
       } else if (seg.type === 'list_item') {
-        const li = document.createElement('div');
-        li.className = 'editor-list-item';
-        li.textContent = seg.text;
-        frag.appendChild(li);
+        if (isInSelection) {
+          const li = document.createElement('div');
+          li.className = 'editor-list-item';
+          li.textContent = seg.text;
+          frag.appendChild(li);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          const li = document.createElement('div');
+          li.className = 'editor-list-item';
+          li.style.opacity = '0';
+          li.textContent = seg.text;
+          frag.appendChild(li);
+        } else {
+          // In full mode, don't render non-selected list items
+        }
       } else if (seg.type === 'blockquote') {
-        const bq = document.createElement('blockquote');
-        bq.textContent = seg.text;
-        frag.appendChild(bq);
+        if (isInSelection) {
+          const bq = document.createElement('blockquote');
+          bq.textContent = seg.text;
+          frag.appendChild(bq);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          const bq = document.createElement('blockquote');
+          bq.style.opacity = '0';
+          bq.textContent = seg.text;
+          frag.appendChild(bq);
+        } else {
+          // In full mode, don't render non-selected blockquotes
+        }
       } else if (seg.type === 'table' || seg.type === 'tablecell') {
-        const span = document.createElement('span');
-        span.className = 'editor-table';
-        const escaped = (seg.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        span.innerHTML = escaped.replace(/\n/g, '<br>');
-        frag.appendChild(span);
+        if (isInSelection) {
+          const span = document.createElement('span');
+          span.className = 'editor-table';
+          const escaped = (seg.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          span.innerHTML = escaped.replace(/\n/g, '<br>');
+          frag.appendChild(span);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          const span = document.createElement('span');
+          span.className = 'editor-table';
+          span.style.opacity = '0';
+          const escaped = (seg.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          span.innerHTML = escaped.replace(/\n/g, '<br>');
+          frag.appendChild(span);
+        } else {
+          // In full mode, don't render non-selected tables
+        }
       } else if (seg.type === 'heading') {
-        const h = document.createElement('div');
-        h.className = `editor-heading editor-heading--h${seg.level}`;
-        // render heading text as plain text (escaped)
-        const escaped = seg.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        h.innerHTML = `<strong>${escaped}</strong>`;
-        frag.appendChild(h);
+        if (isInSelection) {
+          const h = document.createElement('div');
+          h.className = `editor-heading editor-heading--h${seg.level}`;
+          // render heading text as plain text (escaped)
+          const escaped = seg.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          h.innerHTML = `<strong>${escaped}</strong>`;
+          frag.appendChild(h);
+        } else if (selectionOnly) {
+          // In selection-only mode, render transparent enhanced content to maintain layout
+          const h = document.createElement('div');
+          h.className = `editor-heading editor-heading--h${seg.level}`;
+          h.style.opacity = '0';
+          // render heading text as plain text (escaped)
+          const escaped = seg.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          h.innerHTML = `<strong>${escaped}</strong>`;
+          frag.appendChild(h);
+        } else {
+          // In full mode, don't render non-selected headings
+        }
       }
     });
 
     mathOverlay.innerHTML = '';
+    console.log('[renderEditorMathOverlay] clearing overlay and appending', frag.children.length, 'elements');
+    console.log('[renderEditorMathOverlay] overlay element:', mathOverlay, 'hidden:', mathOverlay.hidden);
+    console.log('[renderEditorMathOverlay] overlay bounding rect:', mathOverlay.getBoundingClientRect());
+    console.log('[renderEditorMathOverlay] editor bounding rect:', elements.editor.getBoundingClientRect());
     mathOverlay.appendChild(frag);
     // ensure overlay scroll matches editor
     mathOverlay.scrollTop = elements.editor.scrollTop;
+    console.log('[renderEditorMathOverlay] set overlay scrollTop to', elements.editor.scrollTop);
     // Resolve any iframe.html-embed-iframe[data-raw-src] inside the overlay (like preview)
     try {
       processOverlayHtmlIframes();
+      processOverlayImages();
+      processOverlayVideos();
     } catch (e) {
       // ignore
     }
@@ -10206,7 +11084,7 @@ const initialize = () => {
           // add helpers so the underlying textarea doesn't steal pointer events while interacting with iframe
           iframe.addEventListener('mouseenter', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
           iframe.addEventListener('mouseleave', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
-          iframe.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
+          iframe.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
           iframe.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
         } catch (e) { /* ignore */ }
         iframe.onload = () => { if (window.autoResizeIframe) window.autoResizeIframe(iframe); };
@@ -10238,6 +11116,49 @@ const initialize = () => {
       } catch (err) {
         console.warn('Failed to resolve HTML resource (overlay)', rawSrc, err);
         htmlResourceCache.set(cacheKey, null);
+      }
+    }));
+  };
+
+  const processOverlayImages = async () => {
+    if (!mathOverlay || typeof window.api?.resolveResource !== 'function') return;
+    const images = Array.from(mathOverlay.querySelectorAll('img[data-raw-src]'));
+    if (!images.length) return;
+
+    await Promise.all(images.map(async (img) => {
+      const rawSrc = img.getAttribute('data-raw-src');
+      if (!rawSrc) return;
+
+      if (isLikelyExternalUrl(rawSrc) || rawSrc.startsWith('data:') || rawSrc.startsWith('blob:')) {
+        try {
+          img.src = rawSrc;
+        } catch (e) {
+          // ignore
+        }
+        return;
+      }
+
+      const noteId = img.getAttribute('data-note-id') || state.activeNoteId;
+      const cacheKey = `${noteId ?? 'unknown'}::${rawSrc}`;
+      if (imageResourceCache.has(cacheKey)) {
+        const cached = imageResourceCache.get(cacheKey);
+        if (cached) img.src = cached;
+        return;
+      }
+
+      const note = noteId ? state.notes.get(noteId) ?? null : null;
+      const payload = { src: rawSrc, notePath: note?.absolutePath ?? null, folderPath: note?.folderPath ?? state.currentFolder ?? null };
+      try {
+        const result = await window.api.resolveResource(payload);
+        if (result?.value) {
+          imageResourceCache.set(cacheKey, result.value);
+          img.src = result.value;
+        } else {
+          imageResourceCache.set(cacheKey, null);
+        }
+      } catch (err) {
+        console.warn('Failed to resolve image resource (overlay)', rawSrc, err);
+        imageResourceCache.set(cacheKey, null);
       }
     }));
   };
@@ -10286,7 +11207,7 @@ const initialize = () => {
   };
 
   // Masking math blocks in the textarea with invisible placeholders while overlay is active
-  const maskMathInEditor = () => {
+  const maskMathInEditor = (selectionOnly = false) => {
     if (!elements.editor) return;
     const orig = elements.editor.value || '';
     const segments = buildOverlaySegments(orig);
@@ -10316,13 +11237,27 @@ const initialize = () => {
     elements.editor.value = masked;
   };
 
-  const unmaskEditor = () => {
-    if (!elements.editor) return;
-    if (elements.editor.__originalContent !== undefined) {
-      elements.editor.value = elements.editor.__originalContent;
+  const maskSelectedRanges = (selections) => {
+    console.log('[maskSelectedRanges] called with selections:', selections);
+    if (!elements.editor || !elements.editor.__originalContent) {
+      console.log('[maskSelectedRanges] no editor or original content');
+      return;
     }
-    delete elements.editor.__originalContent;
-    delete elements.editor.__maskedRanges;
+    let content = elements.editor.__originalContent;
+    console.log('[maskSelectedRanges] original content length:', content.length);
+    // Sort selections by start position descending to avoid offset issues when replacing
+    const sorted = selections.slice().sort((a, b) => b.start - a.start);
+    console.log('[maskSelectedRanges] sorted selections:', sorted);
+    for (const sel of sorted) {
+      const before = content.slice(0, sel.start);
+      const after = content.slice(sel.end);
+      const original = content.slice(sel.start, sel.end);
+      const masked = original.replace(/[^\n]/g, '\u2800');
+      console.log('[maskSelectedRanges] masking range', sel.start, '-', sel.end, 'original:', JSON.stringify(original), 'masked:', JSON.stringify(masked));
+      content = before + masked + after;
+    }
+    console.log('[maskSelectedRanges] final masked content length:', content.length);
+    elements.editor.value = content;
   };
 
   const isInMaskedRange = (pos) => {
@@ -10331,6 +11266,14 @@ const initialize = () => {
       if (pos >= r.start && pos <= r.end) return r;
     }
     return null;
+  };
+
+  const unmaskEditor = () => {
+    if (elements.editor && elements.editor.__originalContent !== undefined) {
+      elements.editor.value = elements.editor.__originalContent;
+      delete elements.editor.__originalContent;
+      delete elements.editor.__maskedRanges;
+    }
   };
 
   const handleBeforeInput = (ev) => {
@@ -10351,19 +11294,35 @@ const initialize = () => {
     }
   };
 
-  const enableMathOverlay = () => {
+  const enableMathOverlay = (selectionOnly = false) => {
     mathOverlayEnabled = true;
+    mathOverlaySelectionOnly = selectionOnly;
     if (mathOverlay) {
       mathOverlay.hidden = false;
       mathOverlay.style.display = '';
       mathOverlay.setAttribute('aria-hidden', 'false');
-        try { mathOverlay.style.pointerEvents = 'auto'; } catch (e) {}
+        try { mathOverlay.style.pointerEvents = selectionOnly ? 'none' : 'auto'; } catch (e) {}
     }
-    // make editor text transparent so overlay shows through, but keep caret visible
+    
     if (elements.editor) {
-      elements.editor.__prevColor = elements.editor.style.color || '';
-      elements.editor.style.color = 'transparent';
-      elements.editor.style.caretColor = getComputedStyle(document.documentElement).getPropertyValue('--fg') || '#000';
+      if (selectionOnly) {
+        // For selection-only mode, keep text visible but mask selected ranges
+        elements.editor.__prevColor = elements.editor.style.color || '';
+        elements.editor.__originalContent = elements.editor.value;
+        // Store current selection before masking
+        elements.editor.__storedSelection = { start: elements.editor.selectionStart, end: elements.editor.selectionEnd };
+        // Don't make text transparent for selection-only mode
+        elements.editor.style.caretColor = getComputedStyle(document.documentElement).getPropertyValue('--fg') || '#000';
+        // Mask the selected ranges
+        maskSelectedRanges(activeSelections);
+        previousMasked = elements.editor.value;
+      } else {
+        // For full document mode, make text transparent so overlay shows through
+        elements.editor.__prevColor = elements.editor.style.color || '';
+        elements.editor.style.color = 'transparent';
+        elements.editor.style.caretColor = getComputedStyle(document.documentElement).getPropertyValue('--fg') || '#000';
+      }
+      
       // sync scroll
       elements.editor.addEventListener('scroll', syncOverlayScroll);
   // allow overlay interactions to scroll the editor: listen for wheel and touch events on overlay
@@ -10372,18 +11331,35 @@ const initialize = () => {
   mathOverlay.addEventListener('touchmove', overlayTouchMove, { passive: false });
   // If user interacts directly with overlay scrollbar or scrollbar thumb, forward overlay scroll to editor
   mathOverlay.addEventListener('scroll', overlayScrollHandler);
-      // mask math segments in editor so they temporarily disappear
-      maskMathInEditor();
-      // Prevent user from editing masked regions
-      elements.editor.addEventListener('beforeinput', handleBeforeInput, { capture: true });
+      // mask math segments in editor so they temporarily disappear (only for full mode)
+      if (!selectionOnly) {
+        maskMathInEditor(selectionOnly);
+        // Prevent user from editing masked regions
+        elements.editor.addEventListener('beforeinput', handleBeforeInput, { capture: true });
+      }
     }
     // render overlay after masking so we base on original content
-    renderEditorMathOverlay();
-    try { void processOverlayVideos(); } catch (e) { /* ignore */ }
+    renderEditorMathOverlay(selectionOnly);
+    try { void processOverlayImages(); void processOverlayVideos(); } catch (e) { /* ignore */ }
+
+    // Update button state based on mode
+    if (selectionOnly) {
+      mathWysiwygButton?.setAttribute('aria-pressed', 'false');
+      mathWysiwygButton?.classList.remove('active');
+    } else {
+      mathWysiwygButton?.setAttribute('aria-pressed', 'true');
+      mathWysiwygButton?.classList.add('active');
+    }
+    const icon = mathWysiwygButton?.querySelector('.icon');
+    if (icon) icon.textContent = '∑';
   };
 
   const disableMathOverlay = () => {
     mathOverlayEnabled = false;
+    mathOverlaySelectionOnly = false;
+    // Clear active selections when disabling overlay
+    activeSelections = [];
+    previousMasked = '';
     if (mathOverlay) {
       mathOverlay.hidden = true;
       mathOverlay.style.display = 'none';
@@ -10396,6 +11372,12 @@ const initialize = () => {
       unmaskEditor();
       elements.editor.style.color = elements.editor.__prevColor || '';
       elements.editor.style.caretColor = '';
+      // Restore stored selection if any
+      if (elements.editor.__storedSelection) {
+        elements.editor.selectionStart = elements.editor.__storedSelection.start;
+        elements.editor.selectionEnd = elements.editor.__storedSelection.end;
+        delete elements.editor.__storedSelection;
+      }
       elements.editor.removeEventListener('scroll', syncOverlayScroll);
       if (mathOverlay) {
   mathOverlay.removeEventListener('wheel', overlayWheelHandler, { passive: false });
@@ -10416,6 +11398,96 @@ const initialize = () => {
         }
       }
   };
+  window.disableMathOverlay = disableMathOverlay;
+
+  const toggleMathWysiwyg = (hasSelection = null) => {
+    if (mathOverlayEnabled) {
+      // Use provided selection state, or detect it if not provided
+      const selectionDetected = hasSelection !== null ? hasSelection : (elements.editor && elements.editor.selectionStart !== elements.editor.selectionEnd);
+      console.log('[toggleMathWysiwyg] overlay enabled, selectionDetected:', selectionDetected, 'mathOverlaySelectionOnly:', mathOverlaySelectionOnly, 'activeSelections:', activeSelections);
+      
+      if (selectionDetected) {
+        if (!mathOverlaySelectionOnly) {
+          // Currently in full mode, switch to selection-only mode
+          console.log('[toggleMathWysiwyg] switching from full to selection-only mode');
+          disableMathOverlay();
+          // Add the current selection
+          const currentSelection = {
+            start: elements.editor.selectionStart,
+            end: elements.editor.selectionEnd
+          };
+          console.log('[toggleMathWysiwyg] initial selection for selection-only mode:', currentSelection);
+          activeSelections = [currentSelection];
+          enableMathOverlay(true);
+        } else {
+          // Already in selection-only mode, toggle this selection in active selections
+          const currentSelection = {
+            start: elements.editor.selectionStart,
+            end: elements.editor.selectionEnd
+          };
+          console.log('[toggleMathWysiwyg] current selection detected:', currentSelection, 'editor value length:', elements.editor.value.length);
+          // Check if this selection already exists
+          const existingIndex = activeSelections.findIndex(sel => 
+            sel.start === currentSelection.start && sel.end === currentSelection.end
+          );
+          if (existingIndex !== -1) {
+            // Remove the existing selection
+            activeSelections.splice(existingIndex, 1);
+            console.log('[toggleMathWysiwyg] removed selection from activeSelections:', currentSelection, 'total:', activeSelections.length);
+            if (activeSelections.length === 0) {
+              // No more selections, disable overlay
+              console.log('[toggleMathWysiwyg] no more selections, disabling overlay');
+              disableMathOverlay();
+              return;
+            } else {
+              // Update masking for remaining selections
+              maskSelectedRanges(activeSelections);
+            }
+          } else {
+            // Add the new selection
+            activeSelections.push(currentSelection);
+            console.log('[toggleMathWysiwyg] added selection to activeSelections:', currentSelection, 'total:', activeSelections.length);
+            // Update masking
+            maskSelectedRanges(activeSelections);
+          }
+          // Re-render with updated selections
+          renderEditorMathOverlay(true);
+        }
+        closeMathPanel();
+      } else {
+        // No selection, disable overlay
+        console.log('[toggleMathWysiwyg] disabling overlay (no selection)');
+        disableMathOverlay();
+        mathWysiwygButton?.setAttribute('aria-pressed', 'false');
+        mathWysiwygButton?.classList.remove('active');
+        const icon = mathWysiwygButton?.querySelector('.icon');
+        if (icon) icon.textContent = '∑';
+        closeMathPanel();
+      }
+    } else {
+      // Overlay not enabled, enable it
+      const selectionDetected = hasSelection !== null ? hasSelection : (elements.editor && elements.editor.selectionStart !== elements.editor.selectionEnd);
+      console.log('[toggleMathWysiwyg] enabling overlay, selectionDetected:', selectionDetected);
+      
+      if (selectionDetected && elements.editor) {
+        const currentSelection = {
+          start: elements.editor.selectionStart,
+          end: elements.editor.selectionEnd
+        };
+        activeSelections = [currentSelection];
+      } else {
+        activeSelections = [];
+      }
+      
+      enableMathOverlay(selectionDetected);
+      mathWysiwygButton?.setAttribute('aria-pressed', 'true');
+      mathWysiwygButton?.classList.add('active');
+      const icon = mathWysiwygButton?.querySelector('.icon');
+      if (icon) icon.textContent = '∑';
+      closeMathPanel();
+    }
+  };
+  window.toggleMathWysiwyg = toggleMathWysiwyg;
 
   const syncOverlayScroll = () => {
     if (!mathOverlay || !elements.editor) return;
@@ -10530,8 +11602,82 @@ const initialize = () => {
     if (!mathOverlayEnabled) return;
     if (mathOverlayTimer) clearTimeout(mathOverlayTimer);
     mathOverlayTimer = setTimeout(() => {
-      renderEditorMathOverlay();
-      try { void processOverlayVideos(); } catch (e) { /* ignore */ }
+      renderEditorMathOverlay(mathOverlaySelectionOnly);
+      // Re-apply masking for selection-only mode after content changes
+      if (mathOverlaySelectionOnly && activeSelections.length > 0) {
+        const currentMasked = elements.editor.value;
+        // Find the difference between previousMasked and currentMasked
+        let diffPos = -1;
+        let diffType = ''; // 'insert' or 'delete'
+        let diffChar = '';
+        if (currentMasked.length > previousMasked.length) {
+          // Insertion
+          for (let i = 0; i < previousMasked.length; i++) {
+            if (currentMasked[i] !== previousMasked[i]) {
+              diffPos = i;
+              diffChar = currentMasked[i];
+              diffType = 'insert';
+              break;
+            }
+          }
+          if (diffPos === -1) {
+            // Insertion at end
+            diffPos = previousMasked.length;
+            diffChar = currentMasked.slice(previousMasked.length);
+            diffType = 'insert';
+          }
+        } else if (currentMasked.length < previousMasked.length) {
+          // Deletion
+          for (let i = 0; i < currentMasked.length; i++) {
+            if (currentMasked[i] !== previousMasked[i]) {
+              diffPos = i;
+              diffType = 'delete';
+              break;
+            }
+          }
+          if (diffPos === -1) {
+            // Deletion at end
+            diffPos = currentMasked.length;
+            diffType = 'delete';
+          }
+        }
+
+        if (diffPos !== -1) {
+          // Check if the position is in a blank area (braille blank)
+          const isInBlank = previousMasked[diffPos] === '\u2800';
+          if (!isInBlank) {
+            // Apply the change to __originalContent
+            if (diffType === 'insert') {
+              elements.editor.__originalContent = elements.editor.__originalContent.slice(0, diffPos) + diffChar + elements.editor.__originalContent.slice(diffPos);
+            } else if (diffType === 'delete') {
+              elements.editor.__originalContent = elements.editor.__originalContent.slice(0, diffPos) + elements.editor.__originalContent.slice(diffPos + 1);
+            }
+            // Adjust activeSelections if insertion/deletion before selections
+            for (const sel of activeSelections) {
+              if (diffPos <= sel.start) {
+                if (diffType === 'insert') {
+                  sel.start += diffChar.length;
+                  sel.end += diffChar.length;
+                } else if (diffType === 'delete') {
+                  sel.start = Math.max(sel.start - 1, diffPos);
+                  sel.end = Math.max(sel.end - 1, diffPos);
+                }
+              }
+            }
+          }
+        }
+
+        // Preserve cursor position during masking
+        const savedStart = elements.editor.selectionStart;
+        const savedEnd = elements.editor.selectionEnd;
+        maskSelectedRanges(activeSelections);
+        previousMasked = elements.editor.value;
+        // Restore cursor position, clamped to new content length
+        const newLength = elements.editor.value.length;
+        elements.editor.selectionStart = Math.min(savedStart, newLength);
+        elements.editor.selectionEnd = Math.min(savedEnd, newLength);
+      }
+      try { void processOverlayImages(); void processOverlayVideos(); } catch (e) { /* ignore */ }
     }, 220);
   });
 
@@ -10965,7 +12111,7 @@ const initialize = () => {
 
   restoreLastWorkspace();
   applySidebarCollapsed(state.sidebarCollapsed);
-  applyPreviewCollapsed(state.previewCollapsed);
+  applyPreviewState(state.previewCollapsed);
   updateEditorSearchCount();
   renderEditorSearchHighlights();
   syncEditorSearchHighlightScroll();

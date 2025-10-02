@@ -183,7 +183,8 @@ const createMainWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; media-src 'self' data: file:; object-src 'none'; base-uri 'self'; form-action 'self';"
     },
     show: false // Don't show until ready-to-show
   };
@@ -694,7 +695,7 @@ ${rootVariables}
             const dataUrl = `data:text/html;base64,${htmlBlob}`;
             
             // Create an iframe with the data URL to maintain JavaScript isolation
-            const embeddedIframe = `<iframe src="${dataUrl}" class="embedded-html-iframe ${className}" style="width: ${width}; height: ${height}; border: 1px solid #ddd; border-radius: 4px; ${style}" sandbox="allow-scripts allow-same-origin"></iframe>`;
+            const embeddedIframe = `<iframe src="${dataUrl}" class="embedded-html-iframe ${className}" style="width: ${width}; height: ${height}; border: 1px solid #ddd; border-radius: 4px; ${style}" sandbox="allow-scripts"></iframe>`;
             
             processedHtml = processedHtml.replace(fullMatch, embeddedIframe);
           }
