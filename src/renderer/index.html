@@ -172,38 +172,21 @@
                 >
                   HTML
                 </button>
-                <div class="export-dropdown__separator"></div>
                 <button
-                  id="export-png-option"
+                  id="export-docx-option"
                   class="export-dropdown__option"
                   role="menuitem"
-                  title="Export as PNG image"
+                  title="Export as Word document"
                 >
-                  PNG
+                  DOCX
                 </button>
                 <button
-                  id="export-jpg-option"
+                  id="export-epub-option"
                   class="export-dropdown__option"
                   role="menuitem"
-                  title="Export as JPG image"
+                  title="Export as EPUB ebook"
                 >
-                  JPG
-                </button>
-                <button
-                  id="export-jpeg-option"
-                  class="export-dropdown__option"
-                  role="menuitem"
-                  title="Export as JPEG image"
-                >
-                  JPEG
-                </button>
-                <button
-                  id="export-tiff-option"
-                  class="export-dropdown__option"
-                  role="menuitem"
-                  title="Export as TIFF image"
-                >
-                  TIFF
+                  EPUB
                 </button>
               </div>
             </div>
@@ -384,8 +367,10 @@
         <!-- Settings Navigation -->
         <div class="settings-nav">
           <button class="settings-nav__item active" data-tab="appearance">Appearance</button>
+          <button class="settings-nav__item" data-tab="accessibility">Accessibility</button>
           <button class="settings-nav__item" data-tab="layout">Layout</button>
           <button class="settings-nav__item" data-tab="export">Export</button>
+          <button class="settings-nav__item" data-tab="advanced">Advanced</button>
           <button class="settings-nav__item" data-tab="application">Application</button>
         </div>
         
@@ -441,409 +426,29 @@
                   </div>
                 </div>
                 
-                <!-- Advanced Toggle -->
+              </div>
+            </div>
+            
+            <!-- Accessibility Tab -->
+            <div class="settings-tab" id="accessibility-tab">
+              <div class="settings-section">
                 <div class="settings-item">
-                  <label class="settings-item__label">Advanced Options</label>
-                  <button id="appearance-advanced-toggle" class="settings-arrow-toggle" data-target="appearance-advanced">
-                    <span class="toggle-icon">▶</span>
-                  </button>
+                  <label class="settings-item__label">High Contrast Mode</label>
+                  <div class="toggle-group">
+                    <input type="checkbox" id="high-contrast-toggle" class="settings-toggle">
+                    <label for="high-contrast-toggle" class="toggle-label">Enable high contrast mode for better accessibility</label>
+                  </div>
                 </div>
                 
-                <!-- Advanced Settings (Hidden by default) -->
-                <div id="appearance-advanced" class="settings-advanced" hidden>
+                <div class="settings-section">
+                  <h4 class="settings-section__title">Keyboard Shortcuts</h4>
                   <div class="settings-item">
-                    <label class="settings-item__label">Title Bar Size</label>
-                    <div class="slider-group">
-                      <input type="range" id="title-bar-size-slider" class="settings-slider" min="24" max="48" value="32" step="2">
-                      <span id="title-bar-size-value" class="slider-value">32px</span>
-                      <button id="reset-title-bar-size" class="settings-button--secondary">Reset</button>
-                    </div>
-                  </div>
-                  <div class="settings-item">
-                    <label class="settings-item__label">Traffic Light Position</label>
-                    <select id="traffic-light-position-select" class="settings-select">
-                      <option value="center">Centered with Title</option>
-                      <option value="top-left">Top Left Corner</option>
-                      <option value="custom">Custom Position</option>
-                    </select>
-                  </div>
-                  <div class="settings-item" id="traffic-light-custom-container" hidden>
-                    <label class="settings-item__label">Traffic Light Offset</label>
-                    <div class="slider-group">
-                      <input type="range" id="traffic-light-offset-slider" class="settings-slider" min="0" max="20" value="8" step="1">
-                      <span id="traffic-light-offset-value" class="slider-value">8px</span>
-                      <button id="reset-traffic-light-offset" class="settings-button--secondary">Reset</button>
-                    </div>
-                  </div>
-                  <div class="settings-item">
-                    <label class="settings-item__label">Status Bar Size</label>
-                    <div class="slider-group">
-                      <input type="range" id="status-bar-size-slider" class="settings-slider" min="20" max="40" value="28" step="2">
-                      <span id="status-bar-size-value" class="slider-value">28px</span>
-                      <button id="reset-status-bar-size" class="settings-button--secondary">Reset</button>
-                    </div>
-                  </div>
-                  <div class="settings-item">
-                    <label class="settings-item__label">Status Bar Position</label>
-                    <select id="status-bar-position-select" class="settings-select">
-                      <option value="bottom">Bottom</option>
-                      <option value="top">Top</option>
-                      <option value="hidden">Hidden</option>
-                    </select>
-                  </div>
-                  <div class="settings-item">
-                    <label class="settings-item__label">Import Font</label>
-                    <input type="file" id="font-import" class="settings-file-input" accept=".ttf,.otf,.woff,.woff2">
-                    <button id="font-import-btn" class="settings-button--secondary">Choose Font File</button>
-                  </div>
-                  
-                  <!-- Component-specific Settings -->
-                  <div class="settings-divider">
-                    <h3 class="settings-divider__title">Component Settings</h3>
-                  </div>
-                  
-                  <!-- Workspace Settings -->
-                  <div class="settings-component-section">
-                    <h4 class="settings-component__title">Workspace</h4>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="workspace-use-global-bg" class="settings-checkbox" checked>
-                        Use Global Background Color
-                      </label>
-                      <div class="color-picker-group" id="workspace-bg-controls">
-                        <input type="color" id="workspace-bg-color-picker" class="color-picker" value="#f1f3f4" disabled>
-                        <button id="reset-workspace-bg-color" class="settings-button--secondary" disabled>Reset</button>
+                    <label class="settings-item__label">Customize Keybindings</label>
+                    <div class="keybinding-controls">
+                      <div id="keybindings-list" class="keybindings-list">
+                        <!-- Keybindings will be populated dynamically -->
                       </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="workspace-use-global-font" class="settings-checkbox" checked>
-                        Use Global Font Family
-                      </label>
-                      <div class="font-family-group" id="workspace-font-controls">
-                        <select id="workspace-font-family-select" class="settings-select" disabled>
-                          <option value="system">System Font (SF Pro)</option>
-                          <option value="Inter">Inter</option>
-                          <option value="Roboto">Roboto</option>
-                          <option value="Open Sans">Open Sans</option>
-                          <option value="Source Sans Pro">Source Sans Pro</option>
-                          <option value="Lato">Lato</option>
-                          <option value="Poppins">Poppins</option>
-                          <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
-                          <option value="Fira Code">Fira Code (Monospace)</option>
-                          <option value="Monaco">Monaco (Monospace)</option>
-                        </select>
-                        <button id="reset-workspace-font-family" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="workspace-use-global-size" class="settings-checkbox" checked>
-                        Use Global Font Size
-                      </label>
-                      <div class="slider-group" id="workspace-size-controls">
-                        <input type="range" id="workspace-font-size-slider" class="settings-slider" min="11" max="18" value="13" step="1" disabled>
-                        <span id="workspace-font-size-value" class="slider-value">13px</span>
-                        <button id="reset-workspace-font-size" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="workspace-use-global-color" class="settings-checkbox" checked>
-                        Use Global Text Color
-                      </label>
-                      <div class="color-picker-group" id="workspace-color-controls">
-                        <input type="color" id="workspace-text-color-picker" class="color-picker" value="#374151" disabled>
-                        <button id="reset-workspace-text-color" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="workspace-use-global-style" class="settings-checkbox" checked>
-                        Use Global Font Style
-                      </label>
-                      <select id="workspace-font-style-select" class="settings-select" disabled>
-                        <option value="normal">Normal</option>
-                        <option value="italic">Italic</option>
-                        <option value="oblique">Oblique</option>
-                      </select>
-                    </div>
-                  </div>
-                  
-                  <!-- Editor Settings -->
-                  <div class="settings-component-section">
-                    <h4 class="settings-component__title">Editor</h4>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="editor-use-global-bg" class="settings-checkbox" checked>
-                        Use Global Background Color
-                      </label>
-                      <div class="color-picker-group" id="editor-bg-controls">
-                        <input type="color" id="editor-bg-color-picker" class="color-picker" value="#ffffff" disabled>
-                        <button id="reset-editor-bg-color" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="editor-use-global-font" class="settings-checkbox" checked>
-                        Use Global Font Family
-                      </label>
-                      <div class="font-family-group" id="editor-font-controls">
-                        <select id="editor-font-family-select" class="settings-select" disabled>
-                          <option value="system">System Font (SF Pro)</option>
-                          <option value="Inter">Inter</option>
-                          <option value="Roboto">Roboto</option>
-                          <option value="Open Sans">Open Sans</option>
-                          <option value="Source Sans Pro">Source Sans Pro</option>
-                          <option value="Lato">Lato</option>
-                          <option value="Poppins">Poppins</option>
-                          <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
-                          <option value="Fira Code">Fira Code (Monospace)</option>
-                          <option value="Monaco">Monaco (Monospace)</option>
-                        </select>
-                        <button id="reset-editor-font-family" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="editor-use-global-size" class="settings-checkbox" checked>
-                        Use Global Font Size
-                      </label>
-                      <div class="slider-group" id="editor-size-controls">
-                        <input type="range" id="editor-font-size-slider" class="settings-slider" min="12" max="20" value="14" step="1" disabled>
-                        <span id="editor-font-size-value" class="slider-value">14px</span>
-                        <button id="reset-editor-font-size" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="editor-use-global-color" class="settings-checkbox" checked>
-                        Use Global Text Color
-                      </label>
-                      <div class="color-picker-group" id="editor-color-controls">
-                        <input type="color" id="editor-text-color-picker" class="color-picker" value="#1f2933" disabled>
-                        <button id="reset-editor-text-color" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="editor-use-global-style" class="settings-checkbox" checked>
-                        Use Global Font Style
-                      </label>
-                      <select id="editor-font-style-select" class="settings-select" disabled>
-                        <option value="normal">Normal</option>
-                        <option value="italic">Italic</option>
-                        <option value="oblique">Oblique</option>
-                      </select>
-                    </div>
-                  </div>
-                  
-                  <!-- Preview Settings -->
-                  <div class="settings-component-section">
-                    <h4 class="settings-component__title">Preview</h4>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="preview-use-global-bg" class="settings-checkbox" checked>
-                        Use Global Background Color
-                      </label>
-                      <div class="color-picker-group" id="preview-bg-controls">
-                        <input type="color" id="preview-bg-color-picker" class="color-picker" value="#ffffff" disabled>
-                        <button id="reset-preview-bg-color" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="preview-use-global-font" class="settings-checkbox" checked>
-                        Use Global Font Family
-                      </label>
-                      <div class="font-family-group" id="preview-font-controls">
-                        <select id="preview-font-family-select" class="settings-select" disabled>
-                          <option value="system">System Font (SF Pro)</option>
-                          <option value="Inter">Inter</option>
-                          <option value="Roboto">Roboto</option>
-                          <option value="Open Sans">Open Sans</option>
-                          <option value="Source Sans Pro">Source Sans Pro</option>
-                          <option value="Lato">Lato</option>
-                          <option value="Poppins">Poppins</option>
-                          <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
-                          <option value="Fira Code">Fira Code (Monospace)</option>
-                          <option value="Monaco">Monaco (Monospace)</option>
-                        </select>
-                        <button id="reset-preview-font-family" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="preview-use-global-size" class="settings-checkbox" checked>
-                        Use Global Font Size
-                      </label>
-                      <div class="slider-group" id="preview-size-controls">
-                        <input type="range" id="preview-font-size-slider" class="settings-slider" min="12" max="20" value="14" step="1" disabled>
-                        <span id="preview-font-size-value" class="slider-value">14px</span>
-                        <button id="reset-preview-font-size" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="preview-use-global-color" class="settings-checkbox" checked>
-                        Use Global Text Color
-                      </label>
-                      <div class="color-picker-group" id="preview-color-controls">
-                        <input type="color" id="preview-text-color-picker" class="color-picker" value="#1f2933" disabled>
-                        <button id="reset-preview-text-color" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="preview-use-global-style" class="settings-checkbox" checked>
-                        Use Global Font Style
-                      </label>
-                      <select id="preview-font-style-select" class="settings-select" disabled>
-                        <option value="normal">Normal</option>
-                        <option value="italic">Italic</option>
-                        <option value="oblique">Oblique</option>
-                      </select>
-                    </div>
-                  </div>
-                  
-                  <!-- Status Bar Settings -->
-                  <div class="settings-component-section">
-                    <h4 class="settings-component__title">Status Bar</h4>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="statusbar-use-global-bg" class="settings-checkbox" checked>
-                        Use Global Background Color
-                      </label>
-                      <div class="color-picker-group" id="statusbar-bg-controls">
-                        <input type="color" id="statusbar-bg-color-picker" class="color-picker" value="#f1f3f4" disabled>
-                        <button id="reset-statusbar-bg-color" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="statusbar-use-global-font" class="settings-checkbox" checked>
-                        Use Global Font Family
-                      </label>
-                      <div class="font-family-group" id="statusbar-font-controls">
-                        <select id="statusbar-font-family-select" class="settings-select" disabled>
-                          <option value="system">System Font (SF Pro)</option>
-                          <option value="Inter">Inter</option>
-                          <option value="Roboto">Roboto</option>
-                          <option value="Open Sans">Open Sans</option>
-                          <option value="Source Sans Pro">Source Sans Pro</option>
-                          <option value="Lato">Lato</option>
-                          <option value="Poppins">Poppins</option>
-                          <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
-                          <option value="Fira Code">Fira Code (Monospace)</option>
-                          <option value="Monaco">Monaco (Monospace)</option>
-                        </select>
-                        <button id="reset-statusbar-font-family" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="statusbar-use-global-size" class="settings-checkbox" checked>
-                        Use Global Font Size
-                      </label>
-                      <div class="slider-group" id="statusbar-size-controls">
-                        <input type="range" id="statusbar-font-size-slider" class="settings-slider" min="10" max="16" value="12" step="1" disabled>
-                        <span id="statusbar-font-size-value" class="slider-value">12px</span>
-                        <button id="reset-statusbar-font-size" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="statusbar-use-global-color" class="settings-checkbox" checked>
-                        Use Global Text Color
-                      </label>
-                      <div class="color-picker-group" id="statusbar-color-controls">
-                        <input type="color" id="statusbar-text-color-picker" class="color-picker" value="#374151" disabled>
-                        <button id="reset-statusbar-text-color" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="statusbar-use-global-style" class="settings-checkbox" checked>
-                        Use Global Font Style
-                      </label>
-                      <select id="statusbar-font-style-select" class="settings-select" disabled>
-                        <option value="normal">Normal</option>
-                        <option value="italic">Italic</option>
-                        <option value="oblique">Oblique</option>
-                      </select>
-                    </div>
-                  </div>
-                  
-                  <!-- Title Bar Settings -->
-                  <div class="settings-component-section">
-                    <h4 class="settings-component__title">Title Bar</h4>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="titlebar-use-global-bg" class="settings-checkbox" checked>
-                        Use Global Background Color
-                      </label>
-                      <div class="color-picker-group" id="titlebar-bg-controls">
-                        <input type="color" id="titlebar-bg-color-picker" class="color-picker" value="#ffffff" disabled>
-                        <button id="reset-titlebar-bg-color" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="titlebar-use-global-font" class="settings-checkbox" checked>
-                        Use Global Font Family
-                      </label>
-                      <div class="font-family-group" id="titlebar-font-controls">
-                        <select id="titlebar-font-family-select" class="settings-select" disabled>
-                          <option value="system">System Font (SF Pro)</option>
-                          <option value="Inter">Inter</option>
-                          <option value="Roboto">Roboto</option>
-                          <option value="Open Sans">Open Sans</option>
-                          <option value="Source Sans Pro">Source Sans Pro</option>
-                          <option value="Lato">Lato</option>
-                          <option value="Poppins">Poppins</option>
-                          <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
-                          <option value="Fira Code">Fira Code (Monospace)</option>
-                          <option value="Monaco">Monaco (Monospace)</option>
-                        </select>
-                        <button id="reset-titlebar-font-family" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="titlebar-use-global-size" class="settings-checkbox" checked>
-                        Use Global Font Size
-                      </label>
-                      <div class="slider-group" id="titlebar-size-controls">
-                        <input type="range" id="titlebar-font-size-slider" class="settings-slider" min="11" max="18" value="14" step="1" disabled>
-                        <span id="titlebar-font-size-value" class="slider-value">14px</span>
-                        <button id="reset-titlebar-font-size" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="titlebar-use-global-color" class="settings-checkbox" checked>
-                        Use Global Text Color
-                      </label>
-                      <div class="color-picker-group" id="titlebar-color-controls">
-                        <input type="color" id="titlebar-text-color-picker" class="color-picker" value="#1f2933" disabled>
-                        <button id="reset-titlebar-text-color" class="settings-button--secondary" disabled>Reset</button>
-                      </div>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">
-                        <input type="checkbox" id="titlebar-use-global-style" class="settings-checkbox" checked>
-                        Use Global Font Style
-                      </label>
-                      <select id="titlebar-font-style-select" class="settings-select" disabled>
-                        <option value="normal">Normal</option>
-                        <option value="italic">Italic</option>
-                        <option value="oblique">Oblique</option>
-                      </select>
-                    </div>
-                    <div class="settings-item">
-                      <label class="settings-item__label">Show Full Path</label>
-                      <input type="checkbox" id="titlebar-show-path" class="settings-checkbox" checked>
-                      <span class="settings-description">When unchecked, only the note name will be shown</span>
+                      <button id="reset-keybindings-btn" class="settings-button--secondary">Reset to Defaults</button>
                     </div>
                   </div>
                 </div>
@@ -901,6 +506,170 @@
                       <button id="copy-settings-btn" class="settings-button--secondary" disabled>Copy to Clipboard</button>
                       <button id="download-settings-btn" class="settings-button--secondary" disabled>Download File</button>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Advanced Tab -->
+            <div class="settings-tab" id="advanced-tab">
+              <div class="settings-section">
+                <!-- Component-specific Settings -->
+                <div class="settings-divider">
+                  <h3 class="settings-divider__title">Component Settings</h3>
+                </div>
+                
+                <!-- Component Selector -->
+                <div class="settings-item">
+                  <label class="settings-item__label">Select Component</label>
+                  <select id="component-selector" class="settings-select">
+                    <option value="workspace">Workspace</option>
+                    <option value="editor">Editor</option>
+                    <option value="preview">Preview</option>
+                    <option value="statusbar">Status Bar</option>
+                    <option value="titlebar">Title Bar</option>
+                  </select>
+                </div>
+                
+                <!-- Unified Component Settings -->
+                <div id="component-settings" class="component-settings-container">
+                  <!-- Background Color Setting -->
+                  <div class="settings-item">
+                    <label class="settings-item__label">
+                      <input type="checkbox" id="component-use-global-bg" class="settings-checkbox" checked>
+                      Use Global Background Color
+                    </label>
+                    <div class="color-picker-group" id="component-bg-controls">
+                      <input type="color" id="component-bg-color-picker" class="color-picker" value="#f1f3f4" disabled>
+                      <button id="reset-component-bg-color" class="settings-button--secondary" disabled>Reset</button>
+                    </div>
+                  </div>
+                  
+                  <!-- Font Family Setting -->
+                  <div class="settings-item">
+                    <label class="settings-item__label">
+                      <input type="checkbox" id="component-use-global-font" class="settings-checkbox" checked>
+                      Use Global Font Family
+                    </label>
+                    <div class="font-family-group" id="component-font-controls">
+                      <select id="component-font-family-select" class="settings-select" disabled>
+                        <option value="system">System Font (SF Pro)</option>
+                        <option value="Inter">Inter</option>
+                        <option value="Roboto">Roboto</option>
+                        <option value="Open Sans">Open Sans</option>
+                        <option value="Source Sans Pro">Source Sans Pro</option>
+                        <option value="Lato">Lato</option>
+                        <option value="Poppins">Poppins</option>
+                        <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
+                        <option value="Fira Code">Fira Code (Monospace)</option>
+                        <option value="Monaco">Monaco (Monospace)</option>
+                      </select>
+                      <button id="reset-component-font-family" class="settings-button--secondary" disabled>Reset</button>
+                    </div>
+                  </div>
+                  
+                  <!-- Font Size Setting -->
+                  <div class="settings-item">
+                    <label class="settings-item__label">
+                      <input type="checkbox" id="component-use-global-size" class="settings-checkbox" checked>
+                      Use Global Font Size
+                    </label>
+                    <div class="slider-group" id="component-size-controls">
+                      <input type="range" id="component-font-size-slider" class="settings-slider" min="10" max="20" value="13" step="1" disabled>
+                      <span id="component-font-size-value" class="slider-value">13px</span>
+                      <button id="reset-component-font-size" class="settings-button--secondary" disabled>Reset</button>
+                    </div>
+                  </div>
+                  
+                  <!-- Text Color Setting -->
+                  <div class="settings-item">
+                    <label class="settings-item__label">
+                      <input type="checkbox" id="component-use-global-color" class="settings-checkbox" checked>
+                      Use Global Text Color
+                    </label>
+                    <div class="color-picker-group" id="component-color-controls">
+                      <input type="color" id="component-text-color-picker" class="color-picker" value="#374151" disabled>
+                      <button id="reset-component-text-color" class="settings-button--secondary" disabled>Reset</button>
+                    </div>
+                  </div>
+                  
+                  <!-- Font Style Setting -->
+                  <div class="settings-item">
+                    <label class="settings-item__label">
+                      <input type="checkbox" id="component-use-global-style" class="settings-checkbox" checked>
+                      Use Global Font Style
+                    </label>
+                    <select id="component-font-style-select" class="settings-select" disabled>
+                      <option value="normal">Normal</option>
+                      <option value="italic">Italic</option>
+                      <option value="oblique">Oblique</option>
+                    </select>
+                  </div>
+                  
+                  <!-- Title Bar Specific Setting -->
+                  <div class="settings-item" id="titlebar-specific-setting" hidden>
+                    <label class="settings-item__label">Show Full Path</label>
+                    <input type="checkbox" id="titlebar-show-path" class="settings-checkbox" checked>
+                    <span class="settings-description">When unchecked, only the note name will be shown</span>
+                  </div>
+                </div>
+                
+                <!-- Status Bar Position Setting -->
+                <div class="settings-item">
+                  <label class="settings-item__label">Status Bar Position</label>
+                  <select id="status-bar-position-select" class="settings-select">
+                    <option value="bottom">Bottom</option>
+                    <option value="top">Top</option>
+                    <option value="hidden">Hidden</option>
+                  </select>
+                </div>
+                
+                <!-- Super Advanced Toggle -->
+                <div class="settings-item">
+                  <label class="settings-item__label">Super Advanced Settings</label>
+                  <button id="super-advanced-toggle" class="settings-arrow-toggle" data-target="super-advanced">
+                    <span class="toggle-icon">▶</span>
+                  </button>
+                </div>
+                
+                <!-- Super Advanced Settings (Hidden by default) -->
+                <div id="super-advanced" class="settings-advanced" hidden>
+                  <div class="settings-item">
+                    <label class="settings-item__label">Title Bar Size</label>
+                    <div class="slider-group">
+                      <input type="range" id="title-bar-size-slider" class="settings-slider" min="24" max="48" value="32" step="2">
+                      <span id="title-bar-size-value" class="slider-value">32px</span>
+                      <button id="reset-title-bar-size" class="settings-button--secondary">Reset</button>
+                    </div>
+                  </div>
+                  <div class="settings-item">
+                    <label class="settings-item__label">Traffic Light Position</label>
+                    <select id="traffic-light-position-select" class="settings-select">
+                      <option value="center">Centered with Title</option>
+                      <option value="top-left">Top Left Corner</option>
+                      <option value="custom">Custom Position</option>
+                    </select>
+                  </div>
+                  <div class="settings-item" id="traffic-light-custom-container" hidden>
+                    <label class="settings-item__label">Traffic Light Offset</label>
+                    <div class="slider-group">
+                      <input type="range" id="traffic-light-offset-slider" class="settings-slider" min="0" max="20" value="8" step="1">
+                      <span id="traffic-light-offset-value" class="slider-value">8px</span>
+                      <button id="reset-traffic-light-offset" class="settings-button--secondary">Reset</button>
+                    </div>
+                  </div>
+                  <div class="settings-item">
+                    <label class="settings-item__label">Status Bar Size</label>
+                    <div class="slider-group">
+                      <input type="range" id="status-bar-size-slider" class="settings-slider" min="20" max="40" value="28" step="2">
+                      <span id="status-bar-size-value" class="slider-value">28px</span>
+                      <button id="reset-status-bar-size" class="settings-button--secondary">Reset</button>
+                    </div>
+                  </div>
+                  <div class="settings-item">
+                    <label class="settings-item__label">Import Font</label>
+                    <input type="file" id="font-import" class="settings-file-input" accept=".ttf,.otf,.woff,.woff2">
+                    <button id="font-import-btn" class="settings-button--secondary">Choose Font File</button>
                   </div>
                 </div>
               </div>

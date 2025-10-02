@@ -1,17 +1,72 @@
+const { Document, Packer, Paragraph, TextRun, HeadingLevel, ImageRun, Table, TableCell, TableRow } = require('docx');
+const Epub = require('epub-gen');
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
-const { autoUpdater } = require('electron-updater');
-const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
+const path = require('path');
+const { autoUpdater } = require('electron-updater');
 const { createNotesStore } = require('./store/notesStore');
-const {
-  loadFolderNotes,
-  createMarkdownFile,
-  readPdfAsDataUri: readExternalPdfAsDataUri,
-  readPdfBuffer: readExternalPdfBuffer,
-  saveMarkdownFile,
-  renameMarkdownFile
-} = require('./store/folderManager');
+const { loadFolderNotes, readPdfAsDataUri } = require('./store/folderManager');
+
+// Helper function to convert HTML to DOCX children
+async function htmlToDocxChildren(html, folderPath) {
+  const children = [];
+  
+  // Simple HTML to DOCX conversion
+  // This is a basic implementation - could be enhanced
+  const lines = html.split('\n').filter(line => line.trim());
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    if (!trimmed) continue;
+    
+    // Handle headings
+    if (trimmed.startsWith('<h1>')) {
+      const text = trimmed.replace(/<\/?h1>/g, '');
+      children.push(new Paragraph({
+        text: text,
+        heading: HeadingLevel.HEADING_1
+      }));
+    } else if (trimmed.startsWith('<h2>')) {
+      const text = trimmed.replace(/<\/?h2>/g, '');
+      children.push(new Paragraph({
+        text: text,
+        heading: HeadingLevel.HEADING_2
+      }));
+    } else if (trimmed.startsWith('<h3>')) {
+      const text = trimmed.replace(/<\/?h3>/g, '');
+      children.push(new Paragraph({
+        text: text,
+        heading: HeadingLevel.HEADING_3
+      }));
+    } else if (trimmed.startsWith('<p>')) {
+      const text = trimmed.replace(/<\/?p>/g, '').replace(/<[^>]*>/g, '');
+      children.push(new Paragraph({
+        text: text
+      }));
+    } else if (trimmed.startsWith('<ul>') || trimmed.startsWith('<ol>')) {
+      // Skip list containers, handle individual items
+      continue;
+    } else if (trimmed.startsWith('<li>')) {
+      const text = trimmed.replace(/<\/?li>/g, '').replace(/<[^>]*>/g, '');
+      children.push(new Paragraph({
+        text: `• ${text}`,
+        indent: { left: 720 } // 0.5 inch indent
+      }));
+    } else {
+      // Plain text or other content
+      const text = trimmed.replace(/<[^>]*>/g, '');
+      if (text.trim()) {
+        children.push(new Paragraph({
+          text: text
+        }));
+      }
+    }
+  }
+  
+  return children;
+}
 
 // File system watcher state
 let fileWatcher = null;
@@ -176,8 +231,8 @@ const createMainWindow = () => {
   const windowOptions = {
     width: 1280,
     height: 800,
-    minWidth: 960,
-    minHeight: 600,
+    minWidth: 500,
+    minHeight: 300,
   title: 'NTA',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -340,7 +395,7 @@ const bootstrap = async () => {
     const { storedPath, absolutePath } = payload;
 
     if (absolutePath) {
-      return readExternalPdfAsDataUri(absolutePath);
+      return readPdfAsDataUri(absolutePath);
     }
 
     return notesStore.readPdfAsDataUri(storedPath);
@@ -559,8 +614,6 @@ const bootstrap = async () => {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${noteTitle}</title>
-    <link rel="stylesheet" href="${toFileUrl(stylesPath)}" />
-    <link rel="stylesheet" href="${toFileUrl(katexPath)}" />
     <style>
       :root {
         color-scheme: light;
@@ -598,7 +651,7 @@ ${rootVariables}
         exportWindow.webContents.once('did-fail-load', (_event, code, description) => {
           reject(new Error(description || `Failed to load export document (${code})`));
         });
-        exportWindow.loadURL(`data:text/html;charset=UTF-8,${encodeURIComponent(baseTemplate)}`);
+        exportWindow.loadURL(`data:text/html;base64,${Buffer.from(baseTemplate).toString('base64')}`);
       });
 
       await exportWindow.webContents.executeJavaScript('document.fonts ? document.fonts.ready : Promise.resolve()');
@@ -823,6 +876,79 @@ ${rootVariables}
       return { filePath };
     } catch (error) {
       throw new Error(`Failed to export HTML: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('preview:exportDocx', async (_event, payload) => {
+    const html = typeof payload?.html === 'string' ? payload.html : '';
+    if (!html.trim()) {
+      throw new Error('Nothing to export. The preview is empty.');
+    }
+
+    const noteTitle = sanitizeFileName(payload?.title ?? 'Preview');
+
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export preview as Word document',
+      defaultPath: `${noteTitle}.docx`,
+      filters: [{ name: 'Word document', extensions: ['docx'] }]
+    });
+
+    if (canceled || !filePath) {
+      return { canceled: true };
+    }
+
+    try {
+      // Convert HTML to DOCX
+      const doc = new Document({
+        sections: [{
+          properties: {},
+          children: await htmlToDocxChildren(html, payload.folderPath)
+        }]
+      });
+
+      const buffer = await Packer.toBuffer(doc);
+      await fsp.writeFile(filePath, buffer);
+
+      return { filePath };
+    } catch (error) {
+      throw new Error(`Failed to export DOCX: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('preview:exportEpub', async (_event, payload) => {
+    const html = typeof payload?.html === 'string' ? payload.html : '';
+    if (!html.trim()) {
+      throw new Error('Nothing to export. The preview is empty.');
+    }
+
+    const noteTitle = sanitizeFileName(payload?.title ?? 'Preview');
+
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export preview as EPUB ebook',
+      defaultPath: `${noteTitle}.epub`,
+      filters: [{ name: 'EPUB ebook', extensions: ['epub'] }]
+    });
+
+    if (canceled || !filePath) {
+      return { canceled: true };
+    }
+
+    try {
+      // Create EPUB
+      const options = {
+        title: noteTitle,
+        author: 'NoteTakingApp',
+        content: [{
+          title: noteTitle,
+          data: html
+        }]
+      };
+
+      await new Epub(options, filePath).promise;
+
+      return { filePath };
+    } catch (error) {
+      throw new Error(`Failed to export EPUB: ${error.message}`);
     }
   });
 

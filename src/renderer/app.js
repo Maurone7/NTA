@@ -51,10 +51,8 @@ const elements = {
   exportDropdownMenu: document.getElementById('export-dropdown-menu'),
   exportPdfOption: document.getElementById('export-pdf-option'),
   exportHtmlOption: document.getElementById('export-html-option'),
-  exportPngOption: document.getElementById('export-png-option'),
-  exportJpgOption: document.getElementById('export-jpg-option'),
-  exportJpegOption: document.getElementById('export-jpeg-option'),
-  exportTiffOption: document.getElementById('export-tiff-option'),
+  exportDocxOption: document.getElementById('export-docx-option'),
+  exportEpubOption: document.getElementById('export-epub-option'),
   codePopover: document.getElementById('code-block-popover'),
   codePopoverForm: document.getElementById('code-block-form'),
   codePopoverInput: document.getElementById('code-block-language'),
@@ -139,32 +137,25 @@ const elements = {
   exportPreviewText: document.getElementById('export-preview-text'),
   copySettingsBtn: document.getElementById('copy-settings-btn'),
   downloadSettingsBtn: document.getElementById('download-settings-btn'),
-  // Component inheritance checkboxes
-  workspaceUseGlobalBg: document.getElementById('workspace-use-global-bg'),
-  workspaceUseGlobalFont: document.getElementById('workspace-use-global-font'),
-  workspaceUseGlobalSize: document.getElementById('workspace-use-global-size'),
-  workspaceUseGlobalColor: document.getElementById('workspace-use-global-color'),
-  workspaceUseGlobalStyle: document.getElementById('workspace-use-global-style'),
-  editorUseGlobalBg: document.getElementById('editor-use-global-bg'),
-  editorUseGlobalFont: document.getElementById('editor-use-global-font'),
-  editorUseGlobalSize: document.getElementById('editor-use-global-size'),
-  editorUseGlobalColor: document.getElementById('editor-use-global-color'),
-  editorUseGlobalStyle: document.getElementById('editor-use-global-style'),
-  previewUseGlobalBg: document.getElementById('preview-use-global-bg'),
-  previewUseGlobalFont: document.getElementById('preview-use-global-font'),
-  previewUseGlobalSize: document.getElementById('preview-use-global-size'),
-  previewUseGlobalColor: document.getElementById('preview-use-global-color'),
-  previewUseGlobalStyle: document.getElementById('preview-use-global-style'),
-  statusbarUseGlobalBg: document.getElementById('statusbar-use-global-bg'),
-  statusbarUseGlobalFont: document.getElementById('statusbar-use-global-font'),
-  statusbarUseGlobalSize: document.getElementById('statusbar-use-global-size'),
-  statusbarUseGlobalColor: document.getElementById('statusbar-use-global-color'),
-  statusbarUseGlobalStyle: document.getElementById('statusbar-use-global-style'),
-  titlebarUseGlobalBg: document.getElementById('titlebar-use-global-bg'),
-  titlebarUseGlobalFont: document.getElementById('titlebar-use-global-font'),
-  titlebarUseGlobalSize: document.getElementById('titlebar-use-global-size'),
-  titlebarUseGlobalColor: document.getElementById('titlebar-use-global-color'),
-  titlebarUseGlobalStyle: document.getElementById('titlebar-use-global-style'),
+  // Unified component controls
+  componentSelector: document.getElementById('component-selector'),
+  componentUseGlobalBg: document.getElementById('component-use-global-bg'),
+  componentUseGlobalFont: document.getElementById('component-use-global-font'),
+  componentUseGlobalSize: document.getElementById('component-use-global-size'),
+  componentUseGlobalColor: document.getElementById('component-use-global-color'),
+  componentUseGlobalStyle: document.getElementById('component-use-global-style'),
+  componentBgColorPicker: document.getElementById('component-bg-color-picker'),
+  componentFontFamilySelect: document.getElementById('component-font-family-select'),
+  componentFontSizeSlider: document.getElementById('component-font-size-slider'),
+  componentFontSizeValue: document.getElementById('component-font-size-value'),
+  componentTextColorPicker: document.getElementById('component-text-color-picker'),
+  componentFontStyleSelect: document.getElementById('component-font-style-select'),
+  resetComponentBgColor: document.getElementById('reset-component-bg-color'),
+  resetComponentFontFamily: document.getElementById('reset-component-font-family'),
+  resetComponentFontSize: document.getElementById('reset-component-font-size'),
+  resetComponentTextColor: document.getElementById('reset-component-text-color'),
+  titlebarShowPath: document.getElementById('titlebar-show-path'),
+  titlebarSpecificSetting: document.getElementById('titlebar-specific-setting'),
   borderColorPicker: document.getElementById('border-color-picker'),
   resetBorderColorButton: document.getElementById('reset-border-color'),
   borderThicknessSlider: document.getElementById('border-thickness-slider'),
@@ -192,7 +183,11 @@ const elements = {
   inlineChatClose: document.getElementById('inline-chat-close'),
   // Math preview popup
   mathPreviewPopup: document.getElementById('math-preview-popup'),
-  mathPreviewPopupContent: document.querySelector('#math-preview-popup .math-preview-popup__content')
+  mathPreviewPopupContent: document.querySelector('#math-preview-popup .math-preview-popup__content'),
+  // Accessibility elements
+  highContrastToggle: document.getElementById('high-contrast-toggle'),
+  keybindingsList: document.getElementById('keybindings-list'),
+  resetKeybindingsBtn: document.getElementById('reset-keybindings-btn')
 };
 
 // Global selection tracking for CMD+E functionality
@@ -201,12 +196,202 @@ let activeSelections = []; // Array of {start, end} ranges for multi-selection m
 const storagePrefix = 'NTA.';
 const storageKeys = {
   workspaceFolder: `${storagePrefix}lastWorkspaceFolder`,
-  workspaceFolder: `${storagePrefix}lastWorkspaceFolder`,
   codeLanguage: `${storagePrefix}lastCodeLanguage`,
   sidebarCollapsed: `${storagePrefix}sidebarCollapsed`,
   previewCollapsed: `${storagePrefix}previewCollapsed`,
-  sidebarWidth: `${storagePrefix}sidebarWidth`
+  sidebarWidth: `${storagePrefix}sidebarWidth`,
+  highContrast: `${storagePrefix}high-contrast`,
+  keybindings: `${storagePrefix}keybindings`
 };
+
+// Default keybindings
+const defaultKeybindings = {
+  'open-folder': 'CmdOrCtrl+O',
+  'new-file': 'CmdOrCtrl+N',
+  'save-file': 'CmdOrCtrl+S',
+  'toggle-sidebar': 'CmdOrCtrl+B',
+  'toggle-preview': 'CmdOrCtrl+Shift+B',
+  'search': 'CmdOrCtrl+F',
+  'export-pdf': 'CmdOrCtrl+E',
+  'export-html': 'CmdOrCtrl+Shift+E',
+  'settings': 'CmdOrCtrl+,',
+  'bold': 'CmdOrCtrl+B',
+  'italic': 'CmdOrCtrl+I',
+  'code': 'CmdOrCtrl+Shift+C',
+  'link': 'CmdOrCtrl+K'
+};
+
+// Current keybindings (loaded from storage)
+let currentKeybindings = { ...defaultKeybindings };
+
+// Keybinding handling
+function loadKeybindings() {
+  const stored = localStorage.getItem(storageKeys.keybindings);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      currentKeybindings = { ...defaultKeybindings, ...parsed };
+    } catch (error) {
+      console.warn('Failed to parse stored keybindings, using defaults');
+      currentKeybindings = { ...defaultKeybindings };
+    }
+  }
+}
+
+function saveKeybindings() {
+  localStorage.setItem(storageKeys.keybindings, JSON.stringify(currentKeybindings));
+}
+
+function resetKeybindings() {
+  currentKeybindings = { ...defaultKeybindings };
+  saveKeybindings();
+  renderKeybindingsList();
+}
+
+function renderKeybindingsList() {
+  if (!elements.keybindingsList) return;
+  
+  elements.keybindingsList.innerHTML = '';
+  
+  Object.entries(currentKeybindings).forEach(([action, keybinding]) => {
+    const item = document.createElement('div');
+    item.className = 'keybinding-item';
+    
+    const label = document.createElement('span');
+    label.className = 'keybinding-label';
+    label.textContent = action.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'keybinding-input';
+    input.value = keybinding;
+    input.dataset.action = action;
+    
+    input.addEventListener('keydown', (e) => {
+      e.preventDefault();
+      const keys = [];
+      
+      if (e.ctrlKey || e.metaKey) keys.push('CmdOrCtrl');
+      if (e.shiftKey) keys.push('Shift');
+      if (e.altKey) keys.push('Alt');
+      
+      if (e.key !== 'Control' && e.key !== 'Shift' && e.key !== 'Alt' && e.key !== 'Meta') {
+        keys.push(e.key.toUpperCase());
+      }
+      
+      if (keys.length > 1) {
+        input.value = keys.join('+');
+      }
+    });
+    
+    input.addEventListener('blur', () => {
+      const newBinding = input.value.trim();
+      if (newBinding) {
+        currentKeybindings[action] = newBinding;
+        saveKeybindings();
+      } else {
+        input.value = currentKeybindings[action];
+      }
+    });
+    
+    item.appendChild(label);
+    item.appendChild(input);
+    elements.keybindingsList.appendChild(item);
+  });
+}
+
+function handleKeybinding(event) {
+  // Create key combination string
+  const keys = [];
+  
+  if (event.ctrlKey || event.metaKey) keys.push('CmdOrCtrl');
+  if (event.shiftKey) keys.push('Shift');
+  if (event.altKey) keys.push('Alt');
+  keys.push(event.key.toUpperCase());
+  
+  const keyCombo = keys.join('+');
+  
+  // Find action for this keybinding
+  for (const [action, binding] of Object.entries(currentKeybindings)) {
+    if (binding === keyCombo) {
+      executeKeybindingAction(action, event);
+      break;
+    }
+  }
+}
+
+function executeKeybindingAction(action, event) {
+  switch (action) {
+    case 'open-folder':
+      event.preventDefault();
+      elements.openFolderButtons[0]?.click();
+      break;
+    case 'new-file':
+      event.preventDefault();
+      elements.createFileButton?.click();
+      break;
+    case 'save-file':
+      event.preventDefault();
+      // Implement save functionality
+      break;
+    case 'toggle-sidebar':
+      event.preventDefault();
+      elements.toggleSidebarButton?.click();
+      break;
+    case 'toggle-preview':
+      event.preventDefault();
+      elements.togglePreviewButton?.click();
+      break;
+    case 'search':
+      event.preventDefault();
+      elements.editorSearchInput?.focus();
+      break;
+    case 'export-pdf':
+      event.preventDefault();
+      elements.exportPdfOption?.click();
+      break;
+    case 'export-html':
+      event.preventDefault();
+      elements.exportHtmlOption?.click();
+      break;
+    case 'settings':
+      event.preventDefault();
+      elements.settingsButton?.click();
+      break;
+    case 'bold':
+      event.preventDefault();
+      wrapSelection('**', '**');
+      break;
+    case 'italic':
+      event.preventDefault();
+      wrapSelection('*', '*');
+      break;
+    case 'code':
+      event.preventDefault();
+      wrapSelection('`', '`');
+      break;
+    case 'link':
+      event.preventDefault();
+      wrapSelection('[', '](url)');
+      break;
+  }
+}
+
+function wrapSelection(before, after) {
+  if (!elements.editor) return;
+  
+  const start = elements.editor.selectionStart;
+  const end = elements.editor.selectionEnd;
+  const selectedText = elements.editor.value.substring(start, end);
+  
+  const replacement = before + selectedText + after;
+  elements.editor.setRangeText(replacement);
+  
+  // Position cursor appropriately
+  const newCursorPos = start + before.length + selectedText.length;
+  elements.editor.setSelectionRange(newCursorPos, newCursorPos);
+  elements.editor.focus();
+}
 
 const readStorage = (key) => {
   try {
@@ -3251,6 +3436,7 @@ const renderMarkdownPreview = (markdown, noteId = state.activeNoteId) => {
     void processPreviewImages();
     void processPreviewVideos();
     void processPreviewHtmlIframes();
+    addImageHoverPreviews();
     decoratePreviewHashtags(noteId);
 
     if (state.pendingBlockFocus && state.pendingBlockFocus.noteId === noteId) {
@@ -3476,17 +3662,6 @@ const exportActivePreviewAsImage = async (format) => {
     return false;
   }
 
-  // For now, show a message that image export is not yet implemented
-  setStatus(`${format.toUpperCase()} export is not yet implemented. This feature is coming soon!`, false);
-  return false;
-
-  // TODO: Implement when backend API is ready
-  /*
-  if (typeof window.api?.exportPreviewImage !== 'function') {
-    setStatus('Image export is unavailable in this build.', false);
-    return false;
-  }
-
   const html = getPreviewHtmlForExport();
   if (!html.trim()) {
     setStatus('Nothing to export — the preview is empty.', false);
@@ -3501,16 +3676,19 @@ const exportActivePreviewAsImage = async (format) => {
   setStatus(`Preparing ${format.toUpperCase()} export…`, false);
 
   try {
-    const result = await window.api.exportPreviewImage({
-      html,
-      theme: resolveCurrentThemePreference(),
-      title,
-      folderPath: state.currentFolder,
-      format: format.toLowerCase()
-    });
+    let result;
+    if (format === 'png') {
+      result = await window.api.exportPreviewPng({ html, title, folderPath: state.currentFolder });
+    } else if (format === 'jpg' || format === 'jpeg') {
+      result = await window.api.exportPreviewJpg({ html, title, folderPath: state.currentFolder });
+    } else if (format === 'tiff') {
+      result = await window.api.exportPreviewTiff({ html, title, folderPath: state.currentFolder });
+    } else {
+      throw new Error(`Unsupported image format: ${format}`);
+    }
 
-    if (result?.success) {
-      const exportedName = result.fileName || `${title}.${format.toLowerCase()}`;
+    if (result?.filePath) {
+      const exportedName = path.basename(result.filePath);
       setStatus(`Exported preview to ${exportedName}.`, true);
     } else {
       setStatus('Preview exported.', true);
@@ -3525,7 +3703,6 @@ const exportActivePreviewAsImage = async (format) => {
     setStatus(`Export failed — ${message}.`, false);
     return false;
   }
-  */
 };
 
 const exportActivePreviewAsPng = () => exportActivePreviewAsImage('png');
@@ -4584,6 +4761,11 @@ const renderActiveNote = () => {
   const resetPreviewState = () => {
     elements.workspaceContent?.classList.remove('pdf-mode', 'code-mode', 'notebook-mode', 'image-mode', 'video-mode', 'html-mode');
     elements.preview.innerHTML = '';
+    // Hide math preview popup
+    if (elements.mathPreviewPopup) {
+      elements.mathPreviewPopup.classList.remove('visible');
+      elements.mathPreviewPopup.hidden = true;
+    }
     elements.pdfViewer?.classList.remove('visible');
     elements.pdfViewer?.removeAttribute('src');
     elements.codeViewer?.classList.remove('visible');
@@ -4944,13 +5126,21 @@ const updateMathPreview = (textarea) => {
     const lineEndPos = mathStartIndex + currentLine.length - 1; // -1 to get last char position
     const lineNewlinePos = mathStartIndex + currentLine.length; // Position of newline character
     
-    if (start !== lineEndPos && start !== lineNewlinePos) {
+    // Check if the current line contains image patterns that should trigger preview
+    const hasImagePattern = /\!\[\[([^\]]+)\]\]/.test(currentLine.trim()) || // Wiki-link: ![[filename]]
+                           /!\[.*?\]\(.*?\)/.test(currentLine.trim()) || // Markdown image: ![alt](url)
+                           /^(https?:\/\/|file:\/\/)?[^\s]+\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)(\?.*)?$/i.test(currentLine.trim()); // Image URL
+    
+    console.log('updateMathPreview: currentLine:', JSON.stringify(currentLine), 'hasImagePattern:', hasImagePattern, 'start:', start, 'lineEndPos:', lineEndPos, 'lineNewlinePos:', lineNewlinePos);
+    
+    if (!hasImagePattern && start !== lineEndPos && start !== lineNewlinePos) {
       contentToRender = ''; // Don't show preview unless cursor is at end of line
     }
   }
   
   // Only show preview if there's content to render
   if (contentToRender.trim()) {
+    const mathContent = contentToRender.trim();
     try {
       // Check if content contains math expressions
       const inlineMathRegex = /(?<!\$)\$([^\n$]+?)\$(?!\w)/gm;
@@ -5001,26 +5191,36 @@ const updateMathPreview = (textarea) => {
           // Fallback to plain text
           elements.mathPreviewPopupContent.textContent = mathContent;
         }
-      } else if (/^\!\[\[([^\]]+)\]\]$/.test(mathContent)) {
+      } else if (/\!\[\[([^\]]+)\]\]/.test(mathContent)) {
         // Wiki-link: ![[filename]]
-        console.log('Wiki-link detected:', mathContent);
-        const wikiMatch = mathContent.match(/^\!\[\[([^\]]+)\]\]$/);
+        console.log('Detected wiki-link in mathContent:', JSON.stringify(mathContent));
+        const wikiMatch = mathContent.match(/\!\[\[([^\]]+)\]\]/);
         if (wikiMatch) {
           const filename = wikiMatch[1];
-          const workspacePath = elements.workspacePath?.title || '';
-          console.log('Filename:', filename, 'Workspace path:', workspacePath);
+          console.log('Wiki-link filename:', filename);
+          let workspacePath = elements.workspacePath?.title || '';
+          
+          // If workspace path contains src/renderer, use the directory before it as workspace
+          const rendererIndex = workspacePath.indexOf('/src/renderer');
+          if (rendererIndex !== -1) {
+            workspacePath = workspacePath.substring(0, rendererIndex);
+          } else {
+            const backslashIndex = workspacePath.indexOf('\\src\\renderer');
+            if (backslashIndex !== -1) {
+              workspacePath = workspacePath.substring(0, backslashIndex);
+            }
+          }
+          
+          console.log('Adjusted workspace path:', workspacePath);
           
           if (workspacePath) {
             // Construct file path
             const filePath = `file://${workspacePath}/${filename}`;
-            console.log('Constructed filePath:', filePath);
             
             // Determine file type and show appropriate preview
             if (/\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(filename)) {
-              console.log('Detected as image');
               elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">🖼️</div><div>Loading...</div></div><img src="${filePath}" alt="${filename}" style="display: none; max-width: 200px; max-height: 150px; object-fit: contain;" onload="console.log('Image loaded successfully:', this.src); this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="console.log('Image failed to load:', this.src); this.previousElementSibling.innerHTML='<div style=font-size:24px;>🖼️</div><div>Image not found</div><div style=font-size:10px;color:#6c757d;>${filename}</div>';">`;
             } else if (/\.(mp4|webm|ogg|avi|mov|wmv|flv|m4v)$/i.test(filename)) {
-              console.log('Detected as video');
               elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">🎥</div><div>Loading...</div></div><video controls style="display: none; max-width: 200px; max-height: 150px;" onload="console.log('Video loaded successfully:', this.src); this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="console.log('Video failed to load:', this.src); this.previousElementSibling.innerHTML='<div style=font-size:24px;>🎥</div><div>Video not found</div><div style=font-size:10px;color:#6c757d;>${filename}</div>';"><source src="${filePath}" type="video/mp4"></video>`;
             } else if (/\.(pdf)$/i.test(filename)) {
               console.log('Detected as PDF');
@@ -5129,7 +5329,7 @@ const updateMathPreview = (textarea) => {
     } catch (error) {
       console.error('Math preview render error:', error);
       // Fallback to plain text on error
-      elements.mathPreviewPopupContent.textContent = contentToRender.trim();
+      elements.mathPreviewPopupContent.textContent = mathContent;
       
       // Position the popup next to the current line/text
       positionMathPreviewPopup(textarea, mathStartIndex);
@@ -5175,8 +5375,15 @@ const positionMathPreviewPopup = (textarea, mathStartIndex) => {
   const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight) || 20;
   
   // Position popup to the right of the current line
-  const popupX = textareaRect.left + textWidth + 10; // 10px offset
+  let popupX = textareaRect.left + textWidth + 10; // 10px offset
   const popupY = textareaRect.top + (currentLineIndex * lineHeight) - (lineHeight / 2);
+  
+  // Ensure popup stays within window bounds
+  const popupWidth = 220; // Approximate popup width
+  const windowWidth = window.innerWidth;
+  if (popupX + popupWidth > windowWidth) {
+    popupX = windowWidth - popupWidth - 10; // Position from right edge
+  }
   
   elements.mathPreviewPopup.style.left = `${popupX}px`;
   elements.mathPreviewPopup.style.top = `${popupY}px`;
@@ -11896,111 +12103,23 @@ const initialize = () => {
   elements.borderThicknessSlider?.addEventListener('input', handleBorderThicknessChange);
   elements.resetBorderThicknessButton?.addEventListener('click', resetBorderThickness);
   
-  // Workspace settings event listeners
-  elements.workspaceBgColorPicker?.addEventListener('change', handleWorkspaceBgColorChange);
-  elements.resetWorkspaceBgColorButton?.addEventListener('click', resetWorkspaceBgColor);
-  elements.workspaceFontFamilySelect?.addEventListener('change', handleWorkspaceFontFamilyChange);
-  elements.resetWorkspaceFontFamilyButton?.addEventListener('click', resetWorkspaceFontFamily);
-  elements.workspaceFontSizeSlider?.addEventListener('input', handleWorkspaceFontSizeChange);
-  elements.resetWorkspaceFontSizeButton?.addEventListener('click', resetWorkspaceFontSize);
-  elements.workspaceTextColorPicker?.addEventListener('change', handleWorkspaceTextColorChange);
-  elements.resetWorkspaceTextColorButton?.addEventListener('click', resetWorkspaceTextColor);
-  elements.workspaceFontStyleSelect?.addEventListener('change', handleWorkspaceFontStyleChange);
-  
-  // Editor settings event listeners
-  elements.editorBgColorPicker?.addEventListener('change', handleEditorBgColorChange);
-  elements.resetEditorBgColorButton?.addEventListener('click', resetEditorBgColor);
-  elements.editorFontFamilySelect?.addEventListener('change', handleEditorFontFamilyChange);
-  elements.resetEditorFontFamilyButton?.addEventListener('click', resetEditorFontFamily);
-  elements.editorFontSizeSlider?.addEventListener('input', handleEditorFontSizeChange);
-  elements.resetEditorFontSizeButton?.addEventListener('click', resetEditorFontSize);
-  elements.editorTextColorPicker?.addEventListener('change', handleEditorTextColorChange);
-  elements.resetEditorTextColorButton?.addEventListener('click', resetEditorTextColor);
-  elements.editorFontStyleSelect?.addEventListener('change', handleEditorFontStyleChange);
-  
-  // Preview settings event listeners
-  elements.previewBgColorPicker?.addEventListener('change', handlePreviewBgColorChange);
-  elements.resetPreviewBgColorButton?.addEventListener('click', resetPreviewBgColor);
-  elements.previewFontFamilySelect?.addEventListener('change', handlePreviewFontFamilyChange);
-
-  // Attach preview updaters to font-family selects so users see a sample next to the select
-  [
-    elements.fontFamilySelect,
-    elements.workspaceFontFamilySelect,
-    elements.editorFontFamilySelect,
-    elements.previewFontFamilySelect,
-    elements.statusbarFontFamilySelect,
-    elements.titlebarFontFamilySelect
-  ].forEach(sel => {
-    if (!sel) return;
-    sel.addEventListener('change', () => updateSelectPreview(sel));
-  });
-
-  // Initialize previews for existing selections
-  setTimeout(() => updateAllFontPreviews(), 50);
-  elements.resetPreviewFontFamilyButton?.addEventListener('click', resetPreviewFontFamily);
-  elements.previewFontSizeSlider?.addEventListener('input', handlePreviewFontSizeChange);
-  elements.resetPreviewFontSizeButton?.addEventListener('click', resetPreviewFontSize);
-  elements.previewTextColorPicker?.addEventListener('change', handlePreviewTextColorChange);
-  elements.resetPreviewTextColorButton?.addEventListener('click', resetPreviewTextColor);
-  elements.previewFontStyleSelect?.addEventListener('change', handlePreviewFontStyleChange);
-  
-  // Status Bar settings event listeners
-  elements.statusbarBgColorPicker?.addEventListener('change', handleStatusBarBgColorChange);
-  elements.resetStatusbarBgColorButton?.addEventListener('click', resetStatusBarBgColor);
-  elements.statusbarFontFamilySelect?.addEventListener('change', handleStatusBarFontFamilyChange);
-  elements.resetStatusbarFontFamilyButton?.addEventListener('click', resetStatusBarFontFamily);
-  elements.statusbarFontSizeSlider?.addEventListener('input', handleStatusBarFontSizeChange);
-  elements.resetStatusbarFontSizeButton?.addEventListener('click', resetStatusBarFontSize);
-  elements.statusbarTextColorPicker?.addEventListener('change', handleStatusBarTextColorChange);
-  elements.resetStatusbarTextColorButton?.addEventListener('click', resetStatusBarTextColor);
-  elements.statusbarFontStyleSelect?.addEventListener('change', handleStatusBarFontStyleChange);
-  
-  // Title Bar settings event listeners
-  elements.titlebarBgColorPicker?.addEventListener('change', handleTitleBarBgColorChange);
-  elements.resetTitlebarBgColorButton?.addEventListener('click', resetTitleBarBgColor);
-  elements.titlebarFontFamilySelect?.addEventListener('change', handleTitleBarFontFamilyChange);
-  elements.resetTitlebarFontFamilyButton?.addEventListener('click', resetTitleBarFontFamily);
-  elements.titlebarFontSizeSlider?.addEventListener('input', handleTitleBarFontSizeChange);
-  elements.resetTitlebarFontSizeButton?.addEventListener('click', resetTitleBarFontSize);
-  elements.titlebarTextColorPicker?.addEventListener('change', handleTitleBarTextColorChange);
-  elements.resetTitlebarTextColorButton?.addEventListener('click', resetTitleBarTextColor);
-  elements.titlebarFontStyleSelect?.addEventListener('change', handleTitleBarFontStyleChange);
-  elements.titlebarShowPath?.addEventListener('change', handleTitleBarShowPathChange);
-  
-  // Export/Import event listeners
-  elements.exportSettingsBtn?.addEventListener('click', handleExportSettings);
-  elements.importSettingsBtn?.addEventListener('click', () => elements.importSettingsInput?.click());
-  elements.importSettingsInput?.addEventListener('change', handleImportSettings);
-  elements.copySettingsBtn?.addEventListener('click', handleCopySettings);
-  elements.downloadSettingsBtn?.addEventListener('click', handleDownloadSettings);
-  
-  // Component inheritance checkbox listeners
-  elements.workspaceUseGlobalBg?.addEventListener('change', handleWorkspaceGlobalToggle);
-  elements.workspaceUseGlobalFont?.addEventListener('change', handleWorkspaceGlobalToggle);
-  elements.workspaceUseGlobalSize?.addEventListener('change', handleWorkspaceGlobalToggle);
-  elements.workspaceUseGlobalColor?.addEventListener('change', handleWorkspaceGlobalToggle);
-  elements.workspaceUseGlobalStyle?.addEventListener('change', handleWorkspaceGlobalToggle);
-  elements.editorUseGlobalBg?.addEventListener('change', handleEditorGlobalToggle);
-  elements.editorUseGlobalFont?.addEventListener('change', handleEditorGlobalToggle);
-  elements.editorUseGlobalSize?.addEventListener('change', handleEditorGlobalToggle);
-  elements.editorUseGlobalColor?.addEventListener('change', handleEditorGlobalToggle);
-  elements.editorUseGlobalStyle?.addEventListener('change', handleEditorGlobalToggle);
-  elements.previewUseGlobalBg?.addEventListener('change', handlePreviewGlobalToggle);
-  elements.previewUseGlobalFont?.addEventListener('change', handlePreviewGlobalToggle);
-  elements.previewUseGlobalSize?.addEventListener('change', handlePreviewGlobalToggle);
-  elements.previewUseGlobalColor?.addEventListener('change', handlePreviewGlobalToggle);
-  elements.previewUseGlobalStyle?.addEventListener('change', handlePreviewGlobalToggle);
-  elements.statusbarUseGlobalBg?.addEventListener('change', handleStatusBarGlobalToggle);
-  elements.statusbarUseGlobalFont?.addEventListener('change', handleStatusBarGlobalToggle);
-  elements.statusbarUseGlobalSize?.addEventListener('change', handleStatusBarGlobalToggle);
-  elements.statusbarUseGlobalColor?.addEventListener('change', handleStatusBarGlobalToggle);
-  elements.statusbarUseGlobalStyle?.addEventListener('change', handleStatusBarGlobalToggle);
-  elements.titlebarUseGlobalBg?.addEventListener('change', handleTitleBarGlobalToggle);
-  elements.titlebarUseGlobalFont?.addEventListener('change', handleTitleBarGlobalToggle);
-  elements.titlebarUseGlobalSize?.addEventListener('change', handleTitleBarGlobalToggle);
-  elements.titlebarUseGlobalColor?.addEventListener('change', handleTitleBarGlobalToggle);
-  elements.titlebarUseGlobalStyle?.addEventListener('change', handleTitleBarGlobalToggle);
+  // Unified component settings event listeners
+  elements.componentSelector?.addEventListener('change', handleComponentSelectionChange);
+  elements.componentUseGlobalBg?.addEventListener('change', handleComponentGlobalToggle);
+  elements.componentBgColorPicker?.addEventListener('change', handleComponentBgColorChange);
+  elements.resetComponentBgColorButton?.addEventListener('click', resetComponentBgColor);
+  elements.componentUseGlobalFont?.addEventListener('change', handleComponentGlobalToggle);
+  elements.componentFontFamilySelect?.addEventListener('change', handleComponentFontFamilyChange);
+  elements.resetComponentFontFamilyButton?.addEventListener('click', resetComponentFontFamily);
+  elements.componentUseGlobalSize?.addEventListener('change', handleComponentGlobalToggle);
+  elements.componentFontSizeSlider?.addEventListener('input', handleComponentFontSizeChange);
+  elements.resetComponentFontSizeButton?.addEventListener('click', resetComponentFontSize);
+  elements.componentUseGlobalColor?.addEventListener('change', handleComponentGlobalToggle);
+  elements.componentTextColorPicker?.addEventListener('change', handleComponentTextColorChange);
+  elements.resetComponentTextColorButton?.addEventListener('click', resetComponentTextColor);
+  elements.componentUseGlobalStyle?.addEventListener('change', handleComponentGlobalToggle);
+  elements.componentFontStyleSelect?.addEventListener('change', handleComponentFontStyleChange);
+  elements.componentShowPath?.addEventListener('change', handleComponentShowPathChange);
   
   elements.settingsModal?.addEventListener('click', (event) => {
     if (event.target === elements.settingsModal) {
@@ -12358,6 +12477,9 @@ function initializeSettingsTabs() {
   // Initialize advanced settings toggles
   initializeAdvancedToggles();
 
+  // Initialize component selector
+  initializeComponentSelector();
+
   window._settingsTabsInitialized = true;
 }
 
@@ -12500,6 +12622,180 @@ function loadTrafficLightSettings() {
   }
 }
 
+function initializeComponentSelector() {
+  const componentSelector = document.getElementById('component-selector');
+  if (!componentSelector) return;
+
+  // Initialize with workspace selected
+  updateComponentSettings('workspace');
+
+  // Add event listener for component selection
+  componentSelector.addEventListener('change', (event) => {
+    const selectedComponent = event.target.value;
+    updateComponentSettings(selectedComponent);
+  });
+}
+
+function updateComponentSettings(component) {
+  // Component-specific settings mapping
+  const componentSettings = {
+    workspace: {
+      bgColor: '#f1f3f4',
+      fontSize: { min: 11, max: 18, default: 13 },
+      textColor: '#374151',
+      showTitlebarSpecific: false
+    },
+    editor: {
+      bgColor: '#ffffff',
+      fontSize: { min: 12, max: 20, default: 14 },
+      textColor: '#1f2933',
+      showTitlebarSpecific: false
+    },
+    preview: {
+      bgColor: '#ffffff',
+      fontSize: { min: 12, max: 20, default: 14 },
+      textColor: '#1f2933',
+      showTitlebarSpecific: false
+    },
+    statusbar: {
+      bgColor: '#f1f3f4',
+      fontSize: { min: 10, max: 16, default: 12 },
+      textColor: '#374151',
+      showTitlebarSpecific: false
+    },
+    titlebar: {
+      bgColor: '#ffffff',
+      fontSize: { min: 11, max: 18, default: 14 },
+      textColor: '#1f2933',
+      showTitlebarSpecific: true
+    }
+  };
+
+  const settings = componentSettings[component];
+  if (!settings) return;
+
+  // Update slider ranges and values
+  const fontSizeSlider = document.getElementById('component-font-size-slider');
+  const fontSizeValue = document.getElementById('component-font-size-value');
+  if (fontSizeSlider && fontSizeValue) {
+    fontSizeSlider.min = settings.fontSize.min;
+    fontSizeSlider.max = settings.fontSize.max;
+    fontSizeSlider.value = settings.fontSize.default;
+    fontSizeValue.textContent = `${settings.fontSize.default}px`;
+  }
+
+  // Update color picker defaults
+  const bgColorPicker = document.getElementById('component-bg-color-picker');
+  const textColorPicker = document.getElementById('component-text-color-picker');
+  if (bgColorPicker) bgColorPicker.value = settings.bgColor;
+  if (textColorPicker) textColorPicker.value = settings.textColor;
+
+  // Show/hide titlebar-specific setting
+  const titlebarSpecificSetting = document.getElementById('titlebar-specific-setting');
+  if (titlebarSpecificSetting) {
+    if (settings.showTitlebarSpecific) {
+      titlebarSpecificSetting.removeAttribute('hidden');
+    } else {
+      titlebarSpecificSetting.setAttribute('hidden', '');
+    }
+  }
+
+  // Load saved settings for this component
+  loadComponentSettings(component);
+}
+
+function loadComponentSettings(component) {
+  // Load checkbox states
+  const useGlobalBg = localStorage.getItem(`${component}-use-global-bg`) !== 'false';
+  const useGlobalFont = localStorage.getItem(`${component}-use-global-font`) !== 'false';
+  const useGlobalSize = localStorage.getItem(`${component}-use-global-size`) !== 'false';
+  const useGlobalColor = localStorage.getItem(`${component}-use-global-color`) !== 'false';
+  const useGlobalStyle = localStorage.getItem(`${component}-use-global-style`) !== 'false';
+
+  // Update checkboxes
+  const bgCheckbox = document.getElementById('component-use-global-bg');
+  const fontCheckbox = document.getElementById('component-use-global-font');
+  const sizeCheckbox = document.getElementById('component-use-global-size');
+  const colorCheckbox = document.getElementById('component-use-global-color');
+  const styleCheckbox = document.getElementById('component-use-global-style');
+
+  if (bgCheckbox) bgCheckbox.checked = useGlobalBg;
+  if (fontCheckbox) fontCheckbox.checked = useGlobalFont;
+  if (sizeCheckbox) sizeCheckbox.checked = useGlobalSize;
+  if (colorCheckbox) colorCheckbox.checked = useGlobalColor;
+  if (styleCheckbox) styleCheckbox.checked = useGlobalStyle;
+
+  // Update control states
+  updateComponentControlStates(component);
+
+  // Load saved values
+  const savedBgColor = localStorage.getItem(`${component}-bg-color`);
+  const savedFontFamily = localStorage.getItem(`${component}-font-family`);
+  const savedFontSize = localStorage.getItem(`${component}-font-size`);
+  const savedTextColor = localStorage.getItem(`${component}-text-color`);
+  const savedFontStyle = localStorage.getItem(`${component}-font-style`);
+
+  const bgColorPicker = document.getElementById('component-bg-color-picker');
+  const fontFamilySelect = document.getElementById('component-font-family-select');
+  const fontSizeSlider = document.getElementById('component-font-size-slider');
+  const fontSizeValue = document.getElementById('component-font-size-value');
+  const textColorPicker = document.getElementById('component-text-color-picker');
+  const fontStyleSelect = document.getElementById('component-font-style-select');
+
+  if (savedBgColor && bgColorPicker) bgColorPicker.value = savedBgColor;
+  if (savedFontFamily && fontFamilySelect) fontFamilySelect.value = savedFontFamily;
+  if (savedFontSize && fontSizeSlider && fontSizeValue) {
+    fontSizeSlider.value = savedFontSize;
+    fontSizeValue.textContent = `${savedFontSize}px`;
+  }
+  if (savedTextColor && textColorPicker) textColorPicker.value = savedTextColor;
+  if (savedFontStyle && fontStyleSelect) fontStyleSelect.value = savedFontStyle;
+
+  // Load titlebar-specific setting
+  if (component === 'titlebar') {
+    const showPath = localStorage.getItem('titlebar-show-path') !== 'false';
+    const showPathCheckbox = document.getElementById('titlebar-show-path');
+    if (showPathCheckbox) showPathCheckbox.checked = showPath;
+  }
+}
+
+function updateComponentControlStates(component) {
+  const bgCheckbox = document.getElementById('component-use-global-bg');
+  const fontCheckbox = document.getElementById('component-use-global-font');
+  const sizeCheckbox = document.getElementById('component-use-global-size');
+  const colorCheckbox = document.getElementById('component-use-global-color');
+  const styleCheckbox = document.getElementById('component-use-global-style');
+
+  const bgColorPicker = document.getElementById('component-bg-color-picker');
+  const bgResetBtn = document.getElementById('reset-component-bg-color');
+  const fontFamilySelect = document.getElementById('component-font-family-select');
+  const fontResetBtn = document.getElementById('reset-component-font-family');
+  const fontSizeSlider = document.getElementById('component-font-size-slider');
+  const fontSizeResetBtn = document.getElementById('reset-component-font-size');
+  const textColorPicker = document.getElementById('component-text-color-picker');
+  const textColorResetBtn = document.getElementById('reset-component-text-color');
+  const fontStyleSelect = document.getElementById('component-font-style-select');
+
+  // Background controls
+  if (bgColorPicker) bgColorPicker.disabled = bgCheckbox?.checked || false;
+  if (bgResetBtn) bgResetBtn.disabled = bgCheckbox?.checked || false;
+
+  // Font family controls
+  if (fontFamilySelect) fontFamilySelect.disabled = fontCheckbox?.checked || false;
+  if (fontResetBtn) fontResetBtn.disabled = fontCheckbox?.checked || false;
+
+  // Font size controls
+  if (fontSizeSlider) fontSizeSlider.disabled = sizeCheckbox?.checked || false;
+  if (fontSizeResetBtn) fontSizeResetBtn.disabled = sizeCheckbox?.checked || false;
+
+  // Text color controls
+  if (textColorPicker) textColorPicker.disabled = colorCheckbox?.checked || false;
+  if (textColorResetBtn) textColorResetBtn.disabled = colorCheckbox?.checked || false;
+
+  // Font style controls
+  if (fontStyleSelect) fontStyleSelect.disabled = styleCheckbox?.checked || false;
+}
+
 function initializeSliders() {
   // Title bar size slider
   const titleBarSlider = document.getElementById('title-bar-size-slider');
@@ -12507,14 +12803,22 @@ function initializeSliders() {
   const titleBarReset = document.getElementById('reset-title-bar-size');
   
   if (titleBarSlider && titleBarValue) {
+    // Load saved value
+    const savedTitleBarSize = localStorage.getItem('title-bar-size') || '32';
+    titleBarSlider.value = savedTitleBarSize;
+    titleBarValue.textContent = `${savedTitleBarSize}px`;
+    applyTitleBarSize(savedTitleBarSize);
+
     titleBarSlider.addEventListener('input', (e) => {
       const value = e.target.value;
       titleBarValue.textContent = `${value}px`;
+      localStorage.setItem('title-bar-size', value);
       applyTitleBarSize(value);
     });
-    
+
     if (titleBarReset) {
       titleBarReset.addEventListener('click', () => {
+        localStorage.removeItem('title-bar-size');
         titleBarSlider.value = 32;
         titleBarValue.textContent = '32px';
         applyTitleBarSize(32);
@@ -12614,7 +12918,10 @@ function initializeSliders() {
 }
 
 function applyTitleBarSize(size) {
-  // Apply title bar size changes
+  // Apply title bar size changes to CSS variable for macOS title bar
+  document.documentElement.style.setProperty('--title-bar-height', `${size}px`);
+
+  // Also apply to workspace toolbar for consistency
   const titleBar = document.querySelector('.workspace__toolbar');
   if (titleBar) {
     titleBar.style.height = `${size}px`;
@@ -12886,138 +13193,7 @@ function applyTheme(theme) {
   }
 }
 
-function loadComponentSettings() {
-  // Load workspace settings
-  const workspaceBgColor = localStorage.getItem('workspace-bg-color') || '#f1f3f4';
-  const workspaceFontFamily = localStorage.getItem('workspace-font-family') || 'system';
-  const workspaceFontSize = localStorage.getItem('workspace-font-size') || '13';
-  const workspaceTextColor = localStorage.getItem('workspace-text-color') || '#374151';
-  const workspaceFontStyle = localStorage.getItem('workspace-font-style') || 'normal';
-  
-  // Load workspace global toggles
-  const workspaceUseGlobalBg = localStorage.getItem('workspace-use-global-bg') !== 'false';
-  const workspaceUseGlobalFont = localStorage.getItem('workspace-use-global-font') !== 'false';
-  const workspaceUseGlobalSize = localStorage.getItem('workspace-use-global-size') !== 'false';
-  const workspaceUseGlobalColor = localStorage.getItem('workspace-use-global-color') !== 'false';
-  const workspaceUseGlobalStyle = localStorage.getItem('workspace-use-global-style') !== 'false';
-  
-  if (elements.workspaceUseGlobalBg) elements.workspaceUseGlobalBg.checked = workspaceUseGlobalBg;
-  if (elements.workspaceUseGlobalFont) elements.workspaceUseGlobalFont.checked = workspaceUseGlobalFont;
-  if (elements.workspaceUseGlobalSize) elements.workspaceUseGlobalSize.checked = workspaceUseGlobalSize;
-  if (elements.workspaceUseGlobalColor) elements.workspaceUseGlobalColor.checked = workspaceUseGlobalColor;
-  if (elements.workspaceUseGlobalStyle) elements.workspaceUseGlobalStyle.checked = workspaceUseGlobalStyle;
-  
-  if (elements.workspaceBgColorPicker) {
-    elements.workspaceBgColorPicker.value = workspaceBgColor;
-    elements.workspaceBgColorPicker.disabled = workspaceUseGlobalBg;
-  }
-  if (elements.workspaceFontFamilySelect) {
-    elements.workspaceFontFamilySelect.value = workspaceFontFamily;
-    elements.workspaceFontFamilySelect.disabled = workspaceUseGlobalFont;
-  }
-  if (elements.workspaceFontSizeSlider) {
-    elements.workspaceFontSizeSlider.value = workspaceFontSize;
-    elements.workspaceFontSizeSlider.disabled = workspaceUseGlobalSize;
-  }
-  if (elements.workspaceFontSizeValue) elements.workspaceFontSizeValue.textContent = workspaceFontSize + 'px';
-  if (elements.workspaceTextColorPicker) {
-    elements.workspaceTextColorPicker.value = workspaceTextColor;
-    elements.workspaceTextColorPicker.disabled = workspaceUseGlobalColor;
-  }
-  if (elements.workspaceFontStyleSelect) {
-    elements.workspaceFontStyleSelect.value = workspaceFontStyle;
-    elements.workspaceFontStyleSelect.disabled = workspaceUseGlobalStyle;
-  }
-  
-  // Load editor settings
-  const editorBgColor = localStorage.getItem('editor-bg-color') || '#ffffff';
-  const editorFontFamily = localStorage.getItem('editor-font-family') || 'system';
-  const editorFontSize = localStorage.getItem('editor-font-size') || '14';
-  const editorTextColor = localStorage.getItem('editor-text-color') || '#1f2933';
-  const editorFontStyle = localStorage.getItem('editor-font-style') || 'normal';
-  
-  // Load editor global toggles
-  const editorUseGlobalBg = localStorage.getItem('editor-use-global-bg') !== 'false';
-  const editorUseGlobalFont = localStorage.getItem('editor-use-global-font') !== 'false';
-  const editorUseGlobalSize = localStorage.getItem('editor-use-global-size') !== 'false';
-  const editorUseGlobalColor = localStorage.getItem('editor-use-global-color') !== 'false';
-  const editorUseGlobalStyle = localStorage.getItem('editor-use-global-style') !== 'false';
-  
-  if (elements.editorUseGlobalBg) elements.editorUseGlobalBg.checked = editorUseGlobalBg;
-  if (elements.editorUseGlobalFont) elements.editorUseGlobalFont.checked = editorUseGlobalFont;
-  if (elements.editorUseGlobalSize) elements.editorUseGlobalSize.checked = editorUseGlobalSize;
-  if (elements.editorUseGlobalColor) elements.editorUseGlobalColor.checked = editorUseGlobalColor;
-  if (elements.editorUseGlobalStyle) elements.editorUseGlobalStyle.checked = editorUseGlobalStyle;
-  
-  if (elements.editorBgColorPicker) {
-    elements.editorBgColorPicker.value = editorBgColor;
-    elements.editorBgColorPicker.disabled = editorUseGlobalBg;
-  }
-  if (elements.editorFontFamilySelect) {
-    elements.editorFontFamilySelect.value = editorFontFamily;
-    elements.editorFontFamilySelect.disabled = editorUseGlobalFont;
-  }
-  if (elements.editorFontSizeSlider) {
-    elements.editorFontSizeSlider.value = editorFontSize;
-    elements.editorFontSizeSlider.disabled = editorUseGlobalSize;
-  }
-  if (elements.editorFontSizeValue) elements.editorFontSizeValue.textContent = editorFontSize + 'px';
-  if (elements.editorTextColorPicker) {
-    elements.editorTextColorPicker.value = editorTextColor;
-    elements.editorTextColorPicker.disabled = editorUseGlobalColor;
-  }
-  if (elements.editorFontStyleSelect) {
-    elements.editorFontStyleSelect.value = editorFontStyle;
-    elements.editorFontStyleSelect.disabled = editorUseGlobalStyle;
-  }
-  
-  // Load preview settings
-  const previewBgColor = localStorage.getItem('preview-bg-color') || '#ffffff';
-  const previewFontFamily = localStorage.getItem('preview-font-family') || 'system';
-  const previewFontSize = localStorage.getItem('preview-font-size') || '14';
-  const previewTextColor = localStorage.getItem('preview-text-color') || '#1f2933';
-  const previewFontStyle = localStorage.getItem('preview-font-style') || 'normal';
-  
-  // Load preview global toggles
-  const previewUseGlobalBg = localStorage.getItem('preview-use-global-bg') !== 'false';
-  const previewUseGlobalFont = localStorage.getItem('preview-use-global-font') !== 'false';
-  const previewUseGlobalSize = localStorage.getItem('preview-use-global-size') !== 'false';
-  const previewUseGlobalColor = localStorage.getItem('preview-use-global-color') !== 'false';
-  const previewUseGlobalStyle = localStorage.getItem('preview-use-global-style') !== 'false';
-  
-  if (elements.previewUseGlobalBg) elements.previewUseGlobalBg.checked = previewUseGlobalBg;
-  if (elements.previewUseGlobalFont) elements.previewUseGlobalFont.checked = previewUseGlobalFont;
-  if (elements.previewUseGlobalSize) elements.previewUseGlobalSize.checked = previewUseGlobalSize;
-  if (elements.previewUseGlobalColor) elements.previewUseGlobalColor.checked = previewUseGlobalColor;
-  if (elements.previewUseGlobalStyle) elements.previewUseGlobalStyle.checked = previewUseGlobalStyle;
-  
-  if (elements.previewBgColorPicker) {
-    elements.previewBgColorPicker.value = previewBgColor;
-    elements.previewBgColorPicker.disabled = previewUseGlobalBg;
-  }
-  if (elements.previewFontFamilySelect) {
-    elements.previewFontFamilySelect.value = previewFontFamily;
-    elements.previewFontFamilySelect.disabled = previewUseGlobalFont;
-  }
-  if (elements.previewFontSizeSlider) {
-    elements.previewFontSizeSlider.value = previewFontSize;
-    elements.previewFontSizeSlider.disabled = previewUseGlobalSize;
-  }
-  if (elements.previewFontSizeValue) elements.previewFontSizeValue.textContent = previewFontSize + 'px';
-  if (elements.previewTextColorPicker) {
-    elements.previewTextColorPicker.value = previewTextColor;
-    elements.previewTextColorPicker.disabled = previewUseGlobalColor;
-  }
-  if (elements.previewFontStyleSelect) {
-    elements.previewFontStyleSelect.value = previewFontStyle;
-    elements.previewFontStyleSelect.disabled = previewUseGlobalStyle;
-  }
-  
-  // Apply all component styles
-  applyWorkspaceStyles();
-  applyEditorStyles();
-  applyPreviewStyles();
-}
+
 
 function handleBgColorChange(event) {
   const color = event.target.value;
@@ -13216,11 +13392,7 @@ function updateSelectPreview(selectEl) {
 function updateAllFontPreviews() {
   const selects = [
     elements.fontFamilySelect,
-    elements.workspaceFontFamilySelect,
-    elements.editorFontFamilySelect,
-    elements.previewFontFamilySelect,
-    elements.statusbarFontFamilySelect,
-    elements.titlebarFontFamilySelect
+    elements.componentFontFamilySelect
   ].filter(Boolean);
 
   selects.forEach(sel => updateSelectPreview(sel));
@@ -13761,6 +13933,201 @@ function handleTitleBarFontStyleChange(event) {
 }
 
 function handleTitleBarShowPathChange(event) {
+  const showPath = event.target.checked;
+  localStorage.setItem('titlebar-show-path', showPath);
+  updateTitleBarDisplay();
+}
+
+// Unified Component Settings Handlers
+function handleComponentSelectionChange(event) {
+  const selectedComponent = event.target.value;
+  updateComponentSettings(selectedComponent);
+}
+
+function handleComponentGlobalToggle(event) {
+  const component = elements.componentSelector?.value;
+  if (!component) return;
+
+  const setting = event.target.id.replace('component-use-global-', '');
+  const useGlobal = event.target.checked;
+  localStorage.setItem(`${component}-use-global-${setting}`, useGlobal);
+
+  // Update control states immediately
+  updateComponentControlStates(component);
+
+  // Apply the appropriate styles based on component
+  switch(component) {
+    case 'workspace': applyWorkspaceStyles(); break;
+    case 'editor': applyEditorStyles(); break;
+    case 'preview': applyPreviewStyles(); break;
+    case 'statusbar': applyStatusBarStyles(); break;
+    case 'titlebar': applyTitleBarStyles(); break;
+  }
+}
+
+function handleComponentBgColorChange(event) {
+  const component = elements.componentSelector?.value;
+  if (!component) return;
+  
+  const color = event.target.value;
+  localStorage.setItem(`${component}-bg-color`, color);
+  
+  switch(component) {
+    case 'workspace': applyWorkspaceStyles(); break;
+    case 'editor': applyEditorStyles(); break;
+    case 'preview': applyPreviewStyles(); break;
+    case 'statusbar': applyStatusBarStyles(); break;
+    case 'titlebar': applyTitleBarStyles(); break;
+  }
+}
+
+function resetComponentBgColor() {
+  const component = elements.componentSelector?.value;
+  if (!component) return;
+  
+  localStorage.removeItem(`${component}-bg-color`);
+  if (elements.componentBgColorPicker) {
+    const defaultColor = component === 'workspace' ? '#f1f3f4' : '#ffffff';
+    elements.componentBgColorPicker.value = defaultColor;
+  }
+  
+  switch(component) {
+    case 'workspace': applyWorkspaceStyles(); break;
+    case 'editor': applyEditorStyles(); break;
+    case 'preview': applyPreviewStyles(); break;
+    case 'statusbar': applyStatusBarStyles(); break;
+    case 'titlebar': applyTitleBarStyles(); break;
+  }
+}
+
+function handleComponentFontFamilyChange(event) {
+  const component = elements.componentSelector?.value;
+  if (!component) return;
+  
+  const fontFamily = event.target.value;
+  localStorage.setItem(`${component}-font-family`, fontFamily);
+  
+  switch(component) {
+    case 'workspace': applyWorkspaceStyles(); break;
+    case 'editor': applyEditorStyles(); break;
+    case 'preview': applyPreviewStyles(); break;
+    case 'statusbar': applyStatusBarStyles(); break;
+    case 'titlebar': applyTitleBarStyles(); break;
+  }
+}
+
+function resetComponentFontFamily() {
+  const component = elements.componentSelector?.value;
+  if (!component) return;
+  
+  localStorage.removeItem(`${component}-font-family`);
+  if (elements.componentFontFamilySelect) {
+    elements.componentFontFamilySelect.value = 'system';
+  }
+  
+  switch(component) {
+    case 'workspace': applyWorkspaceStyles(); break;
+    case 'editor': applyEditorStyles(); break;
+    case 'preview': applyPreviewStyles(); break;
+    case 'statusbar': applyStatusBarStyles(); break;
+    case 'titlebar': applyTitleBarStyles(); break;
+  }
+}
+
+function handleComponentFontSizeChange(event) {
+  const component = elements.componentSelector?.value;
+  if (!component) return;
+  
+  const fontSize = event.target.value;
+  localStorage.setItem(`${component}-font-size`, fontSize);
+  if (elements.componentFontSizeValue) {
+    elements.componentFontSizeValue.textContent = fontSize + 'px';
+  }
+  
+  switch(component) {
+    case 'workspace': applyWorkspaceStyles(); break;
+    case 'editor': applyEditorStyles(); break;
+    case 'preview': applyPreviewStyles(); break;
+    case 'statusbar': applyStatusBarStyles(); break;
+    case 'titlebar': applyTitleBarStyles(); break;
+  }
+}
+
+function resetComponentFontSize() {
+  const component = elements.componentSelector?.value;
+  if (!component) return;
+  
+  localStorage.removeItem(`${component}-font-size`);
+  if (elements.componentFontSizeSlider) {
+    const defaultSize = component === 'statusbar' ? '12' : component === 'titlebar' ? '13' : '14';
+    elements.componentFontSizeSlider.value = defaultSize;
+  }
+  if (elements.componentFontSizeValue) {
+    const defaultSize = component === 'statusbar' ? '12' : component === 'titlebar' ? '13' : '14';
+    elements.componentFontSizeValue.textContent = defaultSize + 'px';
+  }
+  
+  switch(component) {
+    case 'workspace': applyWorkspaceStyles(); break;
+    case 'editor': applyEditorStyles(); break;
+    case 'preview': applyPreviewStyles(); break;
+    case 'statusbar': applyStatusBarStyles(); break;
+    case 'titlebar': applyTitleBarStyles(); break;
+  }
+}
+
+function handleComponentTextColorChange(event) {
+  const component = elements.componentSelector?.value;
+  if (!component) return;
+  
+  const color = event.target.value;
+  localStorage.setItem(`${component}-text-color`, color);
+  
+  switch(component) {
+    case 'workspace': applyWorkspaceStyles(); break;
+    case 'editor': applyEditorStyles(); break;
+    case 'preview': applyPreviewStyles(); break;
+    case 'statusbar': applyStatusBarStyles(); break;
+    case 'titlebar': applyTitleBarStyles(); break;
+  }
+}
+
+function resetComponentTextColor() {
+  const component = elements.componentSelector?.value;
+  if (!component) return;
+  
+  localStorage.removeItem(`${component}-text-color`);
+  if (elements.componentTextColorPicker) {
+    const defaultColor = component === 'workspace' ? '#202124' : '#000000';
+    elements.componentTextColorPicker.value = defaultColor;
+  }
+  
+  switch(component) {
+    case 'workspace': applyWorkspaceStyles(); break;
+    case 'editor': applyEditorStyles(); break;
+    case 'preview': applyPreviewStyles(); break;
+    case 'statusbar': applyStatusBarStyles(); break;
+    case 'titlebar': applyTitleBarStyles(); break;
+  }
+}
+
+function handleComponentFontStyleChange(event) {
+  const component = elements.componentSelector?.value;
+  if (!component) return;
+  
+  const fontStyle = event.target.value;
+  localStorage.setItem(`${component}-font-style`, fontStyle);
+  
+  switch(component) {
+    case 'workspace': applyWorkspaceStyles(); break;
+    case 'editor': applyEditorStyles(); break;
+    case 'preview': applyPreviewStyles(); break;
+    case 'statusbar': applyStatusBarStyles(); break;
+    case 'titlebar': applyTitleBarStyles(); break;
+  }
+}
+
+function handleComponentShowPathChange(event) {
   const showPath = event.target.checked;
   localStorage.setItem('titlebar-show-path', showPath);
   updateTitleBarDisplay();
@@ -14882,4 +15249,177 @@ function getTitleBarControls(setting) {
   }
 }
 
+const addImageHoverPreviews = () => {
+  if (!elements.preview || !elements.mathPreviewPopup || !elements.mathPreviewPopupContent) {
+    return;
+  }
+
+  // Remove existing hover listeners
+  const existingImages = elements.preview.querySelectorAll('img[data-hover-preview]');
+  existingImages.forEach(img => {
+    img.removeEventListener('mouseenter', img._hoverEnter);
+    img.removeEventListener('mouseleave', img._hoverLeave);
+  });
+
+  // Add hover listeners to all images
+  const images = elements.preview.querySelectorAll('img[data-raw-src]');
+  images.forEach(img => {
+    if (img.hasAttribute('data-hover-preview')) {
+      return; // Already processed
+    }
+
+    img.setAttribute('data-hover-preview', 'true');
+
+    const showPreview = (event) => {
+      const src = img.src || img.getAttribute('data-raw-src');
+      if (!src) return;
+
+      // Create a larger preview of the image
+      elements.mathPreviewPopupContent.innerHTML = `<img src="${src}" alt="Preview" style="max-width: 300px; max-height: 300px; object-fit: contain; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onload="this.style.display='block';" onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=color:#6c757d;text-align:center;>Image not found</div>';">`;
+
+      // Position the popup near the cursor
+      const popupX = event.clientX + 10;
+      const popupY = event.clientY + 10;
+
+      elements.mathPreviewPopup.style.left = `${popupX}px`;
+      elements.mathPreviewPopup.style.top = `${popupY}px`;
+
+      // Show the popup
+      elements.mathPreviewPopup.classList.add('visible');
+      elements.mathPreviewPopup.hidden = false;
+    };
+
+    const hidePreview = () => {
+      elements.mathPreviewPopup.classList.remove('visible');
+      elements.mathPreviewPopup.hidden = true;
+    };
+
+    img._hoverEnter = showPreview;
+    img._hoverLeave = hidePreview;
+
+    img.addEventListener('mouseenter', showPreview);
+    img.addEventListener('mouseleave', hidePreview);
+  });
+};
+
 initialize();
+
+// Initialize accessibility features
+function initializeAccessibility() {
+  // Load high contrast setting
+  const highContrastEnabled = localStorage.getItem(storageKeys.highContrast) === 'true';
+  if (elements.highContrastToggle) {
+    elements.highContrastToggle.checked = highContrastEnabled;
+    updateHighContrastMode(highContrastEnabled);
+  }
+  
+  // Load keybindings
+  loadKeybindings();
+  renderKeybindingsList();
+  
+  // Add event listeners
+  if (elements.highContrastToggle) {
+    elements.highContrastToggle.addEventListener('change', (e) => {
+      const enabled = e.target.checked;
+      localStorage.setItem(storageKeys.highContrast, enabled);
+      updateHighContrastMode(enabled);
+    });
+  }
+  
+  if (elements.resetKeybindingsBtn) {
+    elements.resetKeybindingsBtn.addEventListener('click', resetKeybindings);
+  }
+  
+  // Add global keydown listener for keybindings
+  document.addEventListener('keydown', handleKeybinding);
+}
+
+function updateHighContrastMode(enabled) {
+  if (enabled) {
+    document.body.setAttribute('data-high-contrast', 'true');
+  } else {
+    document.body.removeAttribute('data-high-contrast');
+  }
+}
+
+// Initialize accessibility features when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeAccessibility);
+} else {
+  initializeAccessibility();
+}
+
+// Export functionality
+async function handleExport(format) {
+  if (!elements.preview || !elements.editor) return;
+  
+  const note = getActiveNote();
+  if (!note) return;
+  
+  const title = note.title || 'Untitled';
+  const html = elements.preview.innerHTML;
+  const folderPath = elements.workspacePath?.title;
+  
+  try {
+    let result;
+    switch (format) {
+      case 'pdf':
+        result = await window.api.exportPreviewPdf({ html, title, folderPath });
+        break;
+      case 'html':
+        result = await window.api.exportPreviewHtml({ html, title, folderPath });
+        break;
+      case 'docx':
+        result = await window.api.exportPreviewDocx({ html, title, folderPath });
+        break;
+      case 'epub':
+        result = await window.api.exportPreviewEpub({ html, title, folderPath });
+        break;
+      default:
+        throw new Error(`Unsupported export format: ${format}`);
+    }
+    
+    if (result && result.filePath) {
+      showStatusMessage(`Exported to ${format.toUpperCase()} successfully`);
+    }
+  } catch (error) {
+    console.error(`Export failed:`, error);
+    showStatusMessage(`Export failed: ${error.message}`, 'error');
+  }
+}
+
+function showStatusMessage(message, type = 'info') {
+  if (elements.statusText) {
+    elements.statusText.textContent = message;
+    elements.statusText.className = type === 'error' ? 'status-error' : '';
+    
+    // Clear message after 5 seconds
+    setTimeout(() => {
+      elements.statusText.textContent = 'Ready.';
+      elements.statusText.className = '';
+    }, 5000);
+  }
+}
+
+// Add export event listeners
+function initializeExportHandlers() {
+  const exportOptions = [
+    { element: elements.exportPdfOption, format: 'pdf' },
+    { element: elements.exportHtmlOption, format: 'html' },
+    { element: elements.exportDocxOption, format: 'docx' },
+    { element: elements.exportEpubOption, format: 'epub' }
+  ];
+  
+  exportOptions.forEach(({ element, format }) => {
+    if (element) {
+      element.addEventListener('click', () => handleExport(format));
+    }
+  });
+}
+
+// Initialize export handlers when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeExportHandlers);
+} else {
+  initializeExportHandlers();
+}
