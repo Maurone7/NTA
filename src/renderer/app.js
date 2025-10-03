@@ -3643,6 +3643,17 @@ const openNoteInPane = (noteId, pane = 'left') => {
   // Persist pane assignments
   try { localStorage.setItem(storageKeys.editorPanes, JSON.stringify(state.editorPanes)); } catch (e) { /* ignore */ }
 
+  // Defensive immediate population: ensure the target pane's textarea is
+  // updated immediately so opening the same note in multiple panes works
+  // reliably (e.g., left then a dynamic pane).
+  try {
+    const inst = editorInstances[pane];
+    if (inst && inst.el) {
+      inst.el.disabled = false;
+      inst.el.value = note.content ?? '';
+    }
+  } catch (e) { /* ignore */ }
+
   renderWorkspaceTree();
   renderActiveNote();
   updateEditorPaneVisuals();
