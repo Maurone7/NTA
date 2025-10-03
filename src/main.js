@@ -6,7 +6,7 @@ const fsp = fs.promises;
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { createNotesStore } = require('./store/notesStore');
-const { loadFolderNotes, readPdfAsDataUri } = require('./store/folderManager');
+const { loadFolderNotes, readPdfAsDataUri, createMarkdownFile, renameMarkdownFile, saveMarkdownFile } = require('./store/folderManager');
 
 // Helper function to convert HTML to DOCX children
 async function htmlToDocxChildren(html, folderPath) {
@@ -480,7 +480,13 @@ const bootstrap = async () => {
     }
 
     try {
-      return await createMarkdownFile(payload.folderPath, payload.fileName);
+      // Require the folder manager at call time to avoid potential module resolution or
+      // initialization ordering issues that can lead to a ReferenceError.
+      const folderManager = require('./store/folderManager');
+      if (typeof folderManager.createMarkdownFile !== 'function') {
+        throw new Error('createMarkdownFile is not available');
+      }
+      return await folderManager.createMarkdownFile(payload.folderPath, payload.fileName);
     } catch (error) {
       console.error('Failed to create markdown file', error);
       throw error;
@@ -493,7 +499,11 @@ const bootstrap = async () => {
     }
 
     try {
-      return await renameMarkdownFile(payload.workspaceFolder, payload.oldPath, payload.newFileName);
+      const folderManager = require('./store/folderManager');
+      if (typeof folderManager.renameMarkdownFile !== 'function') {
+        throw new Error('renameMarkdownFile is not available');
+      }
+      return await folderManager.renameMarkdownFile(payload.workspaceFolder, payload.oldPath, payload.newFileName);
     } catch (error) {
       console.error('Failed to rename markdown file', error);
       throw error;
@@ -540,6 +550,19 @@ const bootstrap = async () => {
     }
 
     try {
+      // Ensure the file exists and is accessible before attempting to read it.
+      try {
+        const st = await fsp.stat(absolutePath);
+        if (!st.isFile()) {
+          console.warn(`Resource resolved but not a file: ${absolutePath}`);
+          return { value: null };
+        }
+      } catch (statErr) {
+        // File does not exist or is inaccessible
+        console.warn(`Resource not found or inaccessible: ${absolutePath}`, statErr);
+        return { value: null };
+      }
+
       const buffer = await fsp.readFile(absolutePath);
       let mimeType;
       

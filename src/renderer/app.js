@@ -1,351 +1,108 @@
-const elements = {
-  appShell: document.querySelector('.app-shell'),
-  workspaceTree: document.getElementById('workspace-tree'),
-  workspaceEmpty: document.getElementById('workspace-empty'),
-  workspacePath: document.getElementById('workspace-path'),
-  workspaceContent: document.querySelector('.workspace__content'),
-  workspaceSplitter: document.getElementById('workspace-splitter'),
-  sidebarResizeHandle: document.querySelector('.sidebar-resize-handle'),
-  hashtagResizeHandle: document.getElementById('hashtag-resize-handle'),
-  explorer: document.querySelector('.explorer'),
-  editor: document.getElementById('note-editor'),
-  preview: document.getElementById('markdown-preview'),
-  pdfViewer: document.getElementById('pdf-viewer'),
-  codeViewer: document.getElementById('code-viewer'),
-  codeViewerCode: document.querySelector('#code-viewer code'),
-  imageViewer: document.getElementById('image-viewer'),
-  imageViewerImg: document.getElementById('image-viewer-img'),
-  imageViewerCaption: document.getElementById('image-viewer-caption'),
-  imageViewerError: document.getElementById('image-viewer-error'),
-  videoViewer: document.getElementById('video-viewer'),
-  videoViewerVideo: document.getElementById('video-viewer-video'),
-  videoViewerCaption: document.getElementById('video-viewer-caption'),
-  videoViewerError: document.getElementById('video-viewer-error'),
-  htmlViewer: document.getElementById('html-viewer'),
-  htmlViewerFrame: document.getElementById('html-viewer-frame'),
-  htmlViewerError: document.getElementById('html-viewer-error'),
-  wikiSuggestions: document.getElementById('wikilink-suggestions'),
-  hashtagSuggestions: document.getElementById('hashtag-suggestions'),
-  fileSuggestions: document.getElementById('file-suggestions'),
-  statusText: document.getElementById('status-text'),
-  fileName: document.getElementById('file-name'),
-  filePath: document.getElementById('file-path'),
-  createFileButton: document.getElementById('create-file-button'),
-  toggleSidebarButton: document.getElementById('toggle-sidebar-button'),
-  // dual editor removed
-  togglePreviewButton: document.getElementById('toggle-preview-button'),
-  renameFileForm: document.getElementById('rename-file-form'),
-  renameFileInput: document.getElementById('rename-file-input'),
-  editorSearch: document.getElementById('editor-search'),
-  editorSearchInput: document.getElementById('editor-search-input'),
-  editorSearchPrevButton: document.getElementById('editor-search-prev'),
-  editorSearchNextButton: document.getElementById('editor-search-next'),
-  editorSearchCloseButton: document.getElementById('editor-search-close'),
-  editorSearchCount: document.getElementById('editor-search-count'),
-  editorSearchHighlights: document.getElementById('editor-search-highlights'),
-  editorSearchHighlightsContent: document.getElementById('editor-search-highlights-content'),
-  insertCodeBlockButton: document.getElementById('insert-code-block-button'),
-  exportPreviewButton: document.getElementById('export-preview-button'), // Keep for compatibility
-  exportPreviewHtmlButton: document.getElementById('export-html-button'), // Keep for compatibility
-  exportDropdownButton: document.getElementById('export-dropdown-button'),
-  exportDropdownMenu: document.getElementById('export-dropdown-menu'),
-  exportPdfOption: document.getElementById('export-pdf-option'),
-  exportHtmlOption: document.getElementById('export-html-option'),
-  exportDocxOption: document.getElementById('export-docx-option'),
-  exportEpubOption: document.getElementById('export-epub-option'),
-  codePopover: document.getElementById('code-block-popover'),
-  codePopoverForm: document.getElementById('code-block-form'),
-  codePopoverInput: document.getElementById('code-block-language'),
-  settingsButton: document.getElementById('settings-button'),
-  settingsModal: document.getElementById('settings-modal'),
-  settingsClose: document.getElementById('settings-close'),
-  checkUpdatesButton: document.getElementById('check-updates-btn'),
-  appVersion: document.getElementById('app-version'),
-  themeSelect: document.getElementById('theme-select'),
-  bgColorPicker: document.getElementById('bg-color-picker'),
-  resetBgColorButton: document.getElementById('reset-bg-color'),
-  // Legacy font settings (keeping for compatibility)
-  fontFamilySelect: document.getElementById('font-family-select'),
-  resetFontFamilyButton: document.getElementById('reset-font-family'),
-  fontSizeSlider: document.getElementById('font-size-slider'),
-  fontSizeValue: document.getElementById('font-size-value'),
-  resetFontSizeButton: document.getElementById('reset-font-size'),
-  textColorPicker: document.getElementById('text-color-picker'),
-  resetTextColorButton: document.getElementById('reset-text-color'),
-  // Workspace settings
-  workspaceBgColorPicker: document.getElementById('workspace-bg-color-picker'),
-  resetWorkspaceBgColorButton: document.getElementById('reset-workspace-bg-color'),
-  workspaceFontFamilySelect: document.getElementById('workspace-font-family-select'),
-  resetWorkspaceFontFamilyButton: document.getElementById('reset-workspace-font-family'),
-  workspaceFontSizeSlider: document.getElementById('workspace-font-size-slider'),
-  workspaceFontSizeValue: document.getElementById('workspace-font-size-value'),
-  resetWorkspaceFontSizeButton: document.getElementById('reset-workspace-font-size'),
-  workspaceTextColorPicker: document.getElementById('workspace-text-color-picker'),
-  resetWorkspaceTextColorButton: document.getElementById('reset-workspace-text-color'),
-  workspaceFontStyleSelect: document.getElementById('workspace-font-style-select'),
-  // Editor settings
-  editorBgColorPicker: document.getElementById('editor-bg-color-picker'),
-  resetEditorBgColorButton: document.getElementById('reset-editor-bg-color'),
-  editorFontFamilySelect: document.getElementById('editor-font-family-select'),
-  resetEditorFontFamilyButton: document.getElementById('reset-editor-font-family'),
-  editorFontSizeSlider: document.getElementById('editor-font-size-slider'),
-  editorFontSizeValue: document.getElementById('editor-font-size-value'),
-  resetEditorFontSizeButton: document.getElementById('reset-editor-font-size'),
-  editorTextColorPicker: document.getElementById('editor-text-color-picker'),
-  resetEditorTextColorButton: document.getElementById('reset-editor-text-color'),
-  editorFontStyleSelect: document.getElementById('editor-font-style-select'),
-  // Preview settings
-  previewBgColorPicker: document.getElementById('preview-bg-color-picker'),
-  resetPreviewBgColorButton: document.getElementById('reset-preview-bg-color'),
-  previewFontFamilySelect: document.getElementById('preview-font-family-select'),
-  resetPreviewFontFamilyButton: document.getElementById('reset-preview-font-family'),
-  previewFontSizeSlider: document.getElementById('preview-font-size-slider'),
-  previewFontSizeValue: document.getElementById('preview-font-size-value'),
-  resetPreviewFontSizeButton: document.getElementById('reset-preview-font-size'),
-  previewTextColorPicker: document.getElementById('preview-text-color-picker'),
-  resetPreviewTextColorButton: document.getElementById('reset-preview-text-color'),
-  previewFontStyleSelect: document.getElementById('preview-font-style-select'),
-  // Status Bar settings
-  statusbarBgColorPicker: document.getElementById('statusbar-bg-color-picker'),
-  resetStatusbarBgColorButton: document.getElementById('reset-statusbar-bg-color'),
-  statusbarFontFamilySelect: document.getElementById('statusbar-font-family-select'),
-  resetStatusbarFontFamilyButton: document.getElementById('reset-statusbar-font-family'),
-  statusbarFontSizeSlider: document.getElementById('statusbar-font-size-slider'),
-  statusbarFontSizeValue: document.getElementById('statusbar-font-size-value'),
-  resetStatusbarFontSizeButton: document.getElementById('reset-statusbar-font-size'),
-  statusbarTextColorPicker: document.getElementById('statusbar-text-color-picker'),
-  resetStatusbarTextColorButton: document.getElementById('reset-statusbar-text-color'),
-  statusbarFontStyleSelect: document.getElementById('statusbar-font-style-select'),
-  // Title Bar settings
-  titlebarBgColorPicker: document.getElementById('titlebar-bg-color-picker'),
-  resetTitlebarBgColorButton: document.getElementById('reset-titlebar-bg-color'),
-  titlebarFontFamilySelect: document.getElementById('titlebar-font-family-select'),
-  resetTitlebarFontFamilyButton: document.getElementById('reset-titlebar-font-family'),
-  titlebarFontSizeSlider: document.getElementById('titlebar-font-size-slider'),
-  titlebarFontSizeValue: document.getElementById('titlebar-font-size-value'),
-  resetTitlebarFontSizeButton: document.getElementById('reset-titlebar-font-size'),
-  titlebarTextColorPicker: document.getElementById('titlebar-text-color-picker'),
-  resetTitlebarTextColorButton: document.getElementById('reset-titlebar-text-color'),
-  titlebarFontStyleSelect: document.getElementById('titlebar-font-style-select'),
-  titlebarShowPath: document.getElementById('titlebar-show-path'),
-  // Export/Import elements
-  exportSettingsBtn: document.getElementById('export-settings-btn'),
-  exportFormatSelect: document.getElementById('export-format-select'),
-  importSettingsBtn: document.getElementById('import-settings-btn'),
-  importSettingsInput: document.getElementById('import-settings-input'),
-  importStatus: document.getElementById('import-status'),
-  exportPreviewText: document.getElementById('export-preview-text'),
-  copySettingsBtn: document.getElementById('copy-settings-btn'),
-  downloadSettingsBtn: document.getElementById('download-settings-btn'),
-  // Unified component controls
-  componentSelector: document.getElementById('component-selector'),
-  componentUseGlobalBg: document.getElementById('component-use-global-bg'),
-  componentUseGlobalFont: document.getElementById('component-use-global-font'),
-  componentUseGlobalSize: document.getElementById('component-use-global-size'),
-  componentUseGlobalColor: document.getElementById('component-use-global-color'),
-  componentUseGlobalStyle: document.getElementById('component-use-global-style'),
-  componentBgColorPicker: document.getElementById('component-bg-color-picker'),
-  componentFontFamilySelect: document.getElementById('component-font-family-select'),
-  componentFontSizeSlider: document.getElementById('component-font-size-slider'),
-  componentFontSizeValue: document.getElementById('component-font-size-value'),
-  componentTextColorPicker: document.getElementById('component-text-color-picker'),
-  componentFontStyleSelect: document.getElementById('component-font-style-select'),
-  resetComponentBgColor: document.getElementById('reset-component-bg-color'),
-  resetComponentFontFamily: document.getElementById('reset-component-font-family'),
-  resetComponentFontSize: document.getElementById('reset-component-font-size'),
-  resetComponentTextColor: document.getElementById('reset-component-text-color'),
-  titlebarShowPath: document.getElementById('titlebar-show-path'),
-  titlebarSpecificSetting: document.getElementById('titlebar-specific-setting'),
-  borderColorPicker: document.getElementById('border-color-picker'),
-  resetBorderColorButton: document.getElementById('reset-border-color'),
-  borderThicknessSlider: document.getElementById('border-thickness-slider'),
-  borderThicknessValue: document.getElementById('border-thickness-value'),
-  resetBorderThicknessButton: document.getElementById('reset-border-thickness'),
-  updateNotification: document.getElementById('update-notification'),
-  updateDownloadButton: document.getElementById('update-download-button'),
-  updateInstallButton: document.getElementById('update-install-button'),
-  updateDismissButton: document.getElementById('update-dismiss-button'),
-  codePopoverSuggestions: document.getElementById('code-block-suggestions'),
-  codePopoverCancel: document.querySelector('#code-block-popover [data-action="cancel"]'),
-  openFolderButtons: [
-    document.getElementById('open-folder-button')
-  ].filter(Boolean),
-  hashtagPanel: document.getElementById('hashtag-panel'),
-  hashtagList: document.getElementById('hashtag-list'),
-  hashtagDetail: document.getElementById('hashtag-detail'),
-  hashtagEmpty: document.getElementById('hashtag-empty'),
-  clearHashtagFilter: document.getElementById('clear-hashtag-filter'),
-  workspaceContextMenu: document.getElementById('workspace-context-menu'),
-  inlineChat: document.getElementById('inline-chat'),
-  inlineChatMessages: document.getElementById('inline-chat-messages'),
-  inlineChatInput: document.getElementById('inline-chat-input'),
-  inlineChatSend: document.getElementById('inline-chat-send'),
-  inlineChatClose: document.getElementById('inline-chat-close'),
-  // Math preview popup
-  mathPreviewPopup: document.getElementById('math-preview-popup'),
-  mathPreviewPopupContent: document.querySelector('#math-preview-popup .math-preview-popup__content'),
-  // Accessibility elements
-  highContrastToggle: document.getElementById('high-contrast-toggle'),
-  keybindingsList: document.getElementById('keybindings-list'),
-  resetKeybindingsBtn: document.getElementById('reset-keybindings-btn')
-};
-
-// Global selection tracking for CMD+E functionality
-let activeSelections = []; // Array of {start, end} ranges for multi-selection math rendering
-
-const storagePrefix = 'NTA.';
-const storageKeys = {
-  workspaceFolder: `${storagePrefix}lastWorkspaceFolder`,
-  codeLanguage: `${storagePrefix}lastCodeLanguage`,
-  sidebarCollapsed: `${storagePrefix}sidebarCollapsed`,
-  previewCollapsed: `${storagePrefix}previewCollapsed`,
-  sidebarWidth: `${storagePrefix}sidebarWidth`,
-  highContrast: `${storagePrefix}high-contrast`,
-  keybindings: `${storagePrefix}keybindings`
-};
-
-// Default keybindings
-const defaultKeybindings = {
-  'open-folder': 'CmdOrCtrl+O',
-  'new-file': 'CmdOrCtrl+N',
-  'save-file': 'CmdOrCtrl+S',
-  'toggle-sidebar': 'CmdOrCtrl+B',
-  'toggle-preview': 'CmdOrCtrl+Shift+B',
-  'search': 'CmdOrCtrl+F',
-  'export-pdf': 'CmdOrCtrl+L',
-  'export-html': 'CmdOrCtrl+Shift+E',
-  'settings': 'CmdOrCtrl+,',
-  'bold': 'CmdOrCtrl+B',
-  'italic': 'CmdOrCtrl+I',
-  'code': 'CmdOrCtrl+Shift+C',
-  'link': 'CmdOrCtrl+K'
-};
-
-// Current keybindings (loaded from storage)
-let currentKeybindings = { ...defaultKeybindings };
-
-// Keybinding handling
-function loadKeybindings() {
-  const stored = localStorage.getItem(storageKeys.keybindings);
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored);
-      currentKeybindings = { ...defaultKeybindings, ...parsed };
-    } catch (error) {
-      console.warn('Failed to parse stored keybindings, using defaults');
-      currentKeybindings = { ...defaultKeybindings };
-    }
+// Helper to safely resolve a single element by id/selector, returning a harmless div when missing
+const safeEl = (selector, useQuery = false) => {
+  try {
+    const found = useQuery ? document.querySelector(selector) : document.getElementById(selector);
+    return found || document.createElement('div');
+  } catch (e) {
+    return document.createElement('div');
   }
-}
+};
 
-function saveKeybindings() {
-  localStorage.setItem(storageKeys.keybindings, JSON.stringify(currentKeybindings));
-}
+// Helper to safely resolve a selector (querySelector) but fall back to a div if missing
+const safeQuery = (selector) => {
+  try { return document.querySelector(selector) || document.createElement('div'); } catch (e) { return document.createElement('div'); }
+};
 
-function resetKeybindings() {
-  currentKeybindings = { ...defaultKeybindings };
-  saveKeybindings();
-  renderKeybindingsList();
-}
+// Safe collection resolver (returns NodeList-like empty array if nothing matches)
+const safeAll = (selector) => {
+  try { const nodes = document.querySelectorAll(selector); return nodes && nodes.length ? nodes : []; } catch (e) { return []; }
+};
 
-function renderKeybindingsList() {
-  if (!elements.keybindingsList) return;
-  
-  elements.keybindingsList.innerHTML = '';
-  
-  Object.entries(currentKeybindings).forEach(([action, keybinding]) => {
-    const item = document.createElement('div');
-    item.className = 'keybinding-item';
-    
-    const label = document.createElement('span');
-    label.className = 'keybinding-label';
-    label.textContent = action.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'keybinding-input';
-    input.value = keybinding;
-    input.dataset.action = action;
-    
-    input.addEventListener('keydown', (e) => {
-      e.preventDefault();
-      const keys = [];
-      
-      if (e.ctrlKey || e.metaKey) keys.push('CmdOrCtrl');
-      if (e.shiftKey) keys.push('Shift');
-      if (e.altKey) keys.push('Alt');
-      
-      if (e.key !== 'Control' && e.key !== 'Shift' && e.key !== 'Alt' && e.key !== 'Meta') {
-        keys.push(e.key.toUpperCase());
-      }
-      
-      if (keys.length > 1) {
-        input.value = keys.join('+');
-      }
-    });
-    
-    input.addEventListener('blur', () => {
-      const newBinding = input.value.trim();
-      if (newBinding) {
-        currentKeybindings[action] = newBinding;
-        saveKeybindings();
-      } else {
-        input.value = currentKeybindings[action];
-      }
-    });
-    
-    item.appendChild(label);
-    item.appendChild(input);
-    elements.keybindingsList.appendChild(item);
+// Global error handler to capture stack traces during development so we can find
+// where uncaught exceptions (like setting innerHTML on null) originate.
+if (typeof window !== 'undefined' && !window.__nta_global_error_handler_installed) {
+  window.__nta_global_error_handler_installed = true;
+  window.addEventListener('error', (evt) => {
+    try {
+      console.error('Global uncaught error caught:', evt.message, evt.filename, evt.lineno, evt.colno);
+      if (evt.error && evt.error.stack) console.error('Stack:', evt.error.stack);
+    } catch (e) { console.error('Error while logging global error', e); }
+  });
+  window.addEventListener('unhandledrejection', (evt) => {
+    try {
+      console.error('Unhandled rejection:', evt.reason);
+      if (evt.reason && evt.reason.stack) console.error('Rejection stack:', evt.reason.stack);
+    } catch (e) { console.error('Error while logging rejection', e); }
   });
 }
 
-function handleKeybinding(event) {
-  // Create key combination string
-  const keys = [];
-  
-  if (event.ctrlKey || event.metaKey) keys.push('CmdOrCtrl');
-  if (event.shiftKey) keys.push('Shift');
-  if (event.altKey) keys.push('Alt');
-  keys.push(event.key.toUpperCase());
-  
-  const keyCombo = keys.join('+');
-  
-  // Find action for this keybinding
-  for (const [action, binding] of Object.entries(currentKeybindings)) {
-    if (binding === keyCombo) {
-      executeKeybindingAction(action, event);
-      break;
-    }
-  }
-}
+const elements = {
+  appShell: document.querySelector('.app-shell') || document.createElement('div'),
+  workspaceTree: safeEl('workspace-tree'),
+  workspaceEmpty: safeEl('workspace-empty'),
+  workspacePath: safeEl('workspace-path'),
+  workspaceContent: document.querySelector('.workspace__content') || document.createElement('div'),
+  workspaceSplitter: safeEl('workspace-splitter'),
+  sidebarResizeHandle: document.querySelector('.sidebar-resize-handle') || document.createElement('div'),
+  hashtagResizeHandle: safeEl('hashtag-resize-handle'),
+  explorer: document.querySelector('.explorer') || document.createElement('div'),
+  editor: document.getElementById('note-editor') || document.createElement('textarea'),
+  editorRight: document.getElementById('note-editor-right') || document.createElement('textarea'),
+  preview: document.getElementById('markdown-preview') || document.createElement('div'),
+  pdfViewer: document.getElementById('pdf-viewer') || document.createElement('div'),
+  codeViewer: document.getElementById('code-viewer') || document.createElement('div'),
+  codeViewerCode: document.querySelector('#code-viewer code') || document.createElement('code'),
+  imageViewer: document.getElementById('image-viewer') || document.createElement('div'),
+  imageViewerImg: document.getElementById('image-viewer-img') || document.createElement('img'),
+  imageViewerCaption: document.getElementById('image-viewer-caption') || document.createElement('div'),
+  imageViewerError: document.getElementById('image-viewer-error') || document.createElement('div'),
+  videoViewer: document.getElementById('video-viewer') || document.createElement('div'),
+  videoViewerVideo: document.getElementById('video-viewer-video') || document.createElement('video'),
+  videoViewerCaption: document.getElementById('video-viewer-caption') || document.createElement('div'),
+  videoViewerError: document.getElementById('video-viewer-error') || document.createElement('div'),
+  htmlViewer: document.getElementById('html-viewer') || document.createElement('div'),
+  htmlViewerFrame: document.getElementById('html-viewer-frame') || document.createElement('iframe'),
+  htmlViewerError: document.getElementById('html-viewer-error') || document.createElement('div'),
+  wikiSuggestions: document.getElementById('wikilink-suggestions') || document.createElement('div'),
+  hashtagSuggestions: document.getElementById('hashtag-suggestions') || document.createElement('div'),
+  fileSuggestions: document.getElementById('file-suggestions') || document.createElement('div'),
+  statusText: document.getElementById('status-text') || document.createElement('div'),
+  mathPreviewPopup: document.getElementById('math-preview-popup') || document.createElement('div'),
+  mathPreviewPopupContent: document.querySelector('#math-preview-popup .math-preview-popup__content') || document.createElement('div'),
+  keybindingsList: document.getElementById('keybindings-list') || document.createElement('div'),
+  // Buttons that open a folder (there may be one or more places that trigger open-folder)
+  openFolderButtons: safeAll('#open-folder-button, .open-folder-button, [data-action="open-folder"]'),
+  exportPdfOption: document.getElementById('export-pdf-option') || document.createElement('button'),
+  exportHtmlOption: document.getElementById('export-html-option') || document.createElement('button'),
+  settingsButton: document.getElementById('settings-button') || document.createElement('button'),
+  toggleSidebarButton: document.getElementById('toggle-sidebar-button') || document.createElement('button'),
+  togglePreviewButton: document.getElementById('toggle-preview-button') || document.createElement('button'),
+  editorSearchInput: document.getElementById('editor-search-input') || document.createElement('input'),
+  fileName: document.getElementById('file-name') || document.createElement('div'),
+  filePath: document.getElementById('file-path') || document.createElement('div')
+};
+
+// Track the last known mouse position so popups can be positioned relative
+// to the pointer when desired (useful when caret-based measurement isn't available)
+// NOTE: the event listener is registered after `state` is declared below to
+// avoid referencing `state` before initialization.
+
+// Local storage keys used across the renderer
+const storageKeys = {
+  workspaceFolder: 'NTA.workspaceFolder',
+  codeLanguage: 'NTA.codeLanguage',
+  sidebarCollapsed: 'NTA.sidebarCollapsed',
+  sidebarWidth: 'NTA.sidebarWidth',
+  previewCollapsed: 'NTA.previewCollapsed',
+  editorPanes: 'NTA.editorPanes',
+  editorSplitVisible: 'NTA.editorSplitVisible',
+  highContrast: 'NTA.highContrast'
+};
+
+// ...existing code...
 
 function executeKeybindingAction(action, event) {
   switch (action) {
-    case 'open-folder':
-      event.preventDefault();
-      elements.openFolderButtons[0]?.click();
-      break;
-    case 'new-file':
-      event.preventDefault();
-      elements.createFileButton?.click();
-      break;
-    case 'save-file':
-      event.preventDefault();
-      // Implement save functionality
-      break;
-    case 'toggle-sidebar':
-      event.preventDefault();
-      elements.toggleSidebarButton?.click();
-      break;
-    case 'toggle-preview':
-      event.preventDefault();
-      elements.togglePreviewButton?.click();
-      break;
-    case 'search':
-      event.preventDefault();
-      elements.editorSearchInput?.focus();
-      break;
     case 'export-pdf':
       event.preventDefault();
       elements.exportPdfOption?.click();
@@ -378,19 +135,27 @@ function executeKeybindingAction(action, event) {
 }
 
 function wrapSelection(before, after) {
-  if (!elements.editor) return;
-  
-  const start = elements.editor.selectionStart;
-  const end = elements.editor.selectionEnd;
-  const selectedText = elements.editor.value.substring(start, end);
-  
+  const edt = getActiveEditorInstance();
+  if (!edt || !edt.isPresent()) return;
+
+  const start = edt.selectionStart;
+  const end = edt.selectionEnd;
+  const selectedText = edt.getValue().substring(start, end);
+
   const replacement = before + selectedText + after;
-  elements.editor.setRangeText(replacement);
-  
+  // apply replacement directly on underlying textarea
+  try {
+    edt.el.setRangeText(replacement);
+  } catch (e) {
+    // fallback: set full value
+    const v = edt.getValue();
+    edt.setValue(v.slice(0, start) + replacement + v.slice(end));
+  }
+
   // Position cursor appropriately
   const newCursorPos = start + before.length + selectedText.length;
-  elements.editor.setSelectionRange(newCursorPos, newCursorPos);
-  elements.editor.focus();
+  try { edt.setSelectionRange(newCursorPos, newCursorPos); } catch (e) {}
+  try { edt.focus({ preventScroll: false }); } catch (e) { edt.focus(); }
 }
 
 const readStorage = (key) => {
@@ -498,6 +263,9 @@ const state = {
   codePopoverOpen: false,
   imagePreviewToken: null,
   videoPreviewToken: null,
+  // Tab management
+  tabs: [], // Array of {id: string, noteId: string, title: string, isDirty: boolean}
+  activeTabId: null,
   htmlPreviewToken: null,
   blockIndex: new Map(),
   blockLabelsByNote: new Map(),
@@ -581,14 +349,299 @@ const state = {
   }
 };
 
-const minEditorRatio = 0.2;
-const maxEditorRatio = 0.8;
-const pdfCache = new Map();
-let statusTimer = null;
-const maxWikiEmbedDepth = 3;
-const imageResourceCache = new Map();
-const videoResourceCache = new Map();
-const htmlResourceCache = new Map();
+// Now that `state` exists, install mouse tracking to capture the last pointer
+// position for popup placement fallbacks.
+state.lastMousePosition = state.lastMousePosition || null;
+window.addEventListener('mousemove', (e) => {
+  try {
+    state.lastMousePosition = { x: e.clientX, y: e.clientY };
+  } catch (err) { /* ignore */ }
+}, { passive: true });
+
+// Active selections used by math overlay and selection helpers.
+// Use a window-backed property so hot-reloads or duplicated script evaluations
+// don't cause "Identifier has already been declared" SyntaxErrors.
+if (typeof window !== 'undefined') {
+  window.__nta_activeSelections = window.__nta_activeSelections || [];
+  try {
+    Object.defineProperty(window, 'activeSelections', {
+      configurable: true,
+      get() {
+        return window.__nta_activeSelections;
+      },
+      set(v) {
+        window.__nta_activeSelections = v;
+      }
+    });
+  } catch (e) {
+    // Fallback: assign directly
+    window.activeSelections = window.__nta_activeSelections;
+  }
+} else {
+  // Non-browser fallback
+  var activeSelections = [];
+}
+
+// Minimal tab creation helper (placeholder). Real implementation should render tabs and manage tab lifecycle.
+const createTab = (noteId, title) => {
+  if (!noteId) return null;
+  const id = `tab-${noteId}`;
+  const existing = state.tabs.find((t) => t.id === id);
+  if (existing) return existing;
+  const tab = { id, noteId, title: title || 'Untitled', isDirty: false };
+  state.tabs.push(tab);
+  return tab;
+};
+
+// Minimal renderTabs placeholder. Real implementation should update the tab UI.
+const renderTabs = () => {
+  if (!Array.isArray(state.tabs)) state.tabs = [];
+  if (!state.activeTabId && state.tabs.length) {
+    state.activeTabId = state.tabs[0].id;
+  }
+};
+
+// Convert a wiki link target (e.g. "My Page | alias") into a normalized slug
+// This is a lightweight, safe implementation sufficient for index lookups and linking.
+function toWikiSlug(value) {
+  if (!value || typeof value !== 'string') return '';
+  // Remove alias portion after a pipe, and strip file extensions
+  const cleaned = value.split('|')[0].trim();
+  const withoutExt = cleaned.replace(/\.[^./\\]+$/, '');
+  const normalized = withoutExt
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, '') // remove zero-width chars
+    .replace(/[^a-z0-9\s\-_.]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/_+/g, '-')
+    .replace(/\-+/g, '-')
+    .replace(/^\-+|\-+$/g, '');
+  return normalized;
+}
+
+// Minimal tab activation helper to keep state in sync. Real implementation
+// should update DOM and focus, but this keeps flows from throwing.
+function setActiveTab(tabId) {
+  if (!tabId) return;
+  state.activeTabId = tabId;
+  const existing = state.tabs.find((t) => t.id === tabId);
+  if (!existing && state.tabs.length) {
+    state.activeTabId = state.tabs[0].id;
+  }
+
+  // Ensure the active editor pane corresponds to the tab's note when possible
+  const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+  if (activeTab) {
+    const noteId = activeTab.noteId;
+    if (state.editorPanes.left?.noteId === noteId) {
+      setActiveEditorPane('left');
+    } else if (state.editorPanes.right?.noteId === noteId) {
+      setActiveEditorPane('right');
+    }
+  }
+}
+
+// Map a DOM element (typically a textarea) to the corresponding Editor instance.
+function getEditorInstanceForElement(el) {
+  if (!el) return null;
+  if (el === elements.editor) return editorInstances.left;
+  if (el === elements.editorRight) return editorInstances.right;
+  try {
+    if (elements.editor && typeof elements.editor.contains === 'function' && elements.editor.contains(el)) return editorInstances.left;
+    if (elements.editorRight && typeof elements.editorRight.contains === 'function' && elements.editorRight.contains(el)) return editorInstances.right;
+  } catch (e) {
+    // ignore
+  }
+  return getActiveEditorInstance();
+}
+
+// Per-pane editor state (initialized after state object is declared)
+// Per-pane editor state is initialized dynamically where the UI is built.
+
+// Lightweight Editor wrapper to unify textarea API for left/right panes
+class Editor {
+  constructor(el) {
+    this.el = el || null;
+  }
+
+  isPresent() {
+    return !!this.el;
+  }
+
+  getValue() {
+    return this.el ? this.el.value : '';
+  }
+
+  setValue(v) {
+    if (this.el) this.el.value = v;
+  }
+
+  focus(options) {
+    try { if (this.el) this.el.focus(options); } catch (e) { if (this.el) this.el.focus(); }
+  }
+
+  setSelectionRange(start, end) {
+    if (this.el && typeof this.el.setSelectionRange === 'function') {
+      try { this.el.setSelectionRange(start, end); } catch (e) {}
+    }
+  }
+
+  addEventListener(type, handler, opts) {
+    if (this.el && this.el.addEventListener) this.el.addEventListener(type, handler, opts);
+  }
+
+  removeEventListener(type, handler, opts) {
+    if (this.el && this.el.removeEventListener) this.el.removeEventListener(type, handler, opts);
+  }
+
+  setRangeText(replacement) {
+    if (this.el && typeof this.el.setRangeText === 'function') {
+      try { this.el.setRangeText(replacement); } catch (e) { /* ignore */ }
+    }
+  }
+
+  get selectionStart() { return this.el ? this.el.selectionStart : 0; }
+  get selectionEnd() { return this.el ? this.el.selectionEnd : 0; }
+}
+
+// Editor instances for left/right panes (wire elements immediately)
+const editorInstances = { left: new Editor(elements.editor), right: new Editor(elements.editorRight) };
+
+// Return any available editor instance. Prefer the currently active pane,
+// otherwise return the first defined editor instance.
+function getAnyEditorInstance() {
+  if (state && state.activeEditorPane && editorInstances[state.activeEditorPane]) {
+    return editorInstances[state.activeEditorPane];
+  }
+  const vals = Object.values(editorInstances).filter(Boolean);
+  return vals.length ? vals[0] : null;
+}
+
+// Resolve a pane id to fall back to an existing pane. If preferRight is true
+// and the right pane exists, prefer it. Otherwise return the first existing
+// pane id (useful when dynamic panes exist).
+function resolvePaneFallback(preferRight = true) {
+  if (preferRight && editorInstances.right) return 'right';
+  const keys = Object.keys(editorInstances).filter(k => !!editorInstances[k]);
+  return keys.length ? keys[0] : 'left';
+}
+
+// Helper to create a dynamic editor pane (returns paneId)
+const createEditorPane = (paneId = null, label = 'Pane') => {
+  // generate a unique pane id if none provided
+  const id = paneId || `pane-${Date.now()}`;
+  // create the DOM structure
+  const workspace = document.querySelector('.workspace__content');
+  if (!workspace) return null;
+
+  const section = document.createElement('section');
+  section.className = `editor-pane editor-pane--dynamic`;
+  section.setAttribute('data-pane-id', id);
+  section.setAttribute('aria-label', `Markdown editor (${label})`);
+
+  const badge = document.createElement('div');
+  badge.className = 'editor-pane__badge';
+  badge.setAttribute('data-pane', id);
+  badge.textContent = label;
+  section.appendChild(badge);
+
+  const actions = document.createElement('div');
+  actions.className = 'editor-pane__actions';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'icon-button small';
+  closeBtn.type = 'button';
+  closeBtn.title = 'Close pane';
+  closeBtn.setAttribute('aria-label', 'Close pane');
+  closeBtn.textContent = '✕';
+  actions.appendChild(closeBtn);
+  section.appendChild(actions);
+
+  const searchHighlights = document.createElement('div');
+  searchHighlights.className = 'editor-search-highlights';
+  searchHighlights.hidden = true;
+  section.appendChild(searchHighlights);
+
+  const ta = document.createElement('textarea');
+  ta.id = `note-editor-${id}`;
+  ta.spellcheck = true;
+  ta.setAttribute('aria-label', `Markdown editor (${label})`);
+  section.appendChild(ta);
+
+  const overlay = document.createElement('div');
+  overlay.id = `editor-math-overlay-${id}`;
+  overlay.className = 'editor-math-overlay';
+  overlay.hidden = true;
+  section.appendChild(overlay);
+
+  // Insert before the splitter so editors remain left of preview
+  const splitter = document.getElementById('workspace-splitter');
+  if (splitter && splitter.parentNode) {
+    splitter.parentNode.insertBefore(section, splitter);
+  } else {
+    workspace.appendChild(section);
+  }
+
+  // Create Editor instance and wire basic events
+  const inst = new Editor(ta);
+  editorInstances[id] = inst;
+
+  // Basic wiring similar to left/right
+  inst.addEventListener('input', (e) => handleEditorInput(e, { editorEl: inst.el, pane: id }));
+  inst.addEventListener('keydown', handleEditorKeydown);
+  inst.addEventListener('keyup', handleEditorKeyup);
+  inst.addEventListener('click', handleEditorClick);
+  inst.addEventListener('focus', () => { setActiveEditorPane(id); updateWikiSuggestions(inst.el); updateHashtagSuggestions(inst.el); });
+  inst.addEventListener('blur', handleEditorBlur);
+  inst.addEventListener('select', handleEditorSelect);
+
+  // drag/drop for the pane
+  section.addEventListener('dragover', handleEditorDragOver, { passive: false });
+  section.addEventListener('dragenter', handleEditorDragEnter, { passive: false });
+  section.addEventListener('dragleave', handleEditorDragLeave, { passive: false });
+  // Use capture so dynamic panes can intercept drops before left-editor bubble handlers
+  section.addEventListener('drop', handleEditor2Drop, true);
+
+  // Close button removes the pane
+  closeBtn.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    try {
+      // remove DOM
+      section.remove();
+      // remove instance
+      delete editorInstances[id];
+      // remove from state mappings
+      if (state.editorPanes && state.editorPanes[id]) delete state.editorPanes[id];
+      try { localStorage.setItem(storageKeys.editorPanes, JSON.stringify(state.editorPanes)); } catch (e) {}
+      // If active pane was this, switch to left
+      if (state.activeEditorPane === id) setActiveEditorPane('left');
+      updateEditorPaneVisuals();
+    } catch (e) { console.error('Failed to close dynamic pane', e); }
+  });
+
+  // persist placeholder state for the pane
+  state.editorPanes = state.editorPanes || {};
+  state.editorPanes[id] = state.editorPanes[id] || { noteId: null };
+  try { localStorage.setItem(storageKeys.editorPanes, JSON.stringify(state.editorPanes)); } catch (e) {}
+
+  // Activate newly created pane
+  setActiveEditorPane(id);
+  updateEditorPaneVisuals();
+
+  return id;
+};
+
+// Ensure editor pane state structure exists
+if (!state.editorPanes) {
+  state.editorPanes = { left: { noteId: null }, right: { noteId: null } };
+}
+
+// Active pane tracking: prefer any existing pane instead of hard-coding 'left'
+state.activeEditorPane = state.activeEditorPane || resolvePaneFallback(true);
+
+function getActiveEditorInstance() {
+  return editorInstances[state.activeEditorPane] ?? getAnyEditorInstance();
+}
 
 const domPurifyConfig = {
   ADD_TAGS: ['section', 'header', 'article', 'mark', 'script', 'iframe'],
@@ -615,6 +668,13 @@ const domPurifyConfig = {
     'allowfullscreen'
   ]
 };
+
+// Configurable limits / debug flags
+const maxWikiEmbedDepth = 3; // Max embed recursion depth for wiki-embeds
+// Also expose to window in case some runtime evaluation happens in a different scope
+// (hot-reload or extensions) so the marked tokenizer/renderer can read it.
+window.maxWikiEmbedDepth = maxWikiEmbedDepth;
+window.__nta_debug_iframe = window.__nta_debug_iframe || false;
 
 const renderContextStack = [];
 
@@ -1242,7 +1302,8 @@ const ensureEditorSelectionVisible = (textarea, start) => {
 };
 
 const highlightEditorRange = (start, end) => {
-  const textarea = elements.editor;
+  const edt = getActiveEditorInstance();
+  const textarea = edt?.el ?? null;
   if (!textarea) {
     return false;
   }
@@ -1252,12 +1313,14 @@ const highlightEditorRange = (start, end) => {
   const safeEnd = clamp(Number.isFinite(end) ? Math.ceil(end) : safeStart, safeStart, valueLength);
 
   try {
-    textarea.focus({ preventScroll: true });
+    const edt = getActiveEditorInstance();
+    // prefer editor instance focus helper
+    try { edt.focus({ preventScroll: true }); } catch (e) { textarea.focus({ preventScroll: true }); }
   } catch (error) {
-    textarea.focus();
+    try { getActiveEditorInstance().focus(); } catch (e) { textarea.focus(); }
   }
-  textarea.setSelectionRange(safeStart, safeEnd);
-  ensureEditorSelectionVisible(textarea, safeStart);
+  try { getActiveEditorInstance().setSelectionRange(safeStart, safeEnd); } catch (e) { textarea.setSelectionRange(safeStart, safeEnd); }
+  ensureEditorSelectionVisible(getEditorInstanceForElement(textarea)?.el ?? textarea, safeStart);
   return true;
 };
 
@@ -1290,7 +1353,8 @@ const focusEditorFromPreviewElement = (element, options = {}) => {
     plainOffset = textLength > 0 ? Math.floor(textLength / 2) : 0;
   }
 
-  const editorValue = typeof elements.editor?.value === 'string' ? elements.editor.value : '';
+  const activeEditor = getActiveEditorInstance();
+  const editorValue = typeof activeEditor?.el?.value === 'string' ? activeEditor.el.value : '';
   const originalMarkdown = typeof previewInfo?.collector?.original === 'string' ? previewInfo.collector.original : '';
 
   const attemptHighlight = (candidateRange) => {
@@ -1612,6 +1676,15 @@ const getPdfCacheKey = (note) => {
   return note.absolutePath ?? note.storedPath ?? note.id ?? null;
 };
 
+// Cache for PDF resources (object URLs etc.)
+const pdfCache = new Map();
+
+// Caches for resolved preview resources (images, video, html embeds)
+const imageResourceCache = new Map();
+const videoResourceCache = new Map();
+const htmlResourceCache = new Map();
+
+
 const releasePdfResource = (resource) => {
   if (!resource || resource.type !== 'objectUrl' || !resource.value) {
     return;
@@ -1779,120 +1852,10 @@ const injectBlockAnchors = (markdown, replacements = null) => {
   });
 };
 
-const isLikelyExternalUrl = (value) => {
-  if (!value) {
-    return false;
-  }
-  if (protocolRelativePattern.test(value)) {
-    return true;
-  }
-  if (absoluteUrlPattern.test(value)) {
-    return true;
-  }
-  return false;
-};
-
-const toWikiSlug = (value) => {
-  if (!value) {
-    return null;
-  }
-  return value
-    .toLowerCase()
-    .replace(/\.[^./\\]+$/, '')
-    .replace(/[^a-z0-9]+/gi, '')
-    .trim();
-};
-
-const rebuildWikiIndex = () => {
-  const index = new Map();
-
-  state.notes.forEach((note, noteId) => {
-    const candidates = new Set();
-    candidates.add(note.title ?? '');
-    if (note.absolutePath) {
-      const base = note.absolutePath.split(/[\\/]/).pop();
-      if (base) {
-        candidates.add(base);
-        candidates.add(stripExtension(base));
-      }
-    }
-    if (note.title) {
-      candidates.add(stripExtension(note.title));
-    }
-
-    candidates.forEach((candidate) => {
-      const slug = toWikiSlug(candidate);
-      if (slug && !index.has(slug)) {
-        index.set(slug, noteId);
-      }
-    });
-  });
-
-  state.wikiIndex = index;
-};
-
-const refreshBlockIndexForNote = (note) => {
-  if (!note || !note.id) {
-    return;
-  }
-
-  const prefix = `${note.id}::`;
-
-  const currentLabels = new Map();
-  if (note.type === 'markdown') {
-    const definitions = extractBlockDefinitions(note.content ?? '');
-    definitions.forEach((def, label) => {
-      if (label) {
-        currentLabels.set(label, def);
-      }
-    });
-  }
-
-  // Remove stale entries
-  for (const key of Array.from(state.blockIndex.keys())) {
-    if (key.startsWith(prefix)) {
-      const label = key.slice(prefix.length);
-      if (!currentLabels.has(label)) {
-        state.blockIndex.delete(key);
-      }
-    }
-  }
-
-  if (!currentLabels.size) {
-    state.blockLabelsByNote.delete(note.id);
-    return;
-  }
-
-  currentLabels.forEach((definition, label) => {
-    const key = `${note.id}::${label}`;
-    state.blockIndex.set(key, {
-      noteId: note.id,
-      label,
-      rawLabel: definition.rawLabel,
-      title: definition.title
-    });
-  });
-
-  state.blockLabelsByNote.set(note.id, currentLabels);
-};
-
-const rebuildBlockIndex = () => {
-  state.blockIndex = new Map();
-  state.blockLabelsByNote = new Map();
-
-  state.notes.forEach((note) => {
-    refreshBlockIndexForNote(note);
-  });
-};
-
-const hashtagPattern = /(^|[^0-9A-Za-z_#])#([A-Za-z][\w-]{0,63})\b/g;
-
-const normalizeHashtagKey = (value) => {
-  if (typeof value !== 'string') {
-    return '';
-  }
-  return value.trim().toLowerCase();
-};
+  const isLikelyExternalUrl = (value) => {
+    if (!value) return false;
+    return /^https?:/.test(value) || /^file:/.test(value);
+  };
 
 const collapseWhitespace = (value) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '');
 
@@ -1974,6 +1937,16 @@ const parseHashtagsFromContent = (content) => {
   }
 
   return result;
+};
+
+// Minimal hashtag matching pattern and normalizer (safe defaults)
+const hashtagPattern = /(^|\s)(#([A-Za-z0-9_\-]+))/g;
+
+const normalizeHashtagKey = (raw) => {
+  if (!raw || typeof raw !== 'string') return null;
+  // Normalize to lowercase and trim non-alphanumeric edges
+  const cleaned = raw.trim().replace(/[^A-Za-z0-9_\-]/g, '');
+  return cleaned ? cleaned.toLowerCase() : null;
 };
 
 const removeHashtagEntriesForNote = (noteId) => {
@@ -2405,9 +2378,9 @@ const handleHashtagDetailClick = (event) => {
     if (hasValidRange) {
       highlightEditorRange(start, end);
       try {
-        elements.editor?.focus({ preventScroll: true });
+        getActiveEditorInstance().focus({ preventScroll: true });
       } catch (error) {
-        elements.editor?.focus();
+        try { getActiveEditorInstance().focus(); } catch (e) {}
       }
     }
     return;
@@ -2506,6 +2479,87 @@ const setStatus = (message, transient = true, isCommandExplanation = false) => {
         elements.statusText.textContent = 'Ready.';
       }
     }, 2500);
+  }
+};
+
+// statusTimer used by setStatus; declare here to avoid TDZ/reference errors
+let statusTimer = null;
+
+// Minimal rebuild helpers (placeholders) - replace with full implementations later
+const rebuildWikiIndex = () => {
+  // Build a wiki index that maps normalized slug -> note ID. We map both
+  // the note title and the filename (without extension) to increase match
+  // coverage for wiki-links like [[My Page]] or [[my_page.md]].
+  try {
+    state.wikiIndex = new Map();
+    state.notes.forEach((note, id) => {
+      if (!note) return;
+
+      // Prefer the title, then fallback to filename base
+      const title = typeof note.title === 'string' ? note.title.trim() : '';
+      const titleSlug = toWikiSlug(title);
+      if (titleSlug) {
+        // Keep the first note for a given slug (do not overwrite existing mapping)
+        if (!state.wikiIndex.has(titleSlug)) state.wikiIndex.set(titleSlug, id);
+      }
+
+      // Also map the file base name (without extension)
+      const filePath = note.absolutePath ?? note.storedPath ?? note.path ?? '';
+      if (filePath && typeof filePath === 'string') {
+        const parts = filePath.split(/[\\/]/).filter(Boolean);
+        const base = parts.length ? parts[parts.length - 1] : filePath;
+        const baseNoExt = stripExtension(base || '');
+        const baseSlug = toWikiSlug(baseNoExt);
+        if (baseSlug && !state.wikiIndex.has(baseSlug)) state.wikiIndex.set(baseSlug, id);
+      }
+    });
+  } catch (e) {
+    state.wikiIndex = new Map();
+  }
+};
+
+const rebuildBlockIndex = () => {
+  // Basic placeholder - parses notes for block references and populates state.blockIndex
+  try {
+    state.blockIndex = new Map();
+    state.notes.forEach((note) => {
+      if (!note || note.type !== 'markdown' || !note.content) return;
+      // naive: find ^anchor labels like ^abc
+      const matches = note.content.matchAll(/\^(\w[\w-]*)/g);
+      for (const m of matches) {
+        const key = `${note.id}::${m[1]}`;
+        state.blockIndex.set(key, { noteId: note.id, blockId: m[1] });
+      }
+    });
+  } catch (e) { state.blockIndex = new Map(); }
+};
+
+// Refresh block index entries for a single note. This is used when a note's
+// content changes so block anchors like ^abc are (re)indexed without
+// rebuilding the entire workspace index.
+const refreshBlockIndexForNote = (note) => {
+  if (!note || note.type !== 'markdown') return;
+  try {
+    // Remove any existing entries for this note
+    for (const key of Array.from(state.blockIndex.keys())) {
+      if (typeof key === 'string' && key.startsWith(`${note.id}::`)) {
+        state.blockIndex.delete(key);
+      }
+    }
+
+    // Re-scan the note content for block anchors like ^label
+    const matches = note.content?.matchAll(/\^(\w[\w-]*)/g);
+    if (matches) {
+      for (const m of matches) {
+        try {
+          const key = `${note.id}::${m[1]}`;
+          state.blockIndex.set(key, { noteId: note.id, blockId: m[1] });
+        } catch (e) { /* ignore individual match errors */ }
+      }
+    }
+  } catch (e) {
+    // Be conservative on errors: ensure blockIndex remains a Map
+    try { state.blockIndex = state.blockIndex || new Map(); } catch (ee) { state.blockIndex = new Map(); }
   }
 };
 
@@ -2880,28 +2934,85 @@ const handleEditorDragOver = (event) => {
 };
 
 const handleEditorDragEnter = (event) => {
-  event.preventDefault();
-  event.target.classList.add('editor-drop-target');
+  try { event.preventDefault(); } catch (e) {}
+  // Intentionally do not add a highlight when entering a pane. Clear any
+  // existing highlights to avoid stale visuals — we don't want the dashed
+  // drop target to appear while the pointer is over a pane.
+  try {
+    const paneRoot = event.target?.closest?.('.editor-pane') || event.currentTarget || event.target;
+    if (paneRoot && paneRoot.classList) paneRoot.classList.remove('editor-drop-target');
+  } catch (e) { /* ignore */ }
 };
 
 const handleEditorDragLeave = (event) => {
-  // Only remove the class if we're actually leaving the editor
-  if (!event.target.contains(event.relatedTarget)) {
-    event.target.classList.remove('editor-drop-target');
-  }
+  try {
+    const paneRoot = event.target?.closest?.('.editor-pane') || event.currentTarget || event.target;
+    // Only remove the class if the relatedTarget is outside the paneRoot
+    const related = event.relatedTarget || null;
+    if (!paneRoot || !paneRoot.contains || (related && !paneRoot.contains(related))) {
+      try { document.querySelectorAll('.editor-drop-target').forEach(el => el.classList.remove('editor-drop-target')); } catch (e) {}
+    }
+  } catch (e) { /* ignore */ }
 };
 
 const handleEditor1Drop = (event) => {
-  event.preventDefault();
-  event.target.classList.remove('editor-drop-target');
-  
-  const noteId = event.dataTransfer.getData('text/noteId');
-  if (noteId && state.notes.has(noteId)) {
-    state.activeNoteId = noteId;
-    renderWorkspaceTree();
-    renderActiveNote();
-    setStatus('File opened in first editor.', true);
+  // If an earlier capture-phase handler already routed this drop, skip
+  try { if (event && event._nta_handled) { console.debug('[drop] handleEditor1Drop skipped: already handled'); return; } } catch (e) {}
+  // Prevent other drop handlers from also processing this internal note drop
+  try { event.preventDefault(); } catch (e) {}
+  try { event.stopPropagation(); } catch (e) {}
+  try { if (event.stopImmediatePropagation) event.stopImmediatePropagation(); } catch (e) {}
+
+  // remove any visual drop classes on the nearest pane/editor elements (robust)
+  try {
+    const paneRoot = event.target?.closest?.('.editor-pane') || event.currentTarget || event.target;
+    paneRoot?.classList?.remove('editor-drop-target');
+  } catch (e) { /* ignore */ }
+
+  const noteId = event.dataTransfer?.getData ? event.dataTransfer.getData('text/noteId') : null;
+  if (!noteId || !state.notes.has(noteId)) return;
+
+  // Determine pane id: prefer data-pane-id, textarea id, or right-pane class
+  let paneId = null;
+  try {
+    const paneRoot = (event.target && event.target.closest) ? event.target.closest('[data-pane-id], .editor-pane--dynamic, .editor-pane--right, .editor-pane') : null;
+    if (paneRoot) {
+      if (paneRoot.getAttribute) {
+        const explicit = paneRoot.getAttribute('data-pane-id');
+        if (explicit) paneId = explicit;
+      }
+      if (!paneId) {
+        const ta = paneRoot.querySelector && paneRoot.querySelector('textarea');
+        if (ta && ta.id) {
+          // Dynamic panes use note-editor-<id>, the initial left editor uses id 'note-editor'
+          if (ta.id === 'note-editor') paneId = 'left';
+          else if (ta.id.startsWith('note-editor-')) paneId = ta.id.replace(/^note-editor-/, '');
+        }
+      }
+      if (!paneId && paneRoot.classList && paneRoot.classList.contains('editor-pane--right')) {
+        paneId = 'right';
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  // Fallback to direct target textarea id
+  try {
+    if (!paneId && event.target && event.target.id) {
+      if (event.target.id === 'note-editor') paneId = 'left';
+      else if (event.target.id && event.target.id.startsWith('note-editor-')) paneId = event.target.id.replace(/^note-editor-/, '');
+    }
+  } catch (e) { /* ignore */ }
+
+  // Final fallback: prefer right if available, otherwise any existing pane
+  if (!paneId || !editorInstances[paneId]) {
+    paneId = resolvePaneFallback(true);
   }
+
+  // Mark as handled for other handlers
+  try { event._nta_handled = true; } catch (e) {}
+
+  console.debug('[drop] handleEditor2Drop ->', { noteId, paneId });
+  openNoteInPane(noteId, paneId);
 };
 
 // second editor drag/drop removed
@@ -2945,7 +3056,7 @@ const renderWorkspaceTree = () => {
 };
 
 const processPreviewImages = async () => {
-  if (!elements.preview || typeof window.api?.resolveResource !== 'function') {
+  if (!elements.preview) {
     return;
   }
 
@@ -2999,11 +3110,12 @@ const processPreviewImages = async () => {
 };
 
 const processPreviewVideos = async () => {
-  if (!elements.preview || typeof window.api?.resolveResource !== 'function') {
+  if (!elements.preview) {
     return;
   }
 
   const videos = Array.from(elements.preview.querySelectorAll('video[data-raw-src]'));
+  console.log('processPreviewVideos: found', videos.length, 'videos with data-raw-src');
   if (!videos.length) {
     return;
   }
@@ -3011,11 +3123,12 @@ const processPreviewVideos = async () => {
   await Promise.all(
     videos.map(async (video) => {
       const rawSrc = video.getAttribute('data-raw-src');
+      console.log('Processing video with rawSrc:', rawSrc);
       if (!rawSrc) {
         return;
       }
 
-      if (isLikelyExternalUrl(rawSrc) || rawSrc.startsWith('data:')) {
+      if ((isLikelyExternalUrl(rawSrc) && !rawSrc.startsWith('/')) || rawSrc.startsWith('data:')) {
         return;
       }
 
@@ -3024,14 +3137,60 @@ const processPreviewVideos = async () => {
       if (videoResourceCache.has(cacheKey)) {
         const cached = videoResourceCache.get(cacheKey);
         if (cached) {
+          console.log('Using cached for', rawSrc, '->', cached);
           video.src = cached;
+          video.onloadedmetadata = () => console.info('Video loaded metadata:', rawSrc, cached);
+          video.onerror = (e) => console.error('Video failed to load (cached):', rawSrc, cached, e);
         }
+        return;
+      }
+      // For absolute paths, directly use file:// without resolver
+      if (rawSrc.startsWith('/')) {
+        const candidate = `file://${rawSrc}`;
+        console.log('Using direct file:// for absolute path', rawSrc, '->', candidate);
+        videoResourceCache.set(cacheKey, candidate);
+        video.src = candidate;
+        video.onloadedmetadata = () => console.info('Video loaded metadata (direct):', rawSrc, candidate);
+        video.onerror = (e) => console.error('Video failed to load (direct):', rawSrc, candidate, e);
+        video.load();
         return;
       }
 
       const note = noteId ? state.notes.get(noteId) ?? null : null;
+
+      // For relative paths, try resolver first
+        try {
+          let candidate = null;
+          // absolute POSIX path
+          if (rawSrc.startsWith('/')) {
+            candidate = rawSrc.startsWith('file://') ? rawSrc : `file://${rawSrc}`;
+          }
+          // Windows drive letter (C:\...)
+          else if (/^[A-Za-z]:\\/.test(rawSrc)) {
+            candidate = rawSrc.startsWith('file://') ? rawSrc : `file://${rawSrc.replace(/\\/g, '/')}`;
+          } else if (note?.folderPath ?? state.currentFolder) {
+            // Try relative to note's folder or current workspace folder
+            const baseFolder = note?.folderPath ?? state.currentFolder;
+            const joined = `${baseFolder.replace(/\/$/, '')}/${rawSrc}`;
+            candidate = `file://${joined}`;
+          }
+
+          if (candidate) {
+            console.log('Using file:// candidate for', rawSrc, '->', candidate);
+            videoResourceCache.set(cacheKey, candidate);
+            video.src = candidate;
+            video.onloadedmetadata = () => console.info('Video loaded metadata (candidate):', rawSrc, candidate);
+            video.onerror = (e) => console.error('Video failed to load (candidate):', rawSrc, candidate, e);
+            return;
+          }
+        } catch (err) {
+          // fall through to resolver attempt below if present
+          videoResourceCache.set(cacheKey, null);
+          return;
+        }
+
       const payload = {
-        src: rawSrc,
+        src: rawSrc.startsWith('/') ? `file://${rawSrc}` : rawSrc,
         notePath: note?.absolutePath ?? null,
         folderPath: note?.folderPath ?? state.currentFolder ?? null
       };
@@ -3039,21 +3198,74 @@ const processPreviewVideos = async () => {
       try {
         const result = await window.api.resolveResource(payload);
         if (result?.value) {
+          console.log('Resolver returned for', rawSrc, '->', result.value);
           videoResourceCache.set(cacheKey, result.value);
           video.src = result.value;
+          video.onloadedmetadata = () => console.info('Video loaded metadata (resolved):', rawSrc, result.value);
+          video.onerror = (e) => console.error('Video failed to load (resolved):', rawSrc, result.value, e);
+          video.load(); // ensure load is triggered
         } else {
-          videoResourceCache.set(cacheKey, null);
+          console.log('Resolver returned no value for', rawSrc, '-> trying file:// fallback');
+          // Fallback to file:// even if resolver is available but returned nothing
+          try {
+            let candidate = null;
+            if (rawSrc.startsWith('/')) {
+              candidate = rawSrc.startsWith('file://') ? rawSrc : `file://${rawSrc}`;
+            } else if (/^[A-Za-z]:\\/.test(rawSrc)) {
+              candidate = rawSrc.startsWith('file://') ? rawSrc : `file://${rawSrc.replace(/\\/g, '/')}`;
+            } else if (state.currentFolder) {
+              const joined = `${state.currentFolder.replace(/\/$/, '')}/${rawSrc}`;
+              candidate = `file://${joined}`;
+            }
+
+            if (candidate) {
+              videoResourceCache.set(cacheKey, candidate);
+              video.src = candidate;
+              video.onloadedmetadata = () => console.info('Video loaded metadata (fallback):', rawSrc, candidate);
+              video.onerror = (e) => console.error('Video failed to load (fallback):', rawSrc, candidate, e);
+              video.load();
+            } else {
+              videoResourceCache.set(cacheKey, null);
+            }
+          } catch (err) {
+            console.warn('Failed to apply file:// fallback for video', rawSrc, err);
+            videoResourceCache.set(cacheKey, null);
+          }
         }
       } catch (error) {
         console.warn('Failed to resolve video resource', rawSrc, error);
-        videoResourceCache.set(cacheKey, null);
+        // Even on error, try file:// fallback
+        try {
+          let candidate = null;
+          if (rawSrc.startsWith('/')) {
+            candidate = rawSrc.startsWith('file://') ? rawSrc : `file://${rawSrc}`;
+          } else if (/^[A-Za-z]:\\/.test(rawSrc)) {
+            candidate = rawSrc.startsWith('file://') ? rawSrc : `file://${rawSrc.replace(/\\/g, '/')}`;
+          } else if (state.currentFolder) {
+            const joined = `${state.currentFolder.replace(/\/$/, '')}/${rawSrc}`;
+            candidate = `file://${joined}`;
+          }
+
+          if (candidate) {
+            videoResourceCache.set(cacheKey, candidate);
+            video.src = candidate;
+            video.onloadedmetadata = () => console.info('Video loaded metadata (fallback on error):', rawSrc, candidate);
+            video.onerror = (e) => console.error('Video failed to load (fallback on error):', rawSrc, candidate, e);
+            video.load();
+          } else {
+            videoResourceCache.set(cacheKey, null);
+          }
+        } catch (err) {
+          console.warn('Failed to apply file:// fallback for video on error', rawSrc, err);
+          videoResourceCache.set(cacheKey, null);
+        }
       }
     })
   );
 };
 
 const processPreviewHtmlIframes = async () => {
-  if (!elements.preview || typeof window.api?.resolveResource !== 'function') {
+  if (!elements.preview) {
     return;
   }
 
@@ -3067,6 +3279,22 @@ const processPreviewHtmlIframes = async () => {
       const rawSrc = iframe.getAttribute('data-raw-src');
       if (!rawSrc) {
         return;
+      }
+
+      // Defensive: ignore raw sources that point at the app's own renderer directory
+      // (e.g. file:///.../src/renderer/...), because those aren't user content and
+      // would produce noisy file-not-found errors. Do NOT broadly skip files named
+      // 'Untitled.html' anywhere in the filesystem — users may legitimately open
+      // files with that name outside the app source tree.
+      try {
+        const normalized = String(rawSrc).replace(/\\/g, '/');
+        if (normalized.includes('/src/renderer/')) {
+          console.warn('Skipping unsafe/renderer-local iframe rawSrc:', rawSrc);
+          iframe.setAttribute('data-resolve-status', 'skipped-local');
+          return;
+        }
+      } catch (e) {
+        // If anything odd happens normalizing, don't block rendering — continue.
       }
 
       if (isLikelyExternalUrl(rawSrc) || rawSrc.startsWith('data:')) {
@@ -3083,18 +3311,42 @@ const processPreviewHtmlIframes = async () => {
 
       const noteId = iframe.getAttribute('data-note-id') || state.activeNoteId;
       const cacheKey = `${noteId ?? 'unknown'}::${rawSrc}`;
+      // If we already have a cached resolved URL, use it
       if (htmlResourceCache.has(cacheKey)) {
         const cached = htmlResourceCache.get(cacheKey);
         if (cached) {
           iframe.src = cached;
-          
-          // Auto-resize the iframe after src is set
-          iframe.onload = () => {
-            if (window.autoResizeIframe) {
-              window.autoResizeIframe(iframe);
-            }
-          };
+          iframe.onload = () => { if (window.autoResizeIframe) window.autoResizeIframe(iframe); };
         }
+        return;
+      }
+
+      // If resolver isn't available, try a best-effort file:// fallback for
+      // absolute paths or relative to the current workspace folder.
+      if (typeof window.api?.resolveResource !== 'function') {
+        try {
+          let candidate = null;
+          if (rawSrc.startsWith('/')) {
+            candidate = rawSrc.startsWith('file://') ? rawSrc : `file://${rawSrc}`;
+          } else if (/^[A-Za-z]:\\/.test(rawSrc)) {
+            candidate = rawSrc.startsWith('file://') ? rawSrc : `file://${rawSrc.replace(/\\/g, '/')}`;
+          } else if (state.currentFolder) {
+            const joined = `${state.currentFolder.replace(/\/$/, '')}/${rawSrc}`;
+            candidate = `file://${joined}`;
+          }
+
+          if (candidate) {
+            htmlResourceCache.set(cacheKey, candidate);
+            iframe.src = candidate;
+            iframe.onload = () => { if (window.autoResizeIframe) window.autoResizeIframe(iframe); };
+            return;
+          }
+        } catch (err) {
+          // fall-through to mark unresolved
+        }
+
+        console.debug('resolveResource not available; skipping resolve for iframe', rawSrc);
+        htmlResourceCache.set(cacheKey, null);
         return;
       }
 
@@ -3107,16 +3359,11 @@ const processPreviewHtmlIframes = async () => {
 
       try {
         const result = await window.api.resolveResource(payload);
+        console.debug('resolveResource(payload) ->', rawSrc, result);
         if (result?.value) {
           htmlResourceCache.set(cacheKey, result.value);
           iframe.src = result.value;
-          
-          // Auto-resize the iframe after src is set
-          iframe.onload = () => {
-            if (window.autoResizeIframe) {
-              window.autoResizeIframe(iframe);
-            }
-          };
+          iframe.onload = () => { if (window.autoResizeIframe) window.autoResizeIframe(iframe); };
         } else {
           htmlResourceCache.set(cacheKey, null);
         }
@@ -3336,6 +3583,75 @@ const focusBlockLabel = (noteId, label) => {
   });
 };
 
+const getPaneNoteId = (pane = state.activeEditorPane) => {
+  const p = state.editorPanes?.[pane];
+  return p ? p.noteId : null;
+};
+
+const setActiveEditorPane = (pane) => {
+  // Allow any existing editor instance (left/right or dynamic panes)
+  if (!pane || !editorInstances[pane]) return;
+  state.activeEditorPane = pane;
+  // focus the corresponding editor element if possible
+  try {
+    const inst = editorInstances[pane];
+    if (inst && inst.el) inst.focus({ preventScroll: true });
+  } catch (e) {
+    try { editorInstances.left?.focus?.({ preventScroll: true }); } catch (e2) {}
+  }
+  // Re-render preview for the newly active pane
+  const noteId = getPaneNoteId(pane) || state.activeNoteId;
+  // Keep activeNoteId in sync with the pane's resolved note so other flows
+  // that rely on state.activeNoteId see the correct current note.
+  state.activeNoteId = noteId ?? null;
+  const note = noteId ? state.notes.get(noteId) : null;
+  if (note && note.type === 'markdown') {
+    renderMarkdownPreview(note.content ?? '', note.id);
+  } else if (note) {
+    // non-markdown types: delegate to existing handlers
+    renderActiveNote();
+  }
+  // Update pane visuals and file metadata UI
+  updateEditorPaneVisuals();
+};
+
+// Open a note in a given pane (left or right). Ensures tab exists, activates pane/tab,
+// persists per-pane mapping, and updates UI. Reused by drag/drop and other flows.
+const openNoteInPane = (noteId, pane = 'left') => {
+  if (!noteId || !state.notes.has(noteId)) return null;
+  // If requested pane doesn't exist, default to 'left'
+  if (!pane || !editorInstances[pane]) pane = 'left';
+
+  state.editorPanes[pane] = state.editorPanes[pane] || {};
+  state.editorPanes[pane].noteId = noteId;
+  // Maintain legacy activeNoteId for compatibility with other code paths
+  state.activeNoteId = noteId;
+
+  const note = state.notes.get(noteId);
+  document.title = note?.absolutePath || 'NoteTakingApp';
+
+  // Ensure tab exists
+  let existingTab = state.tabs.find(t => t.noteId === noteId);
+  if (!existingTab) {
+    existingTab = createTab(noteId, note?.title || 'Untitled');
+  }
+
+  // Activate pane and tab
+  setActiveEditorPane(pane);
+  setActiveTab(existingTab.id);
+
+  // Persist pane assignments
+  try { localStorage.setItem(storageKeys.editorPanes, JSON.stringify(state.editorPanes)); } catch (e) { /* ignore */ }
+
+  renderWorkspaceTree();
+  renderActiveNote();
+  updateEditorPaneVisuals();
+  setStatus(`File opened in ${pane} editor.`, true);
+
+  return existingTab;
+};
+
+
 const renderMarkdownPreview = (markdown, noteId = state.activeNoteId) => {
   if (!elements.preview) {
     return;
@@ -3405,7 +3721,12 @@ const renderMarkdownPreview = (markdown, noteId = state.activeNoteId) => {
     
     // Update main preview
     if (elements.preview) {
-      elements.preview.innerHTML = html;
+      try {
+        elements.preview.innerHTML = html;
+      } catch (e) {
+        console.warn('Failed to set elements.preview.innerHTML, falling back to textContent', e);
+        try { elements.preview.textContent = html; } catch (e2) { /* swallow */ }
+      }
     }
 
     if (collector && noteId) {
@@ -3449,7 +3770,7 @@ const renderMarkdownPreview = (markdown, noteId = state.activeNoteId) => {
   } catch (renderError) {
     console.error('Failed to finalize markdown preview render', renderError);
     if (elements.preview) {
-      elements.preview.innerHTML = renderBasicPreview(markdown);
+      try { elements.preview.innerHTML = renderBasicPreview(markdown); } catch (e) { console.warn('Failed to set preview innerHTML (basic render), falling back to textContent', e); try { elements.preview.textContent = renderBasicPreview(markdown); } catch (e2) { /* swallow */ } }
     }
     if (noteId) {
       state.previewSourceBlocks.delete(noteId);
@@ -3462,7 +3783,7 @@ const getPreviewHtmlForExport = () => {
     return '';
   }
 
-  const raw = elements.preview.innerHTML ?? '';
+  const raw = (elements.preview && elements.preview.innerHTML) ? elements.preview.innerHTML : '';
   if (!raw.trim()) {
     return '';
   }
@@ -3474,7 +3795,7 @@ const getPreviewHtmlForExport = () => {
     }
 
     const container = document.createElement('div');
-    container.innerHTML = sanitized;
+  try { if (container) container.innerHTML = sanitized; } catch (e) { console.warn('Failed to set container.innerHTML in getPreviewHtmlForExport', e); if (container) container.innerHTML = ''; }
     container.querySelectorAll('.hashtag-hidden').forEach((node) => {
       node.remove();
     });
@@ -3752,9 +4073,9 @@ const renderNotebookPreview = (note) => {
 
     if (cell.type === 'markdown') {
       const html = window.DOMPurify.sanitize(window.marked.parse(cell.source ?? ''));
-      const content = document.createElement('div');
-      content.className = 'nb-cell__markdown';
-      content.innerHTML = html;
+  const content = document.createElement('div');
+  content.className = 'nb-cell__markdown';
+  try { content.innerHTML = html; } catch (e) { console.warn('Failed to set notebook cell html', e); content.textContent = html; }
       section.appendChild(content);
     } else {
       const header = document.createElement('header');
@@ -4103,7 +4424,7 @@ const extractBlockHtmlForEmbed = (note, blockId, context) => {
   }
 };
 
-const updateFileMetadataUI = (note) => {
+const updateFileMetadataUI = (note, options = {}) => {
   if (!elements.fileName || !elements.filePath) {
     return;
   }
@@ -4124,6 +4445,29 @@ const updateFileMetadataUI = (note) => {
     }
   }
 
+  // Prefer the active pane's note when showing metadata.
+  // If caller passed an explicit note but it doesn't match the active pane's note,
+  // prefer the pane's note so the title/path reflect what the preview/editor shows.
+  const activePane = state.activeEditorPane || resolvePaneFallback(true);
+  const paneNoteId = state.editorPanes?.[activePane]?.noteId;
+  const paneNote = paneNoteId ? state.notes.get(paneNoteId) ?? null : null;
+  if (!note && paneNote) {
+    note = paneNote;
+  } else if (note && paneNote && note.id !== paneNote.id) {
+    // Caller provided a different note (likely from legacy single-active-note flows).
+    // We prefer showing the active pane's note in the title/path UI.
+    note = paneNote;
+  }
+
+  // If we still don't have a note to show, optionally fall back to the
+  // global active note. This fallback is useful for startup/legacy flows
+  // where the active note is set but per-pane mappings are not yet populated
+  // but is undesirable when the user explicitly activated an empty pane.
+  const allowActiveFallback = options.allowActiveFallback !== false;
+  if (allowActiveFallback && !note && state.activeNoteId) {
+    note = state.notes.get(state.activeNoteId) ?? null;
+  }
+
   if (!note) {
     elements.fileName.textContent = 'No file selected';
     elements.filePath.textContent = 'Open a folder and select a file to get started.';
@@ -4141,13 +4485,39 @@ const updateFileMetadataUI = (note) => {
     const filename = pathParts.pop();
     const directory = pathParts.join('/');
     
-    elements.filePath.innerHTML = directory ? 
-      `${directory}/<span class="filename">${filename}</span>` : 
-      `<span class="filename">${filename}</span>`;
+    if (elements.filePath) {
+      try {
+        elements.filePath.innerHTML = directory ? 
+          `${directory}/<span class="filename">${filename}</span>` : 
+          `<span class="filename">${filename}</span>`;
+      } catch (e) { console.warn('Failed to set elements.filePath.innerHTML', e); }
+    }
   } else {
     elements.filePath.textContent = 'Stored inside the application library.';
   }
   elements.filePath.title = location;
+};
+
+// Update visual state of editor panes (badges and active class)
+const updateEditorPaneVisuals = () => {
+  const leftPane = document.querySelector('.editor-pane--left');
+  const rightPane = document.querySelector('.editor-pane--right');
+  if (leftPane) {
+    leftPane.classList.toggle('active', state.activeEditorPane === 'left');
+    leftPane.hidden = false; // left pane always visible
+  }
+  if (rightPane) {
+    // Hide right pane if it has no assigned note OR if the user has chosen
+    // to collapse the split editor. Respect persisted split-visible flag.
+    const hasRight = Boolean(state.editorPanes?.right?.noteId);
+    const persisted = localStorage.getItem(storageKeys.editorSplitVisible);
+    const splitVisible = persisted === null ? true : persisted === 'true';
+    console.debug('[split] updateEditorPaneVisuals ->', { hasRight, persisted, splitVisible });
+  rightPane.hidden = !(hasRight && splitVisible);
+  try { rightPane.style.display = rightPane.hidden ? 'none' : ''; } catch (e) {}
+  console.debug('[split] updateEditorPaneVisuals result rightPane.hidden=', rightPane.hidden, 'style.display=', rightPane.style.display);
+    rightPane.classList.toggle('active', state.activeEditorPane === 'right');
+  }
 };
 
 const updateActionAvailability = (note) => {
@@ -4234,7 +4604,8 @@ const updateEditorSearchCount = () => {
 };
 
 const syncEditorSearchHighlightMetrics = () => {
-  const textarea = elements.editor;
+  const edt = getActiveEditorInstance();
+  const textarea = edt?.el ?? null;
   const container = elements.editorSearchHighlights;
   const contentEl = elements.editorSearchHighlightsContent;
 
@@ -4317,9 +4688,10 @@ const syncEditorSearchHighlightScroll = () => {
     return;
   }
 
-  const textarea = elements.editor;
+  const edt = getActiveEditorInstance();
+  const textarea = edt?.el ?? null;
   const contentEl = elements.editorSearchHighlightsContent;
-  
+
   if (!textarea || !contentEl) {
     return;
   }
@@ -4338,7 +4710,8 @@ const handleEditorSearchResize = () => {
 const renderEditorSearchHighlights = () => {
   const container = elements.editorSearchHighlights;
   const contentEl = elements.editorSearchHighlightsContent;
-  const textarea = elements.editor;
+  const edt = getActiveEditorInstance();
+  const textarea = edt?.el ?? null;
 
   if (!container || !contentEl || !textarea) {
     return;
@@ -4452,7 +4825,8 @@ const renderEditorSearchHighlights = () => {
 
 const highlightEditorSearchMatch = (index, options = {}) => {
   const matches = Array.isArray(state.search.matches) ? state.search.matches : [];
-  const textarea = elements.editor;
+  const edt = getActiveEditorInstance();
+  const textarea = edt?.el ?? null;
 
   if (!textarea || !matches.length) {
     state.search.activeIndex = matches.length ? clamp(Number(index) || 0, 0, matches.length - 1) : -1;
@@ -4478,22 +4852,14 @@ const highlightEditorSearchMatch = (index, options = {}) => {
   const shouldFocusEditor = Boolean(options.focusEditor);
 
   window.requestAnimationFrame(() => {
-    try {
-      textarea.setSelectionRange(match.start, match.end);
-    } catch (error) {
-      textarea.setSelectionRange(match.start, match.end);
-    }
+    try { const edt = getActiveEditorInstance(); edt.setSelectionRange(match.start, match.end); } catch (error) { try { textarea.setSelectionRange(match.start, match.end); } catch (e) { /* ignore */ } }
 
     if (shouldFocusEditor && !textarea.disabled) {
-      try {
-        textarea.focus({ preventScroll: true });
-      } catch (error) {
-        textarea.focus();
-      }
+      try { getActiveEditorInstance().focus({ preventScroll: true }); } catch (error) { try { textarea.focus({ preventScroll: true }); } catch (e) { textarea.focus(); } }
     }
 
-    ensureEditorSelectionVisible(textarea, match.start);
-    state.search.lastCaret = textarea.selectionStart ?? match.start;
+    ensureEditorSelectionVisible(getEditorInstanceForElement(textarea)?.el ?? textarea, match.start);
+    state.search.lastCaret = (getEditorInstanceForElement(textarea)?.el?.selectionStart ?? textarea.selectionStart) ?? match.start;
   });
 
   updateEditorSearchCount();
@@ -4507,7 +4873,8 @@ const updateEditorSearchMatches = (options = {}) => {
     return;
   }
 
-  const textarea = elements.editor;
+  const edt = getActiveEditorInstance();
+  const textarea = edt?.el ?? null;
   const query = state.search.query ?? '';
   const content = typeof textarea?.value === 'string' ? textarea.value : '';
 
@@ -4582,7 +4949,8 @@ const openEditorSearch = (options = {}) => {
   elements.editorSearch.hidden = false;
   elements.editorSearch.setAttribute('aria-hidden', 'false');
 
-  const textarea = elements.editor;
+  const edt = getActiveEditorInstance();
+  const textarea = edt?.el ?? null;
   const selectionStart = textarea?.selectionStart ?? 0;
   const selectionEnd = textarea?.selectionEnd ?? selectionStart;
   const hasSelection = Boolean(useSelection && textarea && selectionEnd > selectionStart);
@@ -4638,14 +5006,18 @@ const closeEditorSearch = (restoreFocus = true, options = {}) => {
   updateEditorSearchCount();
   renderEditorSearchHighlights();
 
-  if (restoreFocus && wasOpen && elements.editor && !elements.editor.disabled) {
-    window.requestAnimationFrame(() => {
-      try {
-        elements.editor.focus({ preventScroll: true });
-      } catch (error) {
-        elements.editor.focus();
-      }
-    });
+  if (restoreFocus && wasOpen) {
+    const edt = getActiveEditorInstance();
+    const ta = edt?.el;
+    if (ta && !ta.disabled) {
+      window.requestAnimationFrame(() => {
+        try {
+          ta.focus({ preventScroll: true });
+        } catch (error) {
+          ta.focus();
+        }
+      });
+    }
   }
 };
 
@@ -4693,7 +5065,7 @@ const handleEditorSearchInput = (event) => {
   state.search.query = value;
   updateEditorSearchMatches({
     preserveActive: false,
-    caret: state.search.lastCaret ?? (elements.editor?.selectionStart ?? 0),
+  caret: state.search.lastCaret ?? (getActiveEditorInstance()?.selectionStart ?? 0),
     focusEditor: false
   });
 };
@@ -4723,7 +5095,7 @@ const handleEditorSearchClose = (event) => {
   closeEditorSearch(true);
 };
 
-const openNoteById = (noteId, silent = false, blockId = null) => {
+const openNoteById = (noteId, silent = false, blockId = null, pane = null) => {
   if (!noteId || !state.notes.has(noteId)) {
     if (!silent) {
       setStatus('Linked note not found.', false);
@@ -4731,14 +5103,42 @@ const openNoteById = (noteId, silent = false, blockId = null) => {
     return;
   }
 
-  state.activeNoteId = noteId;
-  state.pendingBlockFocus = blockId ? { noteId, blockId } : null;
-  renderWorkspaceTree();
-  renderActiveNote();
+  const note = state.notes.get(noteId);
+  const title = note.title || 'Untitled';
+
+  // Check if tab already exists
+  let existingTab = state.tabs.find(tab => tab.noteId === noteId);
+  if (existingTab) {
+    setActiveTab(existingTab.id);
+    if (blockId) {
+      state.pendingBlockFocus = { noteId, blockId };
+    }
+    return;
+  }
+
+  // Create new tab
+  const tab = createTab(noteId, title);
+  // If a pane is specified and exists, make it the active pane before activating the tab
+  if (pane && editorInstances[pane]) {
+    setActiveEditorPane(pane);
+  }
+  setActiveTab(tab.id);
+
+  openNoteInPane(noteId, pane || resolvePaneFallback(true));
+
+  if (blockId) {
+    state.pendingBlockFocus = { noteId, blockId };
+  }
+
+  renderTabs();
+
   if (!silent) {
-    const message = blockId ? `Opened linked note at ^${blockId}.` : 'Opened linked note.';
+    const message = blockId ? `Opened ${title} at ^${blockId}.` : `Opened ${title}.`;
     setStatus(message, true);
   }
+  // Update pane visuals and file metadata
+  updateEditorPaneVisuals();
+  updateFileMetadataUI(null);
 };
 
 const renderActiveNote = () => {
@@ -4760,7 +5160,7 @@ const renderActiveNote = () => {
 
   const resetPreviewState = () => {
     elements.workspaceContent?.classList.remove('pdf-mode', 'code-mode', 'notebook-mode', 'image-mode', 'video-mode', 'html-mode');
-    elements.preview.innerHTML = '';
+  if (elements.preview) { try { elements.preview.innerHTML = ''; } catch (e) { console.warn('Failed to clear preview innerHTML', e); } }
     // Hide math preview popup
     if (elements.mathPreviewPopup) {
       elements.mathPreviewPopup.classList.remove('visible');
@@ -4815,8 +5215,9 @@ const renderActiveNote = () => {
   };
 
   if (!note) {
-    elements.editor.value = '';
-    elements.editor.disabled = true;
+    const edt = getActiveEditorInstance();
+    const ta = edt?.el ?? null;
+    if (ta) { ta.value = ''; ta.disabled = true; }
     resetPreviewState();
     closeEditorSearch(false);
     syncHashtagDetailSelection();
@@ -4826,19 +5227,74 @@ const renderActiveNote = () => {
   resetPreviewState();
 
   if (note.type === 'markdown') {
-    elements.editor.disabled = false;
-    elements.editor.value = note.content ?? '';
-    renderMarkdownPreview(note.content ?? '', note.id);
+    // Determine which pane this note is opened in (search all panes, default to left)
+    let paneForNote = 'left';
+    try {
+      if (state.editorPanes && typeof state.editorPanes === 'object') {
+        for (const key of Object.keys(state.editorPanes)) {
+          try {
+            if (state.editorPanes[key] && state.editorPanes[key].noteId === note.id) {
+              paneForNote = key;
+              break;
+            }
+          } catch (e) { /* ignore per-key errors */ }
+        }
+      }
+    } catch (e) {
+      paneForNote = (state.editorPanes && state.editorPanes.left && state.editorPanes.left.noteId === note.id) ? 'left' : 'left';
+    }
+
+    // Populate all editor textareas that have this note assigned. This allows
+    // the same note to be open in multiple panes (e.g., left + a dynamic pane)
+    // and each pane will display the note content independently.
+    try {
+      const paneKeys = Array.isArray(Object.keys(state.editorPanes)) ? Object.keys(state.editorPanes) : [];
+      let anyRenderedPreview = false;
+      for (const k of paneKeys) {
+        try {
+          const paneInfo = state.editorPanes[k];
+          if (paneInfo && paneInfo.noteId === note.id) {
+            const inst = editorInstances[k];
+            if (inst && inst.el) {
+              inst.el.disabled = false;
+              inst.el.value = note.content ?? '';
+            }
+            if (state.activeEditorPane === k) {
+              // Render preview only for the active pane
+              renderMarkdownPreview(note.content ?? '', note.id);
+              anyRenderedPreview = true;
+            }
+          }
+        } catch (e) { /* per-pane error ignored */ }
+      }
+      // If none of the panes explicitly mapped to this note is currently active,
+      // fall back to rendering preview for the first matching pane (preserve old behavior)
+      if (!anyRenderedPreview) {
+        const firstMatch = paneKeys.find((pk) => state.editorPanes[pk] && state.editorPanes[pk].noteId === note.id);
+        if (firstMatch && state.activeEditorPane !== firstMatch) {
+          // Only render preview if active pane matches; otherwise leave preview untouched
+          // (this keeps preview consistent with the currently active pane)
+        }
+      }
+    } catch (e) {
+      // Fallback: preserve previous single-pane behavior
+      const targetInstance = editorInstances[paneForNote] ?? getActiveEditorInstance();
+      if (targetInstance && targetInstance.el) { targetInstance.el.disabled = false; targetInstance.el.value = note.content ?? ''; }
+      if (state.activeEditorPane === paneForNote) {
+        renderMarkdownPreview(note.content ?? '', note.id);
+      }
+    }
 
     if (state.search.open) {
-      const caret = elements.editor?.selectionStart ?? 0;
+      const activeEdt = getActiveEditorInstance();
+      const caret = activeEdt?.el?.selectionStart ?? 0;
       state.search.lastCaret = caret;
       updateEditorSearchMatches({ preserveActive: false, caret, focusEditor: false });
     } else {
       updateEditorSearchCount();
     }
 
-    if (state.pendingHashtagFocus && state.pendingHashtagFocus.noteId === note.id) {
+  if (state.pendingHashtagFocus && state.pendingHashtagFocus.noteId === note.id) {
       const { start, end } = state.pendingHashtagFocus;
       state.pendingHashtagFocus = null;
       if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
@@ -4848,8 +5304,8 @@ const renderActiveNote = () => {
       }
     }
   } else {
-    elements.editor.disabled = true;
-    elements.editor.value = '';
+  // disable/clear both editors to be safe for non-markdown previews
+  Object.values(editorInstances).forEach(inst => { if (inst?.el) { inst.el.disabled = true; inst.el.value = ''; } });
 
     if (note.type === 'image') {
       elements.workspaceContent?.classList.add('image-mode');
@@ -4961,15 +5417,70 @@ const adoptWorkspace = (payload, preferredActiveId = null) => {
 
   if (preferredActiveId && state.notes.has(preferredActiveId)) {
     state.activeNoteId = preferredActiveId;
+    // Create tab for the active note
+    const note = state.notes.get(preferredActiveId);
+    const title = note.title || 'Untitled';
+    const tab = createTab(preferredActiveId, title);
+    state.activeTabId = tab.id;
   } else if (state.activeNoteId && state.notes.has(state.activeNoteId)) {
     // keep existing
   } else {
     state.activeNoteId = normalizedNotes[0]?.id ?? null;
+    if (state.activeNoteId) {
+      const note = state.notes.get(state.activeNoteId);
+      const title = note.title || 'Untitled';
+      const tab = createTab(state.activeNoteId, title);
+      state.activeTabId = tab.id;
+    }
+  }
+
+  // If no per-pane mappings exist (fresh start / legacy flows), ensure the
+  // active note is assigned to the left pane so the UI (badges, dashed
+  // outlines, preview mapping) reflects that the left editor contains a file.
+  state.editorPanes = state.editorPanes || { left: { noteId: null }, right: { noteId: null } };
+  const leftHas = Boolean(state.editorPanes.left?.noteId);
+  const rightHas = Boolean(state.editorPanes.right?.noteId);
+  if (!leftHas && !rightHas && state.activeNoteId) {
+    state.editorPanes.left.noteId = state.activeNoteId;
   }
 
   renderWorkspaceTree();
+  renderTabs();
   renderActiveNote();
 };
+
+// Safe wrapper around adoptWorkspace to prevent the renderer from becoming unusable
+// if subhelpers (like rebuilding indexes) throw. This logs errors and tries to
+// perform the minimal adopt behavior where possible.
+function safeAdoptWorkspace(payload, preferredActiveId = null) {
+  try {
+    adoptWorkspace(payload, preferredActiveId);
+  } catch (err) {
+    console.error('safeAdoptWorkspace: adoptWorkspace failed, attempting minimal recovery', err);
+    try {
+      // Minimal, dependency-free adoption: populate state.notes and some metadata
+      state.currentFolder = payload?.folderPath ?? null;
+      state.tree = payload?.tree ?? null;
+      state.notes = new Map();
+      if (Array.isArray(payload?.notes)) {
+        payload.notes.forEach((n) => {
+          try {
+            const nn = normalizeNote(n);
+            state.notes.set(nn.id, nn);
+          } catch (ee) { /* ignore malformed note */ }
+        });
+      }
+      // Pick a reasonable active note
+      state.activeNoteId = payload?.preferredActiveId ?? (state.notes.size ? state.notes.keys().next().value : null);
+      if (payload?.folderPath && elements.workspacePath) {
+        elements.workspacePath.textContent = String(payload.folderPath).split(/[\\\/]/).filter(Boolean).pop() || String(payload.folderPath);
+        elements.workspacePath.title = String(payload.folderPath);
+      }
+    } catch (e) {
+      console.error('safeAdoptWorkspace: minimal recovery failed', e);
+    }
+  }
+}
 
 // second editor UI removed
 
@@ -5012,9 +5523,7 @@ const handleWorkspaceTreeClick = (event) => {
 
     const noteId = nodeElement.dataset.noteId;
     if (noteId && state.notes.has(noteId)) {
-      state.activeNoteId = noteId;
-      renderWorkspaceTree();
-      renderActiveNote();
+      openNoteById(noteId, false);
     }
   }
 };
@@ -5069,8 +5578,21 @@ const handleLatexAutoCompletion = (textarea, inputType) => {
         newValue = value.substring(0, beginIndex) + mathBlock + value.substring(caret);
         newCaretPosition = beginIndex + `$$\n\\begin{${environment}}\n`.length + 1; // Position cursor between begin and end
       }
-      textarea.value = newValue;
-      textarea.setSelectionRange(newCaretPosition, newCaretPosition);
+      const _edt_begin = getActiveEditorInstance();
+      const _ta_begin = _edt_begin?.el ?? textarea;
+      if (_ta_begin) {
+        // prefer Editor API when available, fallback to direct DOM mutation
+        try {
+          if (_edt_begin && typeof _edt_begin.setValue === 'function') _edt_begin.setValue(newValue);
+          else _ta_begin.value = newValue;
+        } catch (e) {
+          _ta_begin.value = newValue;
+        }
+        try { 
+          if (_edt_begin && typeof _edt_begin.setSelectionRange === 'function') _edt_begin.setSelectionRange(newCaretPosition, newCaretPosition);
+          else _ta_begin.setSelectionRange(newCaretPosition, newCaretPosition);
+        } catch (e) {}
+      }
       
       return true; // Indicate that auto-completion was performed
     }
@@ -5080,13 +5602,36 @@ const handleLatexAutoCompletion = (textarea, inputType) => {
 };
 
 const updateMathPreview = (textarea) => {
-  if (!elements.mathPreviewPopup || !elements.mathPreviewPopupContent) {
+  // Accept either a DOM textarea element, an Editor instance, or undefined.
+  try {
+    // If an Editor instance was passed, use its underlying element
+    if (textarea && typeof textarea === 'object' && textarea.el) {
+      textarea = textarea.el;
+    }
+  } catch (e) { /* ignore */ }
+
+  // If no textarea provided, fall back to the active editor element
+  if (!textarea || (textarea && textarea.tagName !== 'TEXTAREA')) {
+    textarea = getActiveEditorInstance()?.el ?? null;
+  }
+
+  if (!elements.mathPreviewPopup || !elements.mathPreviewPopupContent || !textarea) {
+    console.debug('[math] updateMathPreview aborted - missing elements or textarea', {
+      hasPopup: !!elements.mathPreviewPopup,
+      hasContent: !!elements.mathPreviewPopupContent,
+      textareaId: textarea ? (textarea.id || '(no id)') : null,
+      activePane: state.activeEditorPane
+    });
     return;
   }
 
   const value = textarea.value;
   const start = textarea.selectionStart;
   const end = textarea.selectionEnd;
+  try {
+    const taInfo = { id: textarea.id || '(no id)', tag: textarea.tagName || '(no tag)', len: value.length, start, end, activePane: state.activeEditorPane };
+    console.debug('[math] updateMathPreview enter', taInfo);
+  } catch (e) { console.debug('[math] updateMathPreview enter (could not serialize textarea info)'); }
   
   let contentToRender = '';
   let mathStartIndex = 0;
@@ -5131,25 +5676,24 @@ const updateMathPreview = (textarea) => {
                            /!\[.*?\]\(.*?\)/.test(currentLine.trim()) || // Markdown image: ![alt](url)
                            /^(https?:\/\/|file:\/\/)?[^\s]+\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)(\?.*)?$/i.test(currentLine.trim()); // Image URL
     
-    console.log('updateMathPreview: currentLine:', JSON.stringify(currentLine), 'hasImagePattern:', hasImagePattern, 'start:', start, 'lineEndPos:', lineEndPos, 'lineNewlinePos:', lineNewlinePos);
-    
-    if (!hasImagePattern && start !== lineEndPos && start !== lineNewlinePos) {
-      contentToRender = ''; // Don't show preview unless cursor is at end of line
-    }
+    // Always show preview for the current line if it has content
   }
   
   // Only show preview if there's content to render
-  if (contentToRender.trim()) {
-    const mathContent = contentToRender.trim();
+  const trimmedContent = contentToRender.trim();
+  try { console.debug('[math] computed content', { length: contentToRender.length, trimmedLength: trimmedContent.length, mathStartIndex, previewSnippet: (trimmedContent || '').slice(0,200) }); } catch (e) {}
+  if (trimmedContent) {
+    const mathContent = trimmedContent;
     try {
       // Check if content contains math expressions
       const inlineMathRegex = /(?<!\$)\$([^\n$]+?)\$(?!\w)/gm;
       const blockMathRegex = /\$\$([\s\S]*?)\$\$\s*/gm;
       
-      const inlineMatches = [...contentToRender.matchAll(inlineMathRegex)];
-      const blockMatches = [...contentToRender.matchAll(blockMathRegex)];
+  const inlineMatches = [...contentToRender.matchAll(inlineMathRegex)];
+  const blockMatches = [...contentToRender.matchAll(blockMathRegex)];
+  try { console.debug('[math] regex matches', { inline: inlineMatches.length, block: blockMatches.length, sampleInline: inlineMatches[0]?.[1] ?? null, sampleBlock: blockMatches[0]?.[1] ?? null }); } catch (e) {}
       
-      if (inlineMatches.length > 0 || blockMatches.length > 0) {
+  if (inlineMatches.length > 0 || blockMatches.length > 0) {
         // Content contains math expressions - render them
         let renderedContent = contentToRender;
         
@@ -5179,17 +5723,27 @@ const updateMathPreview = (textarea) => {
           }
         });
         
-        elements.mathPreviewPopupContent.innerHTML = renderedContent;
+  if (elements.mathPreviewPopupContent) { try { elements.mathPreviewPopupContent.innerHTML = renderedContent; } catch (e) { console.warn('Failed to set mathPreviewPopupContent.innerHTML (rendered math)', e); } }
       } else if (/^#{1,6}\s/.test(mathContent)) {
         // Markdown header: # Title, ## Title, ### Title, etc.
         const headerMatch = mathContent.match(/^(#{1,6})\s+(.*)$/);
         if (headerMatch) {
           const level = headerMatch[1].length;
           const title = headerMatch[2];
-          elements.mathPreviewPopupContent.innerHTML = `<h${level}>${title}</h${level}>`;
+          if (elements.mathPreviewPopupContent) {
+            try {
+              elements.mathPreviewPopupContent.textContent = '';
+              const hEl = document.createElement(`h${level}`);
+              try { hEl.textContent = title; } catch (e) { hEl.textContent = String(title); }
+              elements.mathPreviewPopupContent.appendChild(hEl);
+            } catch (e) {
+              console.warn('Failed to set mathPreviewPopupContent heading (fallback to textContent)', e);
+              try { elements.mathPreviewPopupContent.textContent = title; } catch (e2) { /* swallow */ }
+            }
+          }
         } else {
           // Fallback to plain text
-          elements.mathPreviewPopupContent.textContent = mathContent;
+          if (elements.mathPreviewPopupContent) { try { elements.mathPreviewPopupContent.textContent = mathContent; } catch (e) { console.warn('Failed to set mathPreviewPopupContent.textContent (fallback)', e); } }
         }
       } else if (/\!\[\[([^\]]+)\]\]/.test(mathContent)) {
         // Wiki-link: ![[filename]]
@@ -5219,71 +5773,198 @@ const updateMathPreview = (textarea) => {
             
             // Determine file type and show appropriate preview
             if (/\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(filename)) {
-              elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">🖼️</div><div>Loading...</div></div><img src="${filePath}" alt="${filename}" style="display: none; max-width: 200px; max-height: 150px; object-fit: contain;" onload="console.log('Image loaded successfully:', this.src); this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="console.log('Image failed to load:', this.src); this.previousElementSibling.innerHTML='<div style=font-size:24px;>🖼️</div><div>Image not found</div><div style=font-size:10px;color:#6c757d;>${filename}</div>';">`;
+              if (elements.mathPreviewPopupContent) {
+                try {
+                  elements.mathPreviewPopupContent.innerHTML = '';
+                  const loader = document.createElement('div');
+                  loader.style.cssText = 'width:200px;height:150px;background:#f8f9fa;border:1px solid #dee2e6;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;';
+                  loader.innerHTML = '<div style="font-size:24px">🖼️</div><div>Loading...</div>';
+                  const img = document.createElement('img');
+                  // don't set img.src directly to a file:// URL; resolve via preload if available
+                  img.alt = filename;
+                  img.style.display = 'none';
+                  if (typeof window.api?.resolveResource === 'function') {
+                    const payload = { src: filePath, folderPath: state.currentFolder ?? null };
+                    window.api.resolveResource(payload).then((res) => {
+                      if (res?.value) {
+                        img.src = res.value;
+                      } else {
+                        loader.innerHTML = '<div style="font-size:24px">🖼️</div><div>Image not found</div>';
+                      }
+                    }).catch(() => { loader.innerHTML = '<div style="font-size:24px">🖼️</div><div>Image not found</div>'; });
+                  } else {
+                    img.src = filePath;
+                  }
+                  img.alt = filename;
+                  img.style.maxWidth = '200px';
+                  img.style.maxHeight = '150px';
+                  img.style.objectFit = 'contain';
+                  img.addEventListener('load', () => { img.style.display = 'block'; loader.style.display = 'none'; });
+                  img.addEventListener('error', () => { loader.innerHTML = '<div style="font-size:24px">🖼️</div><div>Image not found</div>'; });
+                  elements.mathPreviewPopupContent.appendChild(loader);
+                  elements.mathPreviewPopupContent.appendChild(img);
+                } catch (e) { console.warn('Failed to render wiki-link image preview', e); }
+              }
             } else if (/\.(mp4|webm|ogg|avi|mov|wmv|flv|m4v)$/i.test(filename)) {
-              elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">🎥</div><div>Loading...</div></div><video controls style="display: none; max-width: 200px; max-height: 150px;" onload="console.log('Video loaded successfully:', this.src); this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="console.log('Video failed to load:', this.src); this.previousElementSibling.innerHTML='<div style=font-size:24px;>🎥</div><div>Video not found</div><div style=font-size:10px;color:#6c757d;>${filename}</div>';"><source src="${filePath}" type="video/mp4"></video>`;
+              if (elements.mathPreviewPopupContent) {
+                try {
+                  elements.mathPreviewPopupContent.innerHTML = '';
+                  const loader = document.createElement('div');
+                  loader.style.cssText = 'width:200px;height:150px;background:#f8f9fa;border:1px solid #dee2e6;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;';
+                  loader.innerHTML = '<div style="font-size:24px">🎥</div><div>Loading...</div>';
+                  const v = document.createElement('video');
+                  v.controls = true;
+                  v.style.display = 'none';
+                  v.style.maxWidth = '200px';
+                  v.style.maxHeight = '150px';
+                  const s = document.createElement('source');
+                  // resolve via preload instead of assigning file:// directly
+                  if (typeof window.api?.resolveResource === 'function') {
+                    const payload = { src: filePath, folderPath: state.currentFolder ?? null };
+                    window.api.resolveResource(payload).then((res) => {
+                      if (res?.value) {
+                        s.src = res.value;
+                        s.type = 'video/mp4';
+                        v.appendChild(s);
+                      } else {
+                        loader.innerHTML = '<div style="font-size:24px">🎥</div><div>Video not found</div>';
+                      }
+                    }).catch(() => { loader.innerHTML = '<div style="font-size:24px">🎥</div><div>Video not found</div>'; });
+                  } else {
+                    s.src = filePath;
+                    s.type = 'video/mp4';
+                    v.appendChild(s);
+                  }
+                  v.addEventListener('loadedmetadata', () => { v.style.display = 'block'; loader.style.display = 'none'; });
+                  v.addEventListener('error', () => { loader.innerHTML = '<div style="font-size:24px">🎥</div><div>Video not found</div>'; });
+                  elements.mathPreviewPopupContent.appendChild(loader);
+                  elements.mathPreviewPopupContent.appendChild(v);
+                } catch (e) { console.warn('Failed to render wiki-link video preview', e); }
+              }
             } else if (/\.(pdf)$/i.test(filename)) {
-              console.log('Detected as PDF');
-              elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f0f0f0; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 12px;">📄 PDF: ${filename}</div>`;
+              try {
+                elements.mathPreviewPopupContent.innerHTML = '';
+                const box = document.createElement('div');
+                box.style.cssText = 'width:200px;height:150px;background:#f0f0f0;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;font-size:12px;';
+                box.textContent = `📄 PDF: ${filename}`;
+                elements.mathPreviewPopupContent.appendChild(box);
+              } catch (e) { console.warn('Failed to render wiki-link pdf preview', e); }
             } else if (/\.(html|htm)$/i.test(filename)) {
-              console.log('Detected as HTML');
-              const htmlPath = `file://${workspacePath}/${filename}`;
-              elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; overflow: hidden; border: 1px solid #ddd;"><iframe src="${htmlPath}" style="width: 400px; height: 300px; border: none; background: white; transform: scale(0.5); transform-origin: top left;" sandbox="allow-scripts"></iframe></div>`;
+              try {
+                elements.mathPreviewPopupContent.innerHTML = '';
+                const iframe = document.createElement('iframe');
+                // Defer actual resolution/loading to the async resolver to avoid attempting
+                // to load file:// URLs that may not exist during preview generation.
+                iframe.setAttribute('data-raw-src', `${workspacePath}/${filename}`);
+                iframe.className = 'html-embed-iframe';
+                iframe.style.cssText = 'width:100%;height:300px;border:none;background:white;';
+                iframe.setAttribute('sandbox', 'allow-scripts');
+                iframe.setAttribute('loading', 'lazy');
+                const wrapper = document.createElement('div');
+                wrapper.style.width = '200px';
+                wrapper.style.height = '150px';
+                wrapper.style.overflow = 'hidden';
+                wrapper.appendChild(iframe);
+                elements.mathPreviewPopupContent.appendChild(wrapper);
+                // Let the async processing pick up and resolve the data-raw-src later
+                void processPreviewHtmlIframes();
+              } catch (e) { console.warn('Failed to render wiki-link html preview', e); }
             } else {
-              // No extension - try as image first (most common wiki-link use case)
-              console.log('No extension detected, trying as image');
-              const imageFilePath = `${filePath}.jpg`; // Try .jpg first
-              elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">�️</div><div>Loading...</div></div><img src="${imageFilePath}" alt="${filename}" style="display: none; max-width: 200px; max-height: 150px; object-fit: contain;" onload="console.log('Image loaded successfully:', this.src); this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="console.log('Image failed to load, trying PNG:', this.src); 
-                // Try PNG if JPG fails
-                const pngPath = this.src.replace('.jpg', '.png');
-                this.src = pngPath;
-                this.onerror = function() { 
-                  console.log('PNG also failed, trying GIF:', this.src);
-                  const gifPath = this.src.replace('.png', '.gif');
-                  this.src = gifPath;
-                  this.onerror = function() {
-                    console.log('GIF also failed, trying video:', '${filename}');
-                    // Try video format
-                    const videoContainer = this.previousElementSibling;
-                    videoContainer.innerHTML = '<div style=font-size:24px;>🎥</div><div>Loading video...</div>';
-                    
-                    // Create video element to show first frame
-                    const video = document.createElement('video');
-                    video.style.display = 'none';
-                    video.style.width = '200px';
-                    video.style.height = '150px';
-                    video.style.objectFit = 'contain';
-                    video.preload = 'metadata'; // Only load metadata, not full video
-                    
-                    video.onloadedmetadata = function() {
-                      console.log('Video metadata loaded, showing first frame');
-                      // Video loaded successfully, show it
-                      video.style.display = 'block';
-                      video.controls = true;
-                      videoContainer.style.display = 'none';
-                    };
-                    
-                    video.onerror = function() {
-                      console.log('Video failed to load:', '${filename}');
-                      videoContainer.innerHTML='<div style=font-size:24px;>📄</div><div>File not found</div><div style=font-size:10px;color:#6c757d;>${filename}</div>';
-                      video.style.display = 'none';
-                    };
-                    
-                    // Try MP4 first
-                    const source = document.createElement('source');
-                    source.src = '${filePath}.mp4';
-                    source.type = 'video/mp4';
-                    video.appendChild(source);
-                    
-                    // Insert video after the container
-                    videoContainer.parentNode.insertBefore(video, videoContainer.nextSibling);
+              // No extension - try common image extensions first, then common video extensions.
+              if (elements.mathPreviewPopupContent) {
+                try {
+                  elements.mathPreviewPopupContent.innerHTML = '';
+                  const loader = document.createElement('div');
+                  loader.style.cssText = 'width:200px;height:150px;background:#f8f9fa;border:1px solid #dee2e6;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;';
+                  loader.innerHTML = '<div style="font-size:24px">🖼️</div><div>Loading...</div>';
+
+                  // Phase 1: try images
+                  const img = document.createElement('img');
+                  img.style.display = 'none';
+                  img.style.maxWidth = '200px';
+                  img.style.maxHeight = '150px';
+                  img.style.objectFit = 'contain';
+                  img.alt = filename;
+                  const imageExts = ['.jpg', '.png', '.gif', '.jpeg', '.webp'];
+                  let iIdx = 0;
+                  const tryNextImage = () => {
+                    if (iIdx >= imageExts.length) {
+                      // proceed to video phase
+                      tryVideos();
+                      return;
+                    }
+                    const candidate = filePath + imageExts[iIdx];
+                    console.debug('mathPreview: trying image candidate', candidate);
+                    img.src = candidate;
+                    iIdx += 1;
                   };
-                };">`;
+                  img.addEventListener('load', () => { img.style.display = 'block'; loader.style.display = 'none'; });
+                  img.addEventListener('error', () => { tryNextImage(); });
+
+                  // Phase 2: try videos
+                  const videoExts = ['.mp4', '.webm', '.ogg', '.m4v'];
+                  let vIdx = 0;
+                  const tryVideos = () => {
+                    const v = document.createElement('video');
+                    v.controls = true;
+                    v.style.display = 'none';
+                    v.style.maxWidth = '200px';
+                    v.style.maxHeight = '150px';
+                    v.style.objectFit = 'contain';
+                    const s = document.createElement('source');
+                    const tryNextVideo = () => {
+                      if (vIdx >= videoExts.length) {
+                        loader.innerHTML = '<div style="font-size:16px">File not found</div>';
+                        return;
+                      }
+                      const candidate = filePath + videoExts[vIdx];
+                      console.debug('mathPreview: trying video candidate', candidate);
+                      // If resolver available, prefer that; otherwise assign file:// candidate
+                      if (typeof window.api?.resolveResource === 'function') {
+                        const payload = { src: candidate, folderPath: state.currentFolder ?? null };
+                        window.api.resolveResource(payload).then((res) => {
+                          if (res?.value) {
+                            s.src = res.value;
+                            s.type = 'video/mp4';
+                            if (!v.contains(s)) v.appendChild(s);
+                            if (!elements.mathPreviewPopupContent.contains(v)) elements.mathPreviewPopupContent.appendChild(v);
+                          } else {
+                            vIdx += 1;
+                            tryNextVideo();
+                          }
+                        }).catch(() => { vIdx += 1; tryNextVideo(); });
+                      } else {
+                        s.src = candidate;
+                        s.type = 'video/mp4';
+                        if (!v.contains(s)) v.appendChild(s);
+                        if (!elements.mathPreviewPopupContent.contains(v)) elements.mathPreviewPopupContent.appendChild(v);
+                      }
+                    };
+                    v.addEventListener('loadedmetadata', () => { v.style.display = 'block'; loader.style.display = 'none'; });
+                    v.addEventListener('error', () => { vIdx += 1; tryNextVideo(); });
+                    // Start with first video candidate
+                    tryNextVideo();
+                  };
+
+                  elements.mathPreviewPopupContent.appendChild(loader);
+                  elements.mathPreviewPopupContent.appendChild(img);
+                  // start images
+                  tryNextImage();
+                } catch (e) { console.warn('Failed to render wiki-link fallback preview', e); }
+              }
             }
           } else {
             console.log('No workspace path available');
-            // No workspace path available
-            elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; align-items: center; justify-content: center; font-size: 12px;">Wiki-link: ${filename}</div>`;
+            // No workspace path available - show a simple placeholder safely
+            try {
+              elements.mathPreviewPopupContent.textContent = '';
+              const box = document.createElement('div');
+              box.style.cssText = 'width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; align-items: center; justify-content: center; font-size: 12px;';
+              box.textContent = `Wiki-link: ${filename}`;
+              elements.mathPreviewPopupContent.appendChild(box);
+            } catch (e) {
+              try { elements.mathPreviewPopupContent.textContent = `Wiki-link: ${filename}`; } catch (e2) { /* swallow */ }
+            }
           }
         } else {
           console.log('Wiki-link regex matched but no capture groups');
@@ -5294,16 +5975,73 @@ const updateMathPreview = (textarea) => {
         const imageMatch = mathContent.match(/!\[.*?\]\((.*?)\)/);
         if (imageMatch) {
           const imageUrl = imageMatch[1];
-          elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">🖼️</div><div>Loading...</div></div><img src="${imageUrl}" alt="Preview" style="display: none; max-width: 200px; max-height: 150px; object-fit: contain;" onload="this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="this.previousElementSibling.innerHTML='<div style=font-size:24px;>🖼️</div><div>Image not found</div>';">`;
+          try {
+            // clear previous content
+            elements.mathPreviewPopupContent.textContent = '';
+            const loader = document.createElement('div');
+            loader.style.cssText = 'width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;';
+            loader.innerHTML = '<div style="font-size: 24px;">🖼️</div><div>Loading...</div>';
+            const img = document.createElement('img');
+            img.alt = 'Preview';
+            img.style.display = 'none';
+            img.style.maxWidth = '200px';
+            img.style.maxHeight = '150px';
+            img.style.objectFit = 'contain';
+            img.addEventListener('load', () => { img.style.display = 'block'; loader.style.display = 'none'; });
+            img.addEventListener('error', () => { loader.innerHTML = '<div style="font-size:24px">🖼️</div><div>Image not found</div>'; });
+            img.src = imageUrl;
+            elements.mathPreviewPopupContent.appendChild(loader);
+            elements.mathPreviewPopupContent.appendChild(img);
+          } catch (e) {
+            elements.mathPreviewPopupContent.textContent = imageUrl;
+          }
         } else {
           elements.mathPreviewPopupContent.textContent = mathContent;
         }
       } else if (/^(https?:\/\/|file:\/\/)?[^\s]+\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)(\?.*)?$/i.test(mathContent) && !/\s/.test(mathContent)) {
         // Direct image URL or file path (no spaces, looks like a URL/filename)
-        elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">🖼️</div><div>Loading...</div></div><img src="${mathContent}" alt="Preview" style="display: none; max-width: 200px; max-height: 150px; object-fit: contain;" onload="this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="this.previousElementSibling.innerHTML='<div style=font-size:24px;>🖼️</div><div>Image not found</div>';">`;
+        try {
+          elements.mathPreviewPopupContent.textContent = '';
+          const loader = document.createElement('div');
+          loader.style.cssText = 'width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;';
+          loader.innerHTML = '<div style="font-size: 24px;">🖼️</div><div>Loading...</div>';
+          const img = document.createElement('img');
+          img.alt = 'Preview';
+          img.style.display = 'none';
+          img.style.maxWidth = '200px';
+          img.style.maxHeight = '150px';
+          img.style.objectFit = 'contain';
+          img.addEventListener('load', () => { img.style.display = 'block'; loader.style.display = 'none'; });
+          img.addEventListener('error', () => { loader.innerHTML = '<div style="font-size:24px">🖼️</div><div>Image not found</div>'; });
+          img.src = mathContent;
+          elements.mathPreviewPopupContent.appendChild(loader);
+          elements.mathPreviewPopupContent.appendChild(img);
+        } catch (e) {
+          elements.mathPreviewPopupContent.textContent = mathContent;
+        }
       } else if (/^(https?:\/\/|file:\/\/)?[^\s]+\.(mp4|webm|ogg|avi|mov|wmv|flv|m4v)(\?.*)?$/i.test(mathContent) && !/\s/.test(mathContent)) {
         // Video file URL or path (no spaces, looks like a URL/filename)
-        elements.mathPreviewPopupContent.innerHTML = `<div style="width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;"><div style="font-size: 24px;">🎥</div><div>Loading...</div></div><video controls style="display: none; max-width: 200px; max-height: 150px;" onload="this.style.display='block'; this.previousElementSibling.style.display='none';" onerror="this.previousElementSibling.innerHTML='<div style=font-size:24px;>🎥</div><div>Video not found</div>';"><source src="${mathContent}" type="video/mp4"></video>`;
+        try {
+          elements.mathPreviewPopupContent.textContent = '';
+          const loader = document.createElement('div');
+          loader.style.cssText = 'width: 200px; height: 150px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px;';
+          loader.innerHTML = '<div style="font-size: 24px;">🎥</div><div>Loading...</div>';
+          const v = document.createElement('video');
+          v.controls = true;
+          v.style.display = 'none';
+          v.style.maxWidth = '200px';
+          v.style.maxHeight = '150px';
+          const s = document.createElement('source');
+          s.src = mathContent;
+          s.type = 'video/mp4';
+          v.appendChild(s);
+          v.addEventListener('loadedmetadata', () => { v.style.display = 'block'; loader.style.display = 'none'; });
+          v.addEventListener('error', () => { loader.innerHTML = '<div style="font-size:24px">🎥</div><div>Video not found</div>'; });
+          elements.mathPreviewPopupContent.appendChild(loader);
+          elements.mathPreviewPopupContent.appendChild(v);
+        } catch (e) {
+          elements.mathPreviewPopupContent.textContent = mathContent;
+        }
       } else if (/^<.*>.*<\/.*>$/.test(mathContent) || /^<.*\/>$/.test(mathContent)) {
         // HTML content (basic detection)
         // For security, we'll show a sanitized preview
@@ -5312,7 +6050,15 @@ const updateMathPreview = (textarea) => {
           .replace(/<style[^>]*>.*?<\/style>/gi, '[STYLE REMOVED]')
           .replace(/javascript:/gi, '')
           .replace(/on\w+="[^"]*"/gi, '');
-        elements.mathPreviewPopupContent.innerHTML = `<div style="font-family: monospace; font-size: 12px; background: #f5f5f5; padding: 8px; border-radius: 4px; max-width: 200px; overflow: hidden;">${sanitizedHtml}</div>`;
+        try {
+          elements.mathPreviewPopupContent.textContent = '';
+          const box = document.createElement('div');
+          box.style.cssText = 'font-family: monospace; font-size: 12px; background: #f5f5f5; padding: 8px; border-radius: 4px; max-width: 200px; overflow: hidden; white-space: pre-wrap;';
+          box.textContent = sanitizedHtml;
+          elements.mathPreviewPopupContent.appendChild(box);
+        } catch (e) {
+          elements.mathPreviewPopupContent.textContent = sanitizedHtml;
+        }
       } else {
         // Plain text - display as-is
         elements.mathPreviewPopupContent.textContent = mathContent;
@@ -5335,17 +6081,19 @@ const updateMathPreview = (textarea) => {
       positionMathPreviewPopup(textarea, mathStartIndex);
       
       // Show the popup
-      elements.mathPreviewPopup.classList.add('visible');
-      elements.mathPreviewPopup.hidden = false;
+        elements.mathPreviewPopup.classList.add('visible');
+        elements.mathPreviewPopup.hidden = false;
       
       return;
     }
   }
-  
+
   // Hide popup if no valid content found
   elements.mathPreviewPopup.classList.remove('visible');
   elements.mathPreviewPopup.hidden = true;
 };
+
+// Note: positionMathPreviewPopup is defined below.
 
 const positionMathPreviewPopup = (textarea, mathStartIndex) => {
   if (!elements.mathPreviewPopup) return;
@@ -5354,29 +6102,106 @@ const positionMathPreviewPopup = (textarea, mathStartIndex) => {
   const textBeforeMath = textarea.value.substring(0, mathStartIndex);
   const lines = textBeforeMath.split('\n');
   const currentLineIndex = lines.length - 1;
-  const currentLineText = lines[currentLineIndex];
+  const currentLineText = lines[currentLineIndex] || '';
+  
+  // Calculate the position of the math start within the current line
+  const lastNewlineIndex = textBeforeMath.lastIndexOf('\n');
+  const charIndexInLine = (lastNewlineIndex === -1) ? mathStartIndex : (mathStartIndex - (lastNewlineIndex + 1));
+  const textBeforeCursor = currentLineText.substring(0, Math.max(0, Math.min(charIndexInLine, currentLineText.length)));
   
   // Create a temporary div to measure text width
   const measureDiv = document.createElement('div');
+  const taStyle = window.getComputedStyle(textarea);
   measureDiv.style.position = 'absolute';
   measureDiv.style.visibility = 'hidden';
   measureDiv.style.whiteSpace = 'pre';
-  measureDiv.style.font = window.getComputedStyle(textarea).font;
-  measureDiv.style.fontSize = window.getComputedStyle(textarea).fontSize;
-  measureDiv.style.fontFamily = window.getComputedStyle(textarea).fontFamily;
-  measureDiv.textContent = currentLineText;
+  // Copy relevant text styles so measurement matches the textarea rendering
+  measureDiv.style.fontSize = taStyle.fontSize;
+  measureDiv.style.fontFamily = taStyle.fontFamily;
+  measureDiv.style.fontWeight = taStyle.fontWeight;
+  measureDiv.style.letterSpacing = taStyle.letterSpacing;
+  measureDiv.style.lineHeight = taStyle.lineHeight;
+  measureDiv.style.padding = '0';
+  measureDiv.style.margin = '0';
+  measureDiv.style.boxSizing = 'content-box';
+  measureDiv.textContent = textBeforeCursor || '\u200B'; // ensure non-empty for width measurement
   document.body.appendChild(measureDiv);
-  
-  const textWidth = measureDiv.getBoundingClientRect().width;
+
+  const charWidth = measureDiv.getBoundingClientRect().width;
   document.body.removeChild(measureDiv);
   
   // Get textarea position
   const textareaRect = textarea.getBoundingClientRect();
   const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight) || 20;
   
-  // Position popup to the right of the current line
-  let popupX = textareaRect.left + textWidth + 10; // 10px offset
-  const popupY = textareaRect.top + (currentLineIndex * lineHeight) - (lineHeight / 2);
+  // Use a mirror element technique to compute the caret coordinates precisely
+  const getCaretRect = (ta, index) => {
+    try {
+      const value = ta.value || '';
+      const clamped = Math.max(0, Math.min(index, value.length));
+      const before = value.substring(0, clamped);
+      const style = window.getComputedStyle(ta);
+      const taRect = ta.getBoundingClientRect();
+
+      const mirror = document.createElement('div');
+      mirror.style.position = 'absolute';
+      mirror.style.visibility = 'hidden';
+      mirror.style.whiteSpace = 'pre-wrap';
+      mirror.style.pointerEvents = 'none';
+      mirror.style.boxSizing = 'border-box';
+      // Copy text styles so measurement matches
+      mirror.style.fontSize = style.fontSize;
+      mirror.style.fontFamily = style.fontFamily;
+      mirror.style.fontWeight = style.fontWeight;
+      mirror.style.lineHeight = style.lineHeight;
+      mirror.style.letterSpacing = style.letterSpacing;
+      mirror.style.padding = style.padding;
+      mirror.style.width = `${Math.max(10, taRect.width)}px`;
+
+      // Place mirror off-screen at 0,0 to avoid affecting layout
+  // Position the mirror over the textarea so measurements are in viewport coordinates
+  mirror.style.left = `${taRect.left}px`;
+  mirror.style.top = `${taRect.top}px`;
+
+      // Build mirror content
+      const textNode = document.createTextNode(before);
+      const marker = document.createElement('span');
+      marker.textContent = '\u200B';
+      mirror.appendChild(textNode);
+      mirror.appendChild(marker);
+      document.body.appendChild(mirror);
+  const r = marker.getBoundingClientRect();
+  document.body.removeChild(mirror);
+  // r is already in viewport coordinates because mirror was positioned over the textarea
+  return { left: r.left, top: r.top, width: r.width, height: r.height };
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const caretRect = getCaretRect(textarea, mathStartIndex);
+  let popupX, popupY;
+  // Primary: prefer the last known mouse position so the popup appears to the
+  // right of the pointer (this matches the UX you requested).
+  if (state.lastMousePosition) {
+    popupX = state.lastMousePosition.x + 12;
+    popupY = state.lastMousePosition.y - 12;
+  } else if (caretRect) {
+    // Secondary: use caret coordinates if mouse isn't available
+    popupX = caretRect.left + caretRect.width + 8;
+    popupY = caretRect.top - 6;
+  } else {
+    // Fallback approximate positioning
+    const paddingLeft = parseFloat(taStyle.paddingLeft) || 0;
+    const paddingTop = parseFloat(taStyle.paddingTop) || 0;
+    const scrollLeft = textarea.scrollLeft || 0;
+    const scrollTop = textarea.scrollTop || 0;
+    popupX = textareaRect.left + paddingLeft + charWidth - scrollLeft + 8;
+    popupY = textareaRect.top + paddingTop + (currentLineIndex * lineHeight) - scrollTop + 6;
+  }
+
+  // Debug coordinates (development only)
+  try { console.debug('[math] popup coords ' + JSON.stringify({ popupX, popupY, charIndexInLine, charWidth, textBeforeCursorLength: (textBeforeCursor || '').length, caretRect: caretRect ? { left: caretRect.left, top: caretRect.top, width: caretRect.width, height: caretRect.height } : null, textareaRect: { left: textareaRect.left, top: textareaRect.top, width: textareaRect.width, height: textareaRect.height } })); } catch (e) {}
   
   // Ensure popup stays within window bounds
   const popupWidth = 220; // Approximate popup width
@@ -5389,7 +6214,7 @@ const positionMathPreviewPopup = (textarea, mathStartIndex) => {
   elements.mathPreviewPopup.style.top = `${popupY}px`;
 };
 
-const handleEditorInput = (event) => {
+const handleEditorInput = (event, opts = {}) => {
   // Set typing flag and clear it after a delay
   state.userTyping = true;
   clearTimeout(state.typingTimer);
@@ -5397,7 +6222,10 @@ const handleEditorInput = (event) => {
     state.userTyping = false;
   }, 1500);
 
-  const note = getActiveNote();
+  // Determine which editor/pane this input applies to
+  const pane = opts.pane || (event.target === elements.editorRight ? 'right' : 'left');
+  const paneNoteId = state.editorPanes?.[pane]?.noteId || state.activeNoteId;
+  const note = paneNoteId ? state.notes.get(paneNoteId) : getActiveNote();
   if (!note || note.type !== 'markdown') {
     return;
   }
@@ -5414,11 +6242,15 @@ const handleEditorInput = (event) => {
   note.dirty = true;
   refreshBlockIndexForNote(note);
   refreshHashtagsForNote(note);
-  renderMarkdownPreview(note.content, note.id);
+  // Only render preview if this pane is the active pane
+  if (state.activeEditorPane === pane) {
+    renderMarkdownPreview(note.content, note.id);
+  }
   scheduleSave();
 
   if (state.search.open) {
-    const caret = elements.editor?.selectionStart ?? state.search.lastCaret ?? 0;
+    const activeEd = getActiveEditorInstance();
+    const caret = activeEd?.selectionStart ?? state.search.lastCaret ?? 0;
     updateEditorSearchMatches({ preserveActive: true, caret, focusEditor: false });
   }
 
@@ -5429,8 +6261,66 @@ const handleEditorInput = (event) => {
   // If LaTeX was auto-completed, trigger another input event to update everything with the new content
   if (latexCompleted) {
     note.content = event.target.value;
-    renderMarkdownPreview(note.content, note.id);
+    if (state.activeEditorPane === pane) {
+      renderMarkdownPreview(note.content, note.id);
+    }
   }
+};
+
+const handleEditor2Drop = (event) => {
+  // Prevent default and stop other listeners from handling this internal drop
+  try { event.preventDefault(); } catch (e) {}
+  try { event.stopPropagation(); } catch (e) {}
+  try { if (event.stopImmediatePropagation) event.stopImmediatePropagation(); } catch (e) {}
+
+  // Clear any visual drop classes globally to avoid stale highlights
+  try {
+    Array.from(document.querySelectorAll('.editor-drop-target')).forEach((el) => el.classList.remove('editor-drop-target'));
+  } catch (e) { /* ignore */ }
+
+  // Determine pane id heuristically: data-pane-id attribute, textarea id, or right-pane class
+  let paneId = null;
+  try {
+    const paneRoot = (event.target && event.target.closest) ? event.target.closest('[data-pane-id], .editor-pane--dynamic, .editor-pane--right, .editor-pane') : null;
+    if (paneRoot) {
+      // Prefer explicit attribute
+      if (paneRoot.getAttribute) {
+        const explicit = paneRoot.getAttribute('data-pane-id');
+        if (explicit) paneId = explicit;
+      }
+      // Fallback: check for textarea id pattern inside the pane
+      if (!paneId) {
+        const ta = paneRoot.querySelector && paneRoot.querySelector('textarea');
+        if (ta && ta.id) {
+          if (ta.id === 'note-editor') paneId = 'left';
+          else if (ta.id.startsWith('note-editor-')) paneId = ta.id.replace(/^note-editor-/, '');
+        }
+      }
+      // Final fallback: if pane is the right-pane, use 'right'
+      if (!paneId && paneRoot.classList && paneRoot.classList.contains('editor-pane--right')) {
+        paneId = 'right';
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  // If we still don't have a paneId, try deriving from the direct event target (textarea)
+  try {
+    if (!paneId && event.target && event.target.id) {
+      if (event.target.id === 'note-editor') paneId = 'left';
+      else if (event.target.id && event.target.id.startsWith('note-editor-')) paneId = event.target.id.replace(/^note-editor-/, '');
+    }
+  } catch (e) { /* ignore */ }
+
+  const noteId = event.dataTransfer?.getData ? event.dataTransfer.getData('text/noteId') : null;
+  if (!noteId || !state.notes.has(noteId)) return;
+
+  // If paneId is missing or unknown, fallback to 'right' if it exists, otherwise 'left'
+  if (!paneId || !editorInstances[paneId]) {
+    if (editorInstances.right) paneId = 'right';
+    else paneId = 'left';
+  }
+
+  openNoteInPane(noteId, paneId);
 };
 
 // second editor input handling removed
@@ -5588,10 +6478,18 @@ const applyInlineCodeTrigger = (textarea, note, trigger) => {
       const changed = nextContent !== value;
 
       if (changed) {
-        textarea.value = nextContent;
-        textarea.focus({ preventScroll: true });
-        const caret = Math.min(updateResult.caretPosition, nextContent.length);
-        textarea.setSelectionRange(caret, caret);
+        const _edt_code = getActiveEditorInstance();
+        const _ta_code = _edt_code?.el ?? textarea;
+        if (_ta_code) {
+          // prefer Editor API
+          try {
+            if (_edt_code && typeof _edt_code.setValue === 'function') _edt_code.setValue(nextContent);
+            else _ta_code.value = nextContent;
+          } catch (e) { _ta_code.value = nextContent; }
+          try { if (_edt_code) _edt_code.focus({ preventScroll: true }); else _ta_code.focus({ preventScroll: true }); } catch (e) { try { if (_edt_code) _edt_code.focus(); else _ta_code.focus(); } catch (e2) {} }
+          const caret = Math.min(updateResult.caretPosition, nextContent.length);
+          try { if (_edt_code && typeof _edt_code.setSelectionRange === 'function') _edt_code.setSelectionRange(caret, caret); else _ta_code.setSelectionRange(caret, caret); } catch (e) {}
+        }
 
         note.content = nextContent;
         note.updatedAt = new Date().toISOString();
@@ -5601,8 +6499,8 @@ const applyInlineCodeTrigger = (textarea, note, trigger) => {
         refreshHashtagsForNote(note);
         renderMarkdownPreview(note.content, note.id);
         scheduleSave();
-        updateWikiSuggestions(textarea);
-        updateHashtagSuggestions(textarea);
+        updateWikiSuggestions(_ta_code);
+        updateHashtagSuggestions(_ta_code);
       }
 
       const languageLabel = language.length ? language : 'plain text';
@@ -5617,10 +6515,14 @@ const applyInlineCodeTrigger = (textarea, note, trigger) => {
     const baseAfter = `${separation.newline}${separation.remainder}`;
     const baseContent = `${beforeCommand}${baseAfter}`;
 
-    textarea.value = baseContent;
-    textarea.focus({ preventScroll: true });
-    const caret = beforeCommand.length + separation.newline.length;
-    textarea.setSelectionRange(caret, caret);
+    const _edt_code2 = getActiveEditorInstance();
+    const _ta_code2 = _edt_code2?.el ?? textarea;
+    if (_ta_code2) {
+      try { if (_edt_code2 && typeof _edt_code2.setValue === 'function') _edt_code2.setValue(baseContent); else _ta_code2.value = baseContent; } catch (e) { _ta_code2.value = baseContent; }
+      try { if (_edt_code2) _edt_code2.focus({ preventScroll: true }); else _ta_code2.focus({ preventScroll: true }); } catch (e) { try { if (_edt_code2) _edt_code2.focus(); else _ta_code2.focus(); } catch (e2) {} }
+      const caret = beforeCommand.length + separation.newline.length;
+      try { if (_edt_code2 && typeof _edt_code2.setSelectionRange === 'function') _edt_code2.setSelectionRange(caret, caret); else _ta_code2.setSelectionRange(caret, caret); } catch (e) {}
+    }
 
     note.content = baseContent;
     note.updatedAt = new Date().toISOString();
@@ -5654,8 +6556,15 @@ const applyInlineMathTrigger = (textarea, note, trigger) => {
     const snippet = `${needsLeadingNewline ? '\n' : ''}${snippetCore}${needsTrailingNewline ? '\n' : ''}`;
     const nextContent = `${before}${snippet}${after}`;
 
-    textarea.value = nextContent;
-    textarea.focus({ preventScroll: true });
+    // Prefer the active editor instance's textarea so split view inserts
+    // always apply to the active pane. Fall back to the local textarea
+    // variable if no active instance is available.
+    const _edt_matrix = getActiveEditorInstance();
+    const _ta_matrix = _edt_matrix?.el ?? textarea;
+    if (_ta_matrix) {
+      _ta_matrix.value = nextContent;
+      try { _ta_matrix.focus({ preventScroll: true }); } catch (e) { try { _ta_matrix.focus(); } catch (e2) {} }
+    }
 
     const placeholderStart =
       before.length +
@@ -5665,7 +6574,10 @@ const applyInlineMathTrigger = (textarea, note, trigger) => {
     const placeholderEnd = placeholderStart + placeholder.length;
 
     window.requestAnimationFrame(() => {
-      textarea.setSelectionRange(placeholderStart, placeholderEnd);
+      try {
+        if (_edt_matrix && typeof _edt_matrix.setSelectionRange === 'function') _edt_matrix.setSelectionRange(placeholderStart, placeholderEnd);
+        else (_edt_matrix?.el ?? textarea).setSelectionRange(placeholderStart, placeholderEnd);
+      } catch (e) {}
     });
 
     note.content = nextContent;
@@ -5785,14 +6697,17 @@ const applyInlineMatrixTrigger = (textarea, note, trigger, matrixType) => {
     const selectionEnd = selectionStart + firstElement.length;
 
     window.requestAnimationFrame(() => {
-      textarea.setSelectionRange(selectionStart, selectionEnd);
+      try {
+        if (_edt_matrix && typeof _edt_matrix.setSelectionRange === 'function') _edt_matrix.setSelectionRange(selectionStart, selectionEnd);
+        else (_edt_matrix?.el ?? textarea).setSelectionRange(selectionStart, selectionEnd);
+      } catch (e) {}
     });
 
     note.content = nextContent;
     note.updatedAt = new Date().toISOString();
     note.dirty = true;
 
-    refreshBlockIndexForNote(note);
+  refreshBlockIndexForNote(note);
     refreshHashtagsForNote(note);
     renderMarkdownPreview(note.content, note.id);
     scheduleSave();
@@ -5968,15 +6883,24 @@ const applyInlineQuoteTrigger = (textarea, note, trigger) => {
     const snippet = `${snippetPrefix}${quoteBlock}${snippetSuffix}`;
     const nextContent = `${beforeCommand}${snippet}${afterCommand}`;
 
-    textarea.value = nextContent;
-    textarea.focus({ preventScroll: true });
+    // Prefer the active editor instance's textarea so split view inserts
+    // always apply to the active pane.
+    const _edt_quote = getActiveEditorInstance();
+    const _ta_quote = _edt_quote?.el ?? textarea;
+    if (_ta_quote) {
+      _ta_quote.value = nextContent;
+      try { _ta_quote.focus({ preventScroll: true }); } catch (e) { try { _ta_quote.focus(); } catch (e2) {} }
+    }
 
     // Position cursor at the quote text for immediate editing
     const selectionStart = beforeCommand.length + snippetPrefix.length + 2; // After "> "
     const selectionEnd = selectionStart + quotePlaceholder.length;
 
     window.requestAnimationFrame(() => {
-      textarea.setSelectionRange(selectionStart, selectionEnd);
+      try {
+        if (_edt_quote && typeof _edt_quote.setSelectionRange === 'function') _edt_quote.setSelectionRange(selectionStart, selectionEnd);
+        else (_edt_quote?.el ?? textarea).setSelectionRange(selectionStart, selectionEnd);
+      } catch (e) {}
     });
 
     note.content = nextContent;
@@ -6227,19 +7151,28 @@ const applyInlineTableTrigger = (textarea, note, trigger) => {
     const snippet = `${snippetPrefix}${snippetCore}${snippetSuffix}`;
     const nextContent = `${beforeCommand}${snippet}${afterCommand}`;
 
-    textarea.value = nextContent;
-    textarea.focus({ preventScroll: true });
+    // Prefer the active editor instance's textarea so split view inserts
+    // always apply to the active pane.
+    const _edt_table = getActiveEditorInstance();
+    const _ta_table = _edt_table?.el ?? textarea;
+    if (_ta_table) {
+      _ta_table.value = nextContent;
+      try { _ta_table.focus({ preventScroll: true }); } catch (e) { try { _ta_table.focus(); } catch (e2) {} }
+    }
 
     const firstDataCell = rows > 0 ? `Row 1 Col 1` : headers[0] ?? '';
     const selectionAnchorInSnippet = snippetCore.indexOf(firstDataCell);
     const selectionStart =
-  beforeCommand.length +
-  snippetPrefix.length +
+      beforeCommand.length +
+      snippetPrefix.length +
       (selectionAnchorInSnippet >= 0 ? selectionAnchorInSnippet : 0);
     const selectionEnd = selectionStart + firstDataCell.length;
 
     window.requestAnimationFrame(() => {
-      textarea.setSelectionRange(selectionStart, selectionEnd);
+      try {
+        if (_edt_table && typeof _edt_table.setSelectionRange === 'function') _edt_table.setSelectionRange(selectionStart, selectionEnd);
+        else (_edt_table?.el ?? textarea).setSelectionRange(selectionStart, selectionEnd);
+      } catch (e) {}
     });
 
     note.content = nextContent;
@@ -6414,30 +7347,33 @@ const handleEditorKeydown = (event) => {
     !event.metaKey &&
     !event.ctrlKey &&
     !state.wikiSuggest.open &&
-    !state.tagSuggest.open
+    !state.tagSuggest.open &&
+    !state.fileSuggest.open
   ) {
-    const note = getActiveNote();
-    const textarea = elements.editor;
-    if (note && note.type === 'markdown' && textarea) {
-      const caret = textarea.selectionStart ?? 0;
-      const trigger = detectInlineCommandTrigger(textarea.value, caret, { includeTrailingNewline: false });
-      if (trigger) {
-        event.preventDefault();
-        if (applyInlineCommandTrigger(textarea, note, trigger)) {
+    try {
+      const edt = getActiveEditorInstance();
+      const ta = edt?.el ?? null;
+      const note = getActiveNote();
+      if (ta && note) {
+        const handled = applyInlineCommandTriggerIfNeeded(ta, note);
+        if (handled) {
+          event.preventDefault();
           return;
         }
       }
-    }
+    } catch (e) { /* ignore */ }
   }
 };
 
 const handleEditorKeyup = (event) => {
   if (event.key === 'Backspace' || event.key === 'Delete') {
+    // Resolve the textarea that triggered this event (supports both left/right editors)
+    const targetTextarea = event?.target && event.target.tagName === 'TEXTAREA' ? event.target : getActiveEditorInstance().el;
     if (!state.wikiSuggest.open) {
-      updateWikiSuggestions(elements.editor);
+      updateWikiSuggestions(targetTextarea);
     }
     if (!state.tagSuggest.open) {
-      updateHashtagSuggestions(elements.editor);
+      updateHashtagSuggestions(targetTextarea);
     }
 
     // Don't auto-apply inline commands on delete operations to avoid interference
@@ -6450,61 +7386,142 @@ const handleEditorKeyup = (event) => {
   // Check for inline command explanations on cursor movement or content changes
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Backspace', 'Delete'].includes(event.key)) {
     checkInlineCommandAtCursor();
-    // Update math preview on cursor movement
-    updateMathPreview(elements.editor);
+    // Update math preview on cursor movement. Use the event target so both
+    // left and right editors receive updates when this handler is invoked.
+    try {
+      const targetTextarea = event?.target && event.target.tagName === 'TEXTAREA' ? event.target : getActiveEditorInstance().el;
+      updateMathPreview(targetTextarea);
+    } catch (e) {
+      try { updateMathPreview(getActiveEditorInstance().el); } catch (e2) {}
+    }
   }
 
   if (state.search.open) {
-    const textarea = elements.editor;
+    const edt = getActiveEditorInstance();
+    const textarea = edt?.el ?? null;
     if (textarea) {
       state.search.lastCaret = textarea.selectionStart ?? state.search.lastCaret ?? 0;
     }
   }
   
   // Update stored selection for CMD+E functionality
-  const textarea = elements.editor;
-  if (textarea) {
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
+  const edt2 = getActiveEditorInstance();
+  const textarea2 = edt2?.el ?? null;
+  if (textarea2) {
+    const start = textarea2.selectionStart;
+    const end = textarea2.selectionEnd;
     // Note: activeSelections is managed by toggleMathWysiwyg, this is just for reference
   }
 };
 
-// Lightweight click handler for the editor to refresh suggestions and cursor-dependent UI
+// Lightweight click handler for the editors to refresh suggestions, ensure the
+// clicked editor becomes the active pane, and update cursor-dependent UI.
 const handleEditorClick = (event) => {
-  // Update wiki and hashtag suggestions based on cursor position
-  if (elements.editor) {
-    updateWikiSuggestions(elements.editor);
-    updateHashtagSuggestions(elements.editor);
-    updateFileSuggestions(elements.editor);
-    updateMathPreview(elements.editor);
-    
-    // Update stored selection for CMD+E functionality
-    const start = elements.editor.selectionStart;
-    const end = elements.editor.selectionEnd;
-    // Note: activeSelections is managed by toggleMathWysiwyg, this is just for reference
+  // Determine which element was clicked. Prefer currentTarget (listener
+  // attachment point) but fall back to event.target.
+  const clickedEl = event?.currentTarget || event?.target;
+
+  // Find the nearest pane wrapper to determine pane identity. Dynamic panes
+  // include a `data-pane-id` attribute; right/left have known classes.
+  let paneId = null;
+  try {
+    const paneRoot = clickedEl?.closest?.('.editor-pane');
+    if (paneRoot) {
+      // Prefer explicit dynamic pane id attribute
+      if (paneRoot.getAttribute && paneRoot.getAttribute('data-pane-id')) {
+        paneId = paneRoot.getAttribute('data-pane-id');
+      } else if (paneRoot.classList && paneRoot.classList.contains('editor-pane--right')) {
+        paneId = 'right';
+      } else {
+        paneId = 'left';
+      }
+    }
+  } catch (e) { /* ignore and fallback below */ }
+
+  // Fallback: if clicked element is a known editor textarea, map directly
+  if (!paneId) {
+    try {
+      if (clickedEl === elements.editor || (elements.editor && elements.editor.contains && elements.editor.contains(clickedEl))) paneId = 'left';
+      else if (clickedEl === elements.editorRight || (elements.editorRight && elements.editorRight.contains && elements.editorRight.contains(clickedEl))) paneId = 'right';
+    } catch (e) { /* ignore */ }
+  }
+
+  // Final fallback: use currently active pane or any existing pane
+  if (!paneId) paneId = state.activeEditorPane || resolvePaneFallback(true);
+
+  // Activate the resolved pane
+  setActiveEditorPane(paneId);
+
+  const targetInstance = editorInstances[paneId] ?? getActiveEditorInstance();
+  const targetTextarea = targetInstance?.el ?? null;
+
+  if (targetTextarea) {
+    updateWikiSuggestions(targetTextarea);
+    updateHashtagSuggestions(targetTextarea);
+    updateFileSuggestions(targetTextarea);
+    updateMathPreview(targetTextarea);
+    // Store selection for other commands
+    const start = targetTextarea.selectionStart ?? 0;
+    const end = targetTextarea.selectionEnd ?? 0;
+  }
+
+  // Ensure file metadata UI reflects the current active pane/note. Use the
+  // explicit pane mapping when available so we don't surface unrelated notes.
+  const selectedPaneNoteId = state.editorPanes?.[paneId]?.noteId;
+  const selectedPaneNote = selectedPaneNoteId ? state.notes.get(selectedPaneNoteId) ?? null : null;
+  updateFileMetadataUI(selectedPaneNote, { allowActiveFallback: false });
+
+  // Defensive: some UI flows may still leave the path DOM blank. If we have a
+  // concrete note for this pane, ensure the filename/path DOM is explicitly
+  // populated here so returning to a pane reliably restores the displayed path.
+  if (selectedPaneNote && elements.fileName && elements.filePath) {
+    const descriptor = selectedPaneNote.language ? `${selectedPaneNote.title} · ${selectedPaneNote.language.toUpperCase()}` : selectedPaneNote.title;
+    elements.fileName.textContent = descriptor;
+    const location = selectedPaneNote.absolutePath ?? selectedPaneNote.folderPath ?? selectedPaneNote.storedPath ?? '';
+    if (location) {
+      const pathParts = location.split(/[/\\]/);
+      const filename = pathParts.pop();
+      const directory = pathParts.join('/');
+      elements.filePath.innerHTML = directory ? `${directory}/<span class="filename">${filename}</span>` : `<span class="filename">${filename}</span>`;
+    } else {
+      elements.filePath.textContent = 'Stored inside the application library.';
+    }
+    elements.filePath.title = location;
+    elements.fileName.hidden = false;
+    elements.fileName.setAttribute('aria-hidden', 'false');
   }
 };
 
 // second editor input handling removed
 
-const handleEditorSelect = () => {
-  if (!state.search.open) {
-    return;
-  }
-  const textarea = elements.editor;
-  if (!textarea) {
-    return;
-  }
-  state.search.lastCaret = textarea.selectionStart ?? state.search.lastCaret ?? 0;
-  
+const handleEditorSelect = (event) => {
+  // Selection handler should always update the math preview.
+  const textarea = event?.target && event.target.tagName === 'TEXTAREA' ? event.target : getActiveEditorInstance().el;
+  if (!textarea) return;
+
+  // Update stored caret for search if needed
+  try {
+    state.search.lastCaret = textarea.selectionStart ?? state.search.lastCaret ?? 0;
+  } catch (e) { /* ignore */ }
+
   // Update stored selection for CMD+E functionality
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  lastSelection = start !== end ? { start, end } : null;
-  
-  // Update math preview when selection changes
+  try {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    lastSelection = start !== end ? { start, end } : null;
+  } catch (e) { /* ignore */ }
+
+  // Always refresh math preview when selection changes
   updateMathPreview(textarea);
+
+  // If search UI is open, also refresh search matches
+  if (state.search.open) {
+    try {
+      const activeEd = getActiveEditorInstance();
+      const caret = activeEd?.selectionStart ?? state.search.lastCaret ?? 0;
+      updateEditorSearchMatches({ preserveActive: true, caret, focusEditor: false });
+    } catch (e) { /* ignore */ }
+  }
 };
 
 // Minimal blur handler: persist notes and close suggestion UI
@@ -6776,7 +7793,14 @@ const handleOpenFolder = async () => {
       return;
     }
 
-    adoptWorkspace(result);
+      // Use a safe wrapper that catches errors in adoptWorkspace so the UI
+      // doesn't become unusable if some helper functions are temporarily missing.
+      try {
+        safeAdoptWorkspace(result);
+      } catch (e) {
+        // If safeAdoptWorkspace itself is missing (shouldn't be), fall back to adoptWorkspace
+        try { adoptWorkspace(result); } catch (ee) { console.error('adopt workspace fallback failed', ee); }
+      }
     if (state.activeNoteId) {
       setStatus('Workspace loaded.', true);
     } else {
@@ -7117,7 +8141,7 @@ const openHashtagSuggestions = (trigger, textarea) => {
   renderHashtagSuggestions();
 };
 
-const updateHashtagSuggestions = (textarea = elements.editor) => {
+const updateHashtagSuggestions = (textarea = getActiveEditorInstance().el) => {
   if (!textarea || textarea !== document.activeElement) {
     closeHashtagSuggestions();
     return;
@@ -7169,25 +8193,33 @@ const applyHashtagSuggestion = (index) => {
   }
 
   const suggestion = state.tagSuggest.items[index] ?? null;
-  const textarea = elements.editor;
-  if (!suggestion || !textarea) {
+  const _edt_tag = getActiveEditorInstance();
+  const _ta_tag = _edt_tag?.el ?? null;
+  if (!suggestion || !_ta_tag) {
     return false;
   }
 
   const start = state.tagSuggest.start;
   const end = state.tagSuggest.end;
-  const before = textarea.value.slice(0, start);
-  const after = textarea.value.slice(end);
+  const before = _ta_tag.value.slice(0, start);
+  const after = _ta_tag.value.slice(end);
   const replacement = suggestion.insert ?? suggestion.display ?? '';
 
   const nextValue = `${before}${replacement}${after}`;
-  textarea.value = nextValue;
-  const caret = before.length + replacement.length;
-  textarea.setSelectionRange(caret, caret);
+  try {
+    _edt_tag.setValue(nextValue);
+    const caret = before.length + replacement.length;
+  try { if (_edt_tag && typeof _edt_tag.setSelectionRange === 'function') _edt_tag.setSelectionRange(caret, caret); else _ta_tag.setSelectionRange(caret, caret); } catch (e) {}
+  } catch (e) {
+    if (_ta_tag) {
+      _ta_tag.value = nextValue;
+  try { if (_edt_tag && typeof _edt_tag.setSelectionRange === 'function') _edt_tag.setSelectionRange(before.length + replacement.length, before.length + replacement.length); else _ta_tag.setSelectionRange(before.length + replacement.length, before.length + replacement.length); } catch (err) {}
+    }
+  }
 
   state.tagSuggest.suppress = true;
   closeHashtagSuggestions();
-  handleEditorInput({ target: textarea });
+  handleEditorInput({ target: _edt_tag.el ?? _ta_tag });
   return true;
 };
 
@@ -7219,7 +8251,7 @@ const getFileSuggestionTrigger = (value, caret) => {
   return null;
 };
 
-const updateFileSuggestions = (textarea = elements.editor) => {
+const updateFileSuggestions = (textarea = getActiveEditorInstance().el) => {
   if (!textarea || textarea !== document.activeElement) {
     closeFileSuggestions();
     return;
@@ -7463,25 +8495,33 @@ const applyFileSuggestion = (index) => {
   }
 
   const suggestion = state.fileSuggest.items[index] ?? null;
-  const textarea = elements.editor;
-  if (!suggestion || !textarea) {
+  const _edt_file = getActiveEditorInstance();
+  const _ta_file = _edt_file?.el ?? null;
+  if (!suggestion || !_ta_file) {
     return false;
   }
 
   const start = state.fileSuggest.start;
   const end = state.fileSuggest.end;
-  const before = textarea.value.slice(0, start);
-  const after = textarea.value.slice(end);
+  const before = _ta_file.value.slice(0, start);
+  const after = _ta_file.value.slice(end);
   const replacement = suggestion.relativePath;
 
   const nextValue = `${before}${replacement}${after}`;
-  textarea.value = nextValue;
-  const caret = before.length + replacement.length;
-  textarea.setSelectionRange(caret, caret);
+  try {
+    _edt_file.setValue(nextValue);
+    const caret = before.length + replacement.length;
+  try { if (_edt_file && typeof _edt_file.setSelectionRange === 'function') _edt_file.setSelectionRange(caret, caret); else _ta_file.setSelectionRange(caret, caret); } catch (e) {}
+  } catch (e) {
+    if (_ta_file) {
+      _ta_file.value = nextValue;
+  try { if (_edt_file && typeof _edt_file.setSelectionRange === 'function') _edt_file.setSelectionRange(before.length + replacement.length, before.length + replacement.length); else _ta_file.setSelectionRange(before.length + replacement.length, before.length + replacement.length); } catch (err) {}
+    }
+  }
 
   state.fileSuggest.suppress = true;
   closeFileSuggestions();
-  handleEditorInput({ target: textarea });
+  handleEditorInput({ target: _edt_file.el ?? _ta_file });
   return true;
 };
 
@@ -7736,7 +8776,7 @@ const openWikiSuggestions = (trigger, textarea) => {
   renderWikiSuggestions();
 };
 
-const updateWikiSuggestions = (textarea = elements.editor, editorType = 'editor1') => {
+const updateWikiSuggestions = (textarea = getActiveEditorInstance().el, editorType = 'editor1') => {
   if (!textarea || textarea !== document.activeElement) {
     closeWikiSuggestions(editorType);
     return;
@@ -7788,25 +8828,33 @@ const applyWikiSuggestion = (index) => {
   }
 
   const suggestion = state.wikiSuggest.items[index] ?? null;
-  const textarea = elements.editor;
-  if (!suggestion || !textarea) {
+  const _edt_wiki = getActiveEditorInstance();
+  const _ta_wiki = _edt_wiki?.el ?? null;
+  if (!suggestion || !_ta_wiki) {
     return false;
   }
 
   const start = state.wikiSuggest.start;
   const end = state.wikiSuggest.end;
-  const before = textarea.value.slice(0, start);
-  const after = textarea.value.slice(end);
+  const before = _ta_wiki.value.slice(0, start);
+  const after = _ta_wiki.value.slice(end);
   const replacement = suggestion.target;
 
   const nextValue = `${before}${replacement}${after}`;
-  textarea.value = nextValue;
-  const caret = before.length + replacement.length;
-  textarea.setSelectionRange(caret, caret);
+  try {
+    _edt_wiki.setValue(nextValue);
+    const caret = before.length + replacement.length;
+  try { if (_edt_wiki && typeof _edt_wiki.setSelectionRange === 'function') _edt_wiki.setSelectionRange(caret, caret); else _ta_wiki.setSelectionRange(caret, caret); } catch (e) {}
+  } catch (e) {
+    if (_ta_wiki) {
+      _ta_wiki.value = nextValue;
+  try { if (_edt_wiki && typeof _edt_wiki.setSelectionRange === 'function') _edt_wiki.setSelectionRange(before.length + replacement.length, before.length + replacement.length); else _ta_wiki.setSelectionRange(before.length + replacement.length, before.length + replacement.length); } catch (err) {}
+    }
+  }
 
   state.wikiSuggest.suppress = true;
   closeWikiSuggestions();
-  handleEditorInput({ target: textarea });
+  handleEditorInput({ target: _edt_wiki.el ?? _ta_wiki });
   return true;
 };
 
@@ -7842,10 +8890,11 @@ const createFileInWorkspace = async (rawName = '') => {
     adoptWorkspace(result, result.createdNoteId ?? null);
 
     if (result.createdNoteId) {
+      openNoteById(result.createdNoteId, true);
       const createdNote = state.notes.get(result.createdNoteId) ?? null;
       const createdTitle = createdNote?.title ?? fileName;
-      setStatus(`${createdTitle} created.`, true);
-      elements.editor?.focus({ preventScroll: true });
+  setStatus(`${createdTitle} created.`, true);
+  try { getActiveEditorInstance().focus({ preventScroll: true }); } catch (e) {}
     } else {
       setStatus('File created. Select it from the explorer.', true);
     }
@@ -7945,8 +8994,22 @@ const applyWikiLinkRename = async (oldSlug, newBaseName, newFileName) => {
 
   if (activeChanged) {
     const activeNote = getActiveNote();
-    if (activeNote && elements.editor) {
-      elements.editor.value = activeNote.content ?? '';
+    if (activeNote) {
+      // Update whichever editor currently contains the active note (search all panes)
+      let pane = null;
+      try {
+        if (state.editorPanes && typeof state.editorPanes === 'object') {
+          for (const key of Object.keys(state.editorPanes)) {
+            if (state.editorPanes[key] && state.editorPanes[key].noteId === activeNote.id) {
+              pane = key;
+              break;
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+      if (!pane) pane = state.activeEditorPane || resolvePaneFallback(true);
+      const instance = editorInstances[pane] ?? getActiveEditorInstance() ?? getAnyEditorInstance();
+      if (instance && instance.el) instance.el.value = activeNote.content ?? '';
       renderMarkdownPreview(activeNote.content, activeNote.id);
     }
   }
@@ -8127,7 +9190,7 @@ const insertCodeBlockAtCursor = (languageInput = '') => {
     persistLastCodeLanguage(language);
   }
 
-  const textarea = elements.editor;
+  const textarea = getActiveEditorInstance()?.el ?? null;
   const content = note.content ?? '';
   const start = textarea.selectionStart ?? content.length;
   const end = textarea.selectionEnd ?? start;
@@ -8151,12 +9214,19 @@ const insertCodeBlockAtCursor = (languageInput = '') => {
   note.dirty = true;
   note.updatedAt = new Date().toISOString();
 
-  textarea.value = nextContent;
-  textarea.focus({ preventScroll: true });
+  const _edt_codeblock = getActiveEditorInstance();
+  const _ta_codeblock = _edt_codeblock?.el ?? textarea;
+  if (_ta_codeblock) {
+    _ta_codeblock.value = nextContent;
+    try { _ta_codeblock.focus({ preventScroll: true }); } catch (e) { try { _ta_codeblock.focus(); } catch (e2) {} }
+  }
   const placeholderStart = start + (needsLeadingNewline ? 1 : 0) + openingLine.length + 1;
   const placeholderEnd = placeholderStart + placeholder.length;
   window.requestAnimationFrame(() => {
-    textarea.setSelectionRange(placeholderStart, placeholderEnd);
+    try {
+      if (_edt_codeblock && typeof _edt_codeblock.setSelectionRange === 'function') _edt_codeblock.setSelectionRange(placeholderStart, placeholderEnd);
+      else (_edt_codeblock?.el ?? textarea).setSelectionRange(placeholderStart, placeholderEnd);
+    } catch (e) {}
   });
 
   refreshBlockIndexForNote(note);
@@ -8177,8 +9247,7 @@ const highlightSelectedText = () => {
   if (!elements.editor) {
     return false;
   }
-
-  const textarea = elements.editor;
+  const textarea = getActiveEditorInstance()?.el ?? null;
   const content = note.content ?? '';
   const start = textarea.selectionStart ?? 0;
   const end = textarea.selectionEnd ?? start;
@@ -8235,12 +9304,18 @@ const highlightSelectedText = () => {
   note.dirty = true;
   note.updatedAt = new Date().toISOString();
 
-  textarea.value = newContent;
-  textarea.focus({ preventScroll: true });
-  
+  const _edt_highlight = getActiveEditorInstance();
+  const _ta_highlight = _edt_highlight?.el ?? textarea;
+  if (_ta_highlight) {
+    _ta_highlight.value = newContent;
+    try { _ta_highlight.focus({ preventScroll: true }); } catch (e) { try { _ta_highlight.focus(); } catch (e2) {} }
+  }
   // Restore selection with new position
   window.requestAnimationFrame(() => {
-    textarea.setSelectionRange(newCursorPos.start, newCursorPos.end);
+    try {
+      if (_edt_highlight && typeof _edt_highlight.setSelectionRange === 'function') _edt_highlight.setSelectionRange(newCursorPos.start, newCursorPos.end);
+      else (_edt_highlight?.el ?? textarea).setSelectionRange(newCursorPos.start, newCursorPos.end);
+    } catch (e) {}
   });
 
   refreshBlockIndexForNote(note);
@@ -8312,10 +9387,8 @@ const closeInlineChat = () => {
     state.inlineChat.overlay = null;
   }
   
-  // Focus back to editor
-  if (elements.editor) {
-    elements.editor.focus();
-  }
+  // Focus back to active editor
+  try { getActiveEditorInstance().focus(); } catch (e) { /* ignore */ }
 };
 
 const addChatMessage = (content, sender = 'user') => {
@@ -8379,15 +9452,17 @@ const executeInlineCommandFromChat = (commandText) => {
     return;
   }
   
-  if (!elements.editor) {
+  const edt = getActiveEditorInstance();
+  const ta = edt?.el ?? null;
+  if (!ta) {
     addChatMessage("Editor not available. Please try again.", 'assistant');
     return;
   }
-  
+
   // Create a fake text with the command at the cursor position to simulate detection
-  const cursorPos = elements.editor.selectionStart || elements.editor.value.length;
-  const beforeCursor = elements.editor.value.slice(0, cursorPos);
-  const afterCursor = elements.editor.value.slice(cursorPos);
+  const cursorPos = ta.selectionStart || ta.value.length;
+  const beforeCursor = ta.value.slice(0, cursorPos);
+  const afterCursor = ta.value.slice(cursorPos);
   
   // Add the command on a new line if needed
   const needsNewline = beforeCursor.length > 0 && !beforeCursor.endsWith('\n');
@@ -8405,18 +9480,18 @@ const executeInlineCommandFromChat = (commandText) => {
       end: cursorPos + (needsNewline ? 1 : 0) + commandText.length + (trigger.consumedNewline ? 1 : 0)
     };
     
-    // Insert the command text first
-    const currentValue = elements.editor.value;
-    const newValue = currentValue.slice(0, cursorPos) + 
-                    (needsNewline ? '\n' : '') + 
-                    commandText + 
-                    (trigger.consumedNewline ? '\n' : '') + 
-                    currentValue.slice(cursorPos);
-    
-    elements.editor.value = newValue;
-    
-    // Now execute the command
-    const success = applyInlineCommandTrigger(elements.editor, note, realTrigger);
+  // Insert the command text first
+  const currentValue = ta.value;
+  const newValue = currentValue.slice(0, cursorPos) + 
+          (needsNewline ? '\n' : '') + 
+          commandText + 
+          (trigger.consumedNewline ? '\n' : '') + 
+          currentValue.slice(cursorPos);
+
+  try { ta.value = newValue; } catch (e) { edt.setValue(newValue); }
+
+  // Now execute the command on the active textarea
+  const success = applyInlineCommandTrigger(ta, note, realTrigger);
     
     if (success) {
       addChatMessage(`Executed: ${commandText}`, 'assistant');
@@ -8426,7 +9501,7 @@ const executeInlineCommandFromChat = (commandText) => {
       }, 1000);
     } else {
       // If command failed, revert the text insertion
-      elements.editor.value = currentValue;
+  try { ta.value = currentValue; } catch (e) { edt.setValue(currentValue); }
       addChatMessage(`Failed to execute: ${commandText}`, 'assistant');
     }
   } else {
@@ -8700,7 +9775,9 @@ const showInlineCommandExplanation = (commandInfo) => {
 
 const checkInlineCommandAtCursor = () => {
   const note = getActiveNote();
-  if (!note || note.type !== 'markdown' || !elements.editor) {
+  const edt = getActiveEditorInstance();
+  const textarea = edt?.el ?? null;
+  if (!note || note.type !== 'markdown' || !textarea) {
     // Clear any existing command explanation
     if (state.currentCommandExplanation) {
       state.currentCommandExplanation = null;
@@ -8708,8 +9785,6 @@ const checkInlineCommandAtCursor = () => {
     }
     return;
   }
-
-  const textarea = elements.editor;
   const cursorPos = textarea.selectionStart;
   const value = textarea.value;
   
@@ -8761,15 +9836,17 @@ const executeNaturalLanguageCommand = (parsedCommand) => {
     return true;
   }
   
-  if (!elements.editor) {
+  const edt = getActiveEditorInstance();
+  const ta = edt?.el ?? null;
+  if (!ta) {
     addChatMessage("Editor not available. Please try again.", 'assistant');
     return true;
   }
-  
+
   // Get current cursor position
-  const cursorPos = elements.editor.selectionStart || elements.editor.value.length;
-  const beforeCursor = elements.editor.value.slice(0, cursorPos);
-  const afterCursor = elements.editor.value.slice(cursorPos);
+  const cursorPos = ta.selectionStart || ta.value.length;
+  const beforeCursor = ta.value.slice(0, cursorPos);
+  const afterCursor = ta.value.slice(cursorPos);
   
   // Create the inline command text
   const commandText = `&${parsedCommand.command} ${parsedCommand.args}`.trim();
@@ -8781,29 +9858,27 @@ const executeNaturalLanguageCommand = (parsedCommand) => {
                   commandText + 
                   afterCursor;
   
-  // Update the editor
-  elements.editor.value = newValue;
-  
-  // Position cursor at the end of the inserted command
-  const newCursorPos = cursorPos + (needsNewline ? 1 : 0) + commandText.length;
-  elements.editor.selectionStart = newCursorPos;
-  elements.editor.selectionEnd = newCursorPos;
-  
-  // Focus the editor
-  elements.editor.focus();
-  
-  // Trigger the inline command execution by simulating Enter key press
-  setTimeout(() => {
-    const enterEvent = new KeyboardEvent('keydown', {
-      key: 'Enter',
-      code: 'Enter',
-      keyCode: 13,
-      which: 13,
-      bubbles: true,
-      cancelable: true
-    });
-    elements.editor.dispatchEvent(enterEvent);
-  }, 100);
+  // Update the active editor
+  if (edt && edt.el) {
+    try { edt.el.value = newValue; } catch (e) { edt.setValue(newValue); }
+    // Position cursor at the end of the inserted command
+    const newCursorPos = cursorPos + (needsNewline ? 1 : 0) + commandText.length;
+    try { edt.el.selectionStart = newCursorPos; edt.el.selectionEnd = newCursorPos; } catch (e) {}
+    // Focus the editor
+    try { edt.focus(); } catch (e) {}
+    // Trigger the inline command execution by simulating Enter key press
+    setTimeout(() => {
+      const enterEvent = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true,
+        cancelable: true
+      });
+      try { edt.el.dispatchEvent(enterEvent); } catch (e) {}
+    }, 100);
+  }
   
   // Provide feedback and close chat
   let message = '';
@@ -8909,8 +9984,9 @@ const closeCodePopover = (restoreFocus = true) => {
     elements.codePopover.setAttribute('aria-hidden', 'true');
   }
 
-  if (restoreFocus && elements.editor) {
-    elements.editor.focus({ preventScroll: true });
+  if (restoreFocus) {
+    const activeEd = getActiveEditorInstance();
+    try { activeEd.focus({ preventScroll: true }); } catch (e) { /* fallback */ try { editorInstances.left?.focus?.({ preventScroll: true }); } catch (e2) {} }
   }
 };
 
@@ -9006,7 +10082,8 @@ const handleGlobalShortcuts = (event) => {
   const key = event.key.toLowerCase();
   const target = event.target;
   const targetSupportsMatches = Boolean(target && typeof target.matches === 'function');
-  const isEditorTarget = target === elements.editor;
+  const activeEditorEl = getActiveEditorInstance()?.el;
+  const isEditorTarget = target === activeEditorEl;
   const isSearchInputTarget = target === elements.editorSearchInput;
   const isEditableTarget =
     targetSupportsMatches && target.matches('input, textarea, [contenteditable="true"]');
@@ -9027,9 +10104,8 @@ const handleGlobalShortcuts = (event) => {
       toggleSidebarCollapsed();
     }
   } else if (key === 'e') {
-    // Use current editor selection for CMD+E functionality
-    const hasSelection = elements.editor && elements.editor.selectionStart !== elements.editor.selectionEnd;
-    console.log('[handleGlobalShortcuts] Cmd+E pressed, hasSelection:', hasSelection, 'selectionStart:', elements.editor?.selectionStart, 'selectionEnd:', elements.editor?.selectionEnd);
+  // Use current editor selection for CMD+E functionality
+  const hasSelection = activeEditorEl && activeEditorEl.selectionStart !== activeEditorEl.selectionEnd;
     event.preventDefault();
     if (window.toggleMathWysiwyg) {
       window.toggleMathWysiwyg(hasSelection);
@@ -9088,8 +10164,12 @@ const restoreLastWorkspace = async () => {
   try {
     const result = await window.api.loadWorkspaceAtPath({ folderPath });
     if (result) {
-      adoptWorkspace(result);
-      setStatus('Restored last workspace.', true);
+      try {
+        safeAdoptWorkspace(result);
+        setStatus('Restored last workspace.', true);
+      } catch (e) {
+        try { adoptWorkspace(result); setStatus('Restored last workspace.', true); } catch (ee) { console.error('Failed restoring last workspace', ee); persistLastWorkspaceFolder(null); setStatus('Could not reopen the last workspace folder.', false); }
+      }
     }
   } catch (error) {
     console.error('Failed to restore last workspace', error);
@@ -10367,33 +11447,105 @@ const initialize = () => {
   renderHashtagPanel();
   loadThemeSettings(); // Initialize theme on app start
   loadComponentSettings(); // Initialize component-specific settings
+  // Restore persisted editor pane assignments (per-pane open notes)
+  try {
+    const raw = localStorage.getItem(storageKeys.editorPanes);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        state.editorPanes = state.editorPanes || { left: { noteId: null }, right: { noteId: null } };
+        if (parsed.left && parsed.left.noteId) state.editorPanes.left.noteId = parsed.left.noteId;
+        if (parsed.right && parsed.right.noteId) state.editorPanes.right.noteId = parsed.right.noteId;
+        // If restored panes have noteIds that exist in state.notes, ensure they are opened in tabs
+        for (const paneKey of ['left','right']) {
+          const nid = state.editorPanes[paneKey]?.noteId;
+          if (nid && state.notes.has(nid)) {
+            // Create a tab if not present
+            if (!state.tabs.find(t => t.noteId === nid)) {
+              const note = state.notes.get(nid);
+              createTab(nid, note?.title || 'Untitled');
+            }
+          } else {
+            // Clear invalid noteId
+            state.editorPanes[paneKey].noteId = null;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to restore editor panes from storage', e);
+  }
+
+  // Rehydrate any dynamically-created panes saved in storage (keys other than left/right).
+  try {
+    const raw = localStorage.getItem(storageKeys.editorPanes);
+    if (raw) {
+      let parsed = null;
+      try { parsed = JSON.parse(raw); } catch (e) { parsed = null; }
+      if (parsed && typeof parsed === 'object') {
+        Object.keys(parsed).forEach((paneId) => {
+          if (paneId === 'left' || paneId === 'right') return;
+          // Create pane DOM and instance if not present
+          if (!editorInstances[paneId]) {
+            try {
+              createEditorPane(paneId, parsed[paneId].label || `Pane`);
+              console.debug('[split] rehydrated pane', paneId);
+            } catch (err) {
+              console.warn('Failed to recreate pane', paneId, err);
+            }
+          }
+
+          // If pane had a note assigned, populate its editor content
+          const noteId = parsed[paneId]?.noteId;
+          if (noteId && state.notes && state.notes.has(noteId) && editorInstances[paneId]) {
+            try {
+              const note = state.notes.get(noteId);
+              editorInstances[paneId].setValue(note.content || '');
+              state.editorPanes[paneId] = state.editorPanes[paneId] || {};
+              state.editorPanes[paneId].noteId = noteId;
+            } catch (e) { /* ignore per-pane hydrate failures */ }
+          }
+        });
+        // Persist the normalized structure
+        try { localStorage.setItem(storageKeys.editorPanes, JSON.stringify(state.editorPanes)); } catch (e) {}
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to rehydrate dynamic editor panes', e);
+  }
   
   // dual editor removed
   
   // Add platform class for platform-specific styling
   detectPlatform();
 
-  elements.editor.addEventListener('input', handleEditorInput);
-  elements.editor.addEventListener('keydown', handleEditorKeydown);
-  elements.editor.addEventListener('keyup', handleEditorKeyup);
-  elements.editor.addEventListener('click', handleEditorClick);
-  elements.editor.addEventListener('focus', () => {
-    updateWikiSuggestions(elements.editor);
-    updateHashtagSuggestions(elements.editor);
-  });
-  elements.editor.addEventListener('blur', () => {
-    persistNotes();
-    // Hide math preview popup when editor loses focus
-    if (elements.mathPreviewPopup) {
-      elements.mathPreviewPopup.classList.remove('visible');
-      elements.mathPreviewPopup.hidden = true;
-    }
-  });
+  // Left editor wiring via Editor abstraction
+  if (elements.editor) {
+    editorInstances.left.addEventListener('input', (e) => handleEditorInput(e, { editorEl: editorInstances.left.el, pane: 'left' }));
+    editorInstances.left.addEventListener('keydown', handleEditorKeydown);
+    editorInstances.left.addEventListener('keyup', handleEditorKeyup);
+    editorInstances.left.addEventListener('click', handleEditorClick);
+    editorInstances.left.addEventListener('focus', () => {
+      setActiveEditorPane('left');
+  const leftTa = editorInstances.left?.el ?? null;
+      updateWikiSuggestions(leftTa);
+      updateHashtagSuggestions(leftTa);
+    });
+    editorInstances.left.addEventListener('blur', () => {
+      persistNotes();
+      // Hide math preview popup when editor loses focus
+      if (elements.mathPreviewPopup) {
+        elements.mathPreviewPopup.classList.remove('visible');
+        elements.mathPreviewPopup.hidden = true;
+      }
+    });
+  }
   
   // Handle math preview popup on selection changes
   document.addEventListener('selectionchange', () => {
-    if (document.activeElement === elements.editor) {
-      updateMathPreview(elements.editor);
+    const activeEd = getActiveEditorInstance()?.el;
+    if (document.activeElement === activeEd) {
+      updateMathPreview(activeEd);
     } else {
       // Hide popup if editor is not focused
       if (elements.mathPreviewPopup) {
@@ -10402,26 +11554,167 @@ const initialize = () => {
       }
     }
   });
-  elements.editor.addEventListener('blur', handleEditorBlur);
-  elements.editor.addEventListener('scroll', handleEditorScroll);
-  elements.editor.addEventListener('select', handleEditorSelect);
+  editorInstances.left.addEventListener('blur', handleEditorBlur);
+  editorInstances.left.addEventListener('scroll', handleEditorScroll);
+  editorInstances.left.addEventListener('select', handleEditorSelect);
 
   // Drag and drop event listeners for first editor
-  elements.editor.addEventListener('dragover', handleEditorDragOver);
-  elements.editor.addEventListener('dragenter', handleEditorDragEnter);
-  elements.editor.addEventListener('dragleave', handleEditorDragLeave);
-  elements.editor.addEventListener('drop', handleEditor1Drop);
+  editorInstances.left.addEventListener('dragover', handleEditorDragOver, { passive: false });
+  editorInstances.left.addEventListener('dragenter', handleEditorDragEnter, { passive: false });
+  editorInstances.left.addEventListener('dragleave', handleEditorDragLeave, { passive: false });
+  editorInstances.left.addEventListener('drop', handleEditor1Drop);
 
   // Also add drop listeners to the editor pane itself
   const editorPane = document.querySelector('.editor-pane');
   if (editorPane) {
-    editorPane.addEventListener('dragover', handleEditorDragOver);
-    editorPane.addEventListener('dragenter', handleEditorDragEnter);
-    editorPane.addEventListener('dragleave', handleEditorDragLeave);
+    editorPane.addEventListener('dragover', handleEditorDragOver, { passive: false });
+    editorPane.addEventListener('dragenter', handleEditorDragEnter, { passive: false });
+    editorPane.addEventListener('dragleave', handleEditorDragLeave, { passive: false });
     editorPane.addEventListener('drop', handleEditor1Drop);
   }
 
   // second editor removed
+
+  // Right editor (split) listeners
+  if (elements.editorRight) {
+    elements.editorRight.addEventListener('input', (e) => {
+      // reuse same handler but provide reference to right editor
+      handleEditorInput(e, { editorEl: editorInstances.right?.el ?? elements.editorRight, pane: 'right' });
+      // If right pane is active, update preview
+      if (state.activeEditorPane === 'right') {
+        const noteId = getPaneNoteId('right') || state.activeNoteId;
+        const note = noteId ? state.notes.get(noteId) : null;
+        if (note && note.type === 'markdown') {
+          renderMarkdownPreview(note.content ?? '', note.id);
+        }
+      }
+    });
+    elements.editorRight.addEventListener('keydown', handleEditorKeydown);
+    elements.editorRight.addEventListener('keyup', handleEditorKeyup);
+    elements.editorRight.addEventListener('click', handleEditorClick);
+    elements.editorRight.addEventListener('focus', () => {
+      // Make right pane the active pane when focused
+      setActiveEditorPane('right');
+      const rightTa = editorInstances.right?.el ?? elements.editorRight;
+      updateWikiSuggestions(rightTa);
+      updateHashtagSuggestions(rightTa);
+    });
+    elements.editorRight.addEventListener('blur', () => {
+      persistNotes();
+      if (elements.mathPreviewPopup) {
+        elements.mathPreviewPopup.classList.remove('visible');
+        elements.mathPreviewPopup.hidden = true;
+      }
+    });
+
+    editorInstances.right.addEventListener('blur', handleEditorBlur);
+    editorInstances.right.addEventListener('scroll', handleEditorScroll);
+    editorInstances.right.addEventListener('select', handleEditorSelect);
+    
+  elements.editorRight.addEventListener('dragover', handleEditorDragOver, { passive: false });
+  elements.editorRight.addEventListener('dragenter', handleEditorDragEnter, { passive: false });
+  elements.editorRight.addEventListener('dragleave', handleEditorDragLeave, { passive: false });
+  elements.editorRight.addEventListener('drop', handleEditor2Drop, true);
+
+    const editorPaneRight = document.querySelector('.editor-pane--right');
+    if (editorPaneRight) {
+  editorPaneRight.addEventListener('dragover', handleEditorDragOver, { passive: false });
+  editorPaneRight.addEventListener('dragenter', handleEditorDragEnter, { passive: false });
+  editorPaneRight.addEventListener('dragleave', handleEditorDragLeave, { passive: false });
+  editorPaneRight.addEventListener('drop', handleEditor2Drop, true);
+    }
+  }
+
+  // Split editor toggle wiring
+  const toggleSplitBtn = document.getElementById('toggle-split-button');
+  const editorPaneRight = document.querySelector('.editor-pane--right');
+  const restoreSplitVisible = () => {
+    const val = localStorage.getItem(storageKeys.editorSplitVisible);
+    // default: visible -> 'true'
+    return val === null ? true : val === 'true';
+  };
+
+  const setSplitVisible = (visible) => {
+    console.debug('[split] setSplitVisible called ->', { visible });
+    if (editorPaneRight) {
+      console.debug('[split] editorPaneRight present, previous hidden=', editorPaneRight.hidden);
+      if (visible) {
+        editorPaneRight.hidden = false;
+        // remove inline display to allow CSS to determine layout
+        try { editorPaneRight.style.display = ''; } catch (e) {}
+        toggleSplitBtn?.setAttribute('aria-pressed', 'true');
+      } else {
+        editorPaneRight.hidden = true;
+        // force inline hide to override any CSS display rules
+        try { editorPaneRight.style.display = 'none'; } catch (e) {}
+        toggleSplitBtn?.setAttribute('aria-pressed', 'false');
+      }
+      // Persist as string so restoreSplitVisible can read it
+      localStorage.setItem(storageKeys.editorSplitVisible, visible ? 'true' : 'false');
+      // Log computed style and layout to detect CSS overrides
+      try {
+        const cs = window.getComputedStyle(editorPaneRight);
+        console.debug('[split] editorPaneRight now hidden=', editorPaneRight.hidden, 'persisted=', localStorage.getItem(storageKeys.editorSplitVisible), 'computed.display=', cs.display, 'offsetWidth=', editorPaneRight.offsetWidth, 'offsetHeight=', editorPaneRight.offsetHeight);
+      } catch (e) {
+        console.debug('[split] editorPaneRight now hidden=', editorPaneRight.hidden, 'persisted=', localStorage.getItem(storageKeys.editorSplitVisible));
+      }
+    } else {
+      console.warn('[split] setSplitVisible: editorPaneRight element not found');
+    }
+  };
+
+  if (toggleSplitBtn) {
+    // Initialize state from storage (default hidden)
+    const visible = restoreSplitVisible();
+    setSplitVisible(visible);
+    toggleSplitBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      console.debug('[split] create new editor pane button clicked');
+      // Create a new dynamic pane with a default label
+      const paneId = createEditorPane(null, `Pane ${Object.keys(editorInstances).length + 1}`);
+      console.debug('[split] created pane', paneId);
+    });
+  }
+
+  // Close button for right editor pane (newly added in index.html)
+  const closeRightBtn = document.getElementById('close-right-editor');
+  if (closeRightBtn) {
+    closeRightBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      // reuse existing split visibility logic
+      try {
+        console.debug('[split] close-right-editor clicked');
+        console.debug('[split] before close, persisted=', localStorage.getItem(storageKeys.editorSplitVisible), 'editorPane.hidden=', document.querySelector('.editor-pane--right')?.hidden);
+        setSplitVisible(false);
+        console.debug('[split] after setSplitVisible(false) call, persisted=', localStorage.getItem(storageKeys.editorSplitVisible), 'editorPane.hidden=', document.querySelector('.editor-pane--right')?.hidden);
+        // Extra diagnostics: inspect DOM structure to ensure there are no duplicates
+        try {
+          const rightPanes = Array.from(document.querySelectorAll('.editor-pane--right'));
+          console.debug('[split] right panes count=', rightPanes.length);
+          rightPanes.forEach((p, i) => {
+            try {
+              const cs = window.getComputedStyle(p);
+              console.debug(`[split] rightPane[${i}] hidden=${p.hidden} style.display=${p.style.display} computed.display=${cs.display} offsetWidth=${p.offsetWidth} offsetHeight=${p.offsetHeight}`);
+            } catch (e) { console.debug('[split] error reading rightPane', e); }
+          });
+
+          const workspace = document.querySelector('.workspace__content');
+          if (workspace) {
+            console.debug('[split] workspace children=', Array.from(workspace.children).map(ch => ({ tag: ch.tagName, class: ch.className, offsetWidth: ch.offsetWidth })));
+            const textareas = Array.from(document.querySelectorAll('textarea'));
+            console.debug('[split] textareas count=', textareas.length, textareas.map(t => ({ id: t.id, offsetWidth: t.offsetWidth, hidden: t.hidden, styleDisplay: t.style.display })));
+          }
+        } catch (e) { console.error('[split] diagnostics error', e); }
+        // focus the left editor so keyboard remains usable
+        const leftTa = document.getElementById('note-editor');
+        if (leftTa) {
+          leftTa.focus();
+        }
+      } catch (err) {
+        console.error('Failed to close right editor pane:', err);
+      }
+    });
+  }
 
   if (elements.codePopover) {
     elements.codePopover.setAttribute('aria-hidden', elements.codePopover.hidden ? 'true' : 'false');
@@ -10442,6 +11735,217 @@ const initialize = () => {
     elements.workspaceTree.addEventListener('dragstart', handleTreeNodeDragStart);
     elements.workspaceTree.addEventListener('dragend', handleTreeNodeDragEnd);
   }
+
+  // Capture-phase drop handler to intercept internal note drops and route them
+  // to the pane under the cursor. This runs before pane-level bubble handlers
+  // so it prevents the left-pane listener from stealing drops.
+  const handleCapturedNoteDrop = (ev) => {
+    try {
+      const types = ev.dataTransfer?.types ? Array.from(ev.dataTransfer.types) : [];
+      if (!types.includes('text/noteId')) return; // not our internal drag
+
+      // Get the note id and ensure it exists
+      const noteId = ev.dataTransfer.getData('text/noteId');
+      if (!noteId || !state.notes.has(noteId)) return;
+
+      // Determine element under cursor
+      const x = ev.clientX || (ev.touches && ev.touches[0] && ev.touches[0].clientX) || 0;
+      const y = ev.clientY || (ev.touches && ev.touches[0] && ev.touches[0].clientY) || 0;
+      const el = document.elementFromPoint(x, y);
+
+      let paneId = null;
+      if (el) {
+        const paneRoot = el.closest && el.closest('[data-pane-id], .editor-pane--dynamic, .editor-pane--right, .editor-pane');
+        if (paneRoot) {
+          if (paneRoot.getAttribute) {
+            const explicit = paneRoot.getAttribute('data-pane-id');
+            if (explicit) paneId = explicit;
+          }
+          if (!paneId) {
+            const ta = paneRoot.querySelector && paneRoot.querySelector('textarea');
+            if (ta && ta.id) {
+              if (ta.id === 'note-editor') paneId = 'left';
+              else if (ta.id.startsWith('note-editor-')) paneId = ta.id.replace(/^note-editor-/, '');
+            }
+          }
+          if (!paneId && paneRoot.classList && paneRoot.classList.contains('editor-pane--right')) paneId = 'right';
+        }
+      }
+
+  if (!paneId || !editorInstances[paneId]) paneId = resolvePaneFallback(true);
+
+      // Prevent others from handling it
+      try { ev.preventDefault(); } catch (e) {}
+      try { ev.stopPropagation(); } catch (e) {}
+      try { if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); } catch (e) {}
+
+  console.debug('[drop][capture] routing internal drop ->', { noteId, paneId });
+  try { showDropToast && showDropToast(noteId, paneId); } catch (e) {}
+  openNoteInPane(noteId, paneId);
+      try { ev._nta_handled = true; } catch (e) {}
+    } catch (e) {
+      // ignore non-fatal capture errors
+      console.warn('Captured drop routing failed', e);
+    }
+  };
+
+  // Install capture-phase handler
+  try { document.addEventListener('drop', handleCapturedNoteDrop, true); } catch (e) { /* ignore */ }
+  
+  // Small transient toast to surface drop routing for debugging/UX
+  function showDropToast(noteId, paneId) {
+    try {
+      const id = `nta-drop-toast`;
+      let el = document.getElementById(id);
+      if (!el) {
+        el = document.createElement('div');
+        el.id = id;
+        el.style.position = 'fixed';
+        el.style.zIndex = 99999;
+        el.style.left = '50%';
+        el.style.top = '20px';
+        el.style.transform = 'translateX(-50%)';
+        el.style.padding = '8px 12px';
+        el.style.background = 'rgba(0,0,0,0.8)';
+        el.style.color = 'white';
+        el.style.borderRadius = '6px';
+        el.style.fontSize = '13px';
+        el.style.boxShadow = '0 6px 20px rgba(0,0,0,0.35)';
+        document.body.appendChild(el);
+      }
+      el.textContent = `Dropped note ${noteId} -> ${paneId}`;
+      el.style.opacity = '1';
+      clearTimeout(el._nta_toast_timer);
+      el._nta_toast_timer = setTimeout(() => {
+        try { el.style.transition = 'opacity 300ms ease'; el.style.opacity = '0'; } catch (e) {}
+      }, 900);
+    } catch (e) { /* ignore */ }
+  }
+
+  // Document-level drag tracking so the full pane area highlights while
+  // dragging (use capture phase so we can respond before individual elements)
+  try {
+    let _nta_current_drop_pane = null;
+
+    const docFindPaneAtPoint = (x, y) => {
+      try {
+        const el = document.elementFromPoint(x, y);
+        if (!el) return null;
+        return el.closest ? el.closest('[data-pane-id], .editor-pane--dynamic, .editor-pane--right, .editor-pane') : null;
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const docDragOver = (ev) => {
+      try {
+        // Allow drops
+        if (ev && ev.preventDefault) ev.preventDefault();
+        const x = ev.clientX || 0;
+        const y = ev.clientY || 0;
+        const pane = docFindPaneAtPoint(x, y);
+        // When pointer is over an editor pane, do not show the global
+        // editor-drop-target highlight. Clear any existing highlights so the
+        // dashed area does not appear while hovering panes.
+        if (pane !== _nta_current_drop_pane) {
+          try { if (_nta_current_drop_pane) _nta_current_drop_pane.classList.remove('editor-drop-target'); } catch (e) {}
+          _nta_current_drop_pane = pane;
+          try {
+            // Intentionally do not add the 'editor-drop-target' class when over panes
+            if (_nta_current_drop_pane && _nta_current_drop_pane.classList) _nta_current_drop_pane.classList.remove('editor-drop-target');
+          } catch (e) {}
+        }
+        if (ev && ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+      } catch (e) { /* ignore */ }
+    };
+
+    const docDragLeave = (ev) => {
+      try {
+        // If pointer leaves the window (clientX/Y are 0 or negative), clear
+        const x = ev.clientX || -1;
+        const y = ev.clientY || -1;
+        if (x <= 0 || y <= 0 || x >= window.innerWidth || y >= window.innerHeight) {
+          try { if (_nta_current_drop_pane) _nta_current_drop_pane.classList.remove('editor-drop-target'); } catch (e) {}
+          _nta_current_drop_pane = null;
+        }
+      } catch (e) { /* ignore */ }
+    };
+
+    const docDropClear = (ev) => {
+      try { if (_nta_current_drop_pane) _nta_current_drop_pane.classList.remove('editor-drop-target'); } catch (e) {}
+      _nta_current_drop_pane = null;
+    };
+
+    document.addEventListener('dragover', docDragOver, true);
+    document.addEventListener('dragenter', docDragOver, true);
+    document.addEventListener('dragleave', docDragLeave, true);
+    document.addEventListener('drop', docDropClear, true);
+  } catch (e) { /* ignore */ }
+
+  // Global drag/drop handlers to allow dropping a folder from the OS (Finder/Explorer)
+  // into the app to open it as a workspace. We skip internal drags that carry
+  // our own 'text/noteId' payload so we don't interfere with dragging notes inside the app.
+  document.addEventListener('dragover', (ev) => {
+    try {
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+    } catch (e) { /* ignore */ }
+  });
+
+  document.addEventListener('drop', async (ev) => {
+    try {
+      ev.preventDefault();
+
+      // If the drag contains an internal note id, don't treat it as a folder drop
+      try {
+        const types = ev.dataTransfer?.types ? Array.from(ev.dataTransfer.types) : [];
+        if (types.includes('text/noteId')) {
+          return; // let our editor/tree handlers process internal note drags
+        }
+      } catch (e) { /* ignore */ }
+
+      const files = ev.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+
+      // Use the first dropped path. In Electron, File objects include a `path`.
+      const first = files[0];
+      let droppedPath = first?.path || null;
+      if (!droppedPath) return;
+
+      // If user dropped a single file (not a folder), open its parent folder
+      // so the workspace shows that folder's contents. Use a simple heuristic
+      // to detect filenames (presence of an extension) to avoid requiring
+      // Node APIs from the renderer.
+      const lastSegment = String(droppedPath).split(/[\\\/]/).pop() || '';
+      let folderPath = droppedPath;
+      if (lastSegment && lastSegment.includes('.') && !lastSegment.startsWith('.')) {
+        // Treat as file -> use parent directory
+        folderPath = String(droppedPath).replace(/[\\\/][^\\\/]+$/, '');
+      }
+      if (!folderPath) return;
+
+      if (typeof window.api?.loadWorkspaceAtPath !== 'function') {
+        setStatus('Cannot open dropped folder: native API unavailable.', false);
+        return;
+      }
+
+      setStatus('Opening dropped folder...', true);
+      const result = await window.api.loadWorkspaceAtPath({ folderPath });
+      if (result) {
+        try {
+          safeAdoptWorkspace(result);
+          setStatus('Workspace loaded from drop.', true);
+        } catch (e) {
+          try { adoptWorkspace(result); setStatus('Workspace loaded from drop.', true); } catch (ee) { console.error('Failed to adopt dropped workspace', ee); setStatus('Could not open dropped folder.', false); }
+        }
+      } else {
+        setStatus('Could not load dropped folder.', false);
+      }
+    } catch (error) {
+      console.error('Failed to handle dropped folder', error);
+      setStatus('Drop failed — see logs.', false);
+    }
+  });
 
   // Workspace tree touch scrolling for swipe gestures
   let workspaceTreeLastTouchY = 0;
@@ -10469,6 +11973,16 @@ const initialize = () => {
     elements.workspaceTree.addEventListener('touchstart', workspaceTreeTouchStart, { passive: true });
     elements.workspaceTree.addEventListener('touchmove', workspaceTreeTouchMove, { passive: false });
   }
+
+  // Ensure active pane follows focus reliably
+  document.addEventListener('focusin', (ev) => {
+    const target = ev.target;
+    if (target === elements.editor) {
+      setActiveEditorPane('left');
+    } else if (target === elements.editorRight) {
+      setActiveEditorPane('right');
+    }
+  });
 
   if (elements.workspaceContextMenu) {
     elements.workspaceContextMenu.addEventListener('click', handleContextMenuClick);
@@ -10566,11 +12080,54 @@ const initialize = () => {
   };
 
   // Toggle between listing panel and editor live-preview. Default: enable live-preview overlay.
-  const mathOverlay = document.getElementById('editor-math-overlay');
+  // Note: there are two overlay DOM nodes (left/right). Existing code historically
+  // used a single global `mathOverlay` + `elements.editor`. To support multiple
+  // editors we resolve the correct textarea and overlay per-call so both the
+  // left and right editors (and any future editors) can share the same logic.
   let mathOverlayEnabled = false;
   let mathOverlaySelectionOnly = false;
   let mathOverlayTimer = null;
   let previousMasked = '';
+
+  const resolveEditorElement = (editorEl) => {
+    if (editorEl && editorEl.tagName === 'TEXTAREA') return editorEl;
+    // Prefer active pane; if it's a dynamic pane, attempt to resolve its textarea
+    const pane = state.activeEditorPane || resolvePaneFallback(true);
+    try {
+      if (pane && pane !== 'left' && pane !== 'right') {
+        const ta = document.getElementById(`note-editor-${pane}`);
+        if (ta) return ta;
+      }
+    } catch (e) {}
+    return pane === 'right' ? elements.editorRight : elements.editor;
+  };
+
+  const getOverlayForEditor = (editorEl) => {
+    const e = resolveEditorElement(editorEl);
+    if (!e || !e.id) return document.getElementById('editor-math-overlay');
+    // dynamic overlay id pattern: editor-math-overlay-<paneId>
+    const match = e.id.match(/^note-editor-(.+)$/);
+    if (match && match[1]) {
+      const overlay = document.getElementById(`editor-math-overlay-${match[1]}`);
+      if (overlay) return overlay;
+    }
+    if (e === elements.editorRight) return document.getElementById('editor-math-overlay-right');
+    return document.getElementById('editor-math-overlay');
+  };
+
+  // Map an overlay element back to its corresponding textarea editor
+  const getEditorForOverlay = (overlayEl) => {
+    if (!overlayEl) return resolveEditorElement();
+    // overlay id may be 'editor-math-overlay' or 'editor-math-overlay-right' or 'editor-math-overlay-<paneId>'
+    if (overlayEl.id === 'editor-math-overlay-right') return elements.editorRight;
+    if (overlayEl.id === 'editor-math-overlay') return elements.editor;
+    const m = overlayEl.id.match(/^editor-math-overlay-(.+)$/);
+    if (m && m[1]) {
+      const ta = document.getElementById(`note-editor-${m[1]}`);
+      if (ta) return ta;
+    }
+    return resolveEditorElement();
+  };
 
   const parseMathBlocksFromEditor = (text) => {
     const blocks = [];
@@ -10595,11 +12152,15 @@ const initialize = () => {
     try {
       const result = renderMarkdownToHtml(content, null, { collectSourceMap: true });
       collector = result.collector;
-    } catch (err) {
-      collector = null;
-    }
+        } catch (e) {
+          console.warn('[math] failed to position/show popup', e);
+        }
 
     // add block-level tokens from collector (if available)
+      // No regex matches. If the trimmed content contains dollar signs, log diagnostic.
+      if ((trimmedContent.indexOf('$') !== -1) && inlineMatches.length === 0 && blockMatches.length === 0) {
+        console.debug('[math] contains $ but regex did not match', { preview: trimmedContent.slice(0,200) });
+      }
     if (collector && Array.isArray(collector.blocks)) {
       // Only include structural blocks that should be rendered/masked specially.
       const specialBlocks = new Set(['mathBlock', 'code', 'heading', 'list_item', 'blockquote', 'table', 'tablecell', 'htmlCodeBlock']);
@@ -10704,18 +12265,18 @@ const initialize = () => {
     return segments;
   };
 
-  const renderEditorMathOverlay = (selectionOnly = false) => {
-    if (!mathOverlay || !elements.editor) return;
+  const renderEditorMathOverlay = (selectionOnly = false, editorEl = null) => {
+    const editor = resolveEditorElement(editorEl);
+    const mathOverlay = getOverlayForEditor(editor);
+    if (!mathOverlay || !editor) return;
     // use original content if masked, otherwise current editor value
-    const fullContent = elements.editor.__originalContent ?? elements.editor.value ?? '';
-    
+    const fullContent = editor.__originalContent ?? editor.value ?? '';
+
     let content = fullContent;
     let offset = 0;
     let selectionStartLine = 0;
     let selectionEndLine = fullContent.length;
-    
-    console.log('[renderEditorMathOverlay] selectionOnly:', selectionOnly, 'activeSelections:', activeSelections);
-    
+
     if (selectionOnly && activeSelections.length > 0) {
       // For multi-selection mode, we don't modify content/offset but check against all active selections
       content = fullContent;
@@ -10729,14 +12290,12 @@ const initialize = () => {
       console.debug('[math-overlay] segments:', segments.map((s) => ({ t: s.type, start: s.start, end: s.end, raw: (s.raw || '').slice(0, 40) })));
     }
 
-    const frag = document.createDocumentFragment();
+  const frag = document.createDocumentFragment();
     segments.forEach((seg) => {
       // For selection-only mode, only render enhanced content (math, images, etc.) if the segment overlaps with any active selection
       const isInSelection = !selectionOnly || activeSelections.some(sel => 
         seg.start < sel.end && seg.end > sel.start
       );
-      
-      console.log('[renderEditorMathOverlay] segment:', seg.type, 'start:', seg.start, 'end:', seg.end, 'isInSelection:', isInSelection, 'text:', JSON.stringify(seg.text?.slice(0, 50)));
       
       if (seg.type === 'text') {
         const span = document.createElement('span');
@@ -10766,26 +12325,20 @@ const initialize = () => {
           } catch (err) {
             wrapper.textContent = seg.text;
           }
-          console.log('[renderEditorMathOverlay] block math wrapper created, adding click handler');
-          wrapper.addEventListener('mousedown', (e) => {
-            console.log('[renderEditorMathOverlay] block math mousedown at', e.clientX, e.clientY);
-          });
           wrapper.addEventListener('click', (e) => {
-            console.log('[renderEditorMathOverlay] block math clicked at', e.clientX, e.clientY, 'selecting range', seg.start, '-', seg.end);
             e.stopPropagation();
-            // Set the editor selection to this math block range
-            if (elements.editor) {
-              elements.editor.focus();
-              elements.editor.setSelectionRange(seg.start, seg.end);
-            }
+            // Use the Editor instance API so selection/focus target the correct pane
+            try {
+              const edtInst = getEditorInstanceForElement(editor);
+              if (edtInst) { edtInst.focus(); edtInst.setSelectionRange(seg.start, seg.end); }
+            } catch (err) { /* ignore */ }
             // Remove all selections that overlap with this segment
-            activeSelections = activeSelections.filter(sel => !(sel.start < seg.end && sel.end > seg.start));
-            console.log('[renderEditorMathOverlay] remaining selections:', activeSelections);
+            activeSelections = activeSelections.filter(sel => !(sel.start < seg.end && sel.end > sel.start));
             // Re-render overlay
             renderEditorMathOverlay(true);
             // Re-mask
-            maskSelectedRanges(activeSelections);
-            previousMasked = elements.editor.value;
+            try { maskSelectedRanges(activeSelections, editor); } catch (e) {}
+            previousMasked = editor.value;
           });
           frag.appendChild(wrapper);
         } else if (selectionOnly) {
@@ -10825,18 +12378,18 @@ const initialize = () => {
           span.addEventListener('click', (e) => {
             console.log('[renderEditorMathOverlay] inline math clicked, selecting range', seg.start, '-', seg.end);
             e.stopPropagation();
-            // Set the editor selection to this math range
-            if (elements.editor) {
-              elements.editor.focus();
-              elements.editor.setSelectionRange(seg.start, seg.end);
-            }
+            // Use the Editor instance API so selection/focus target the correct pane
+            try {
+              const edtInst = getEditorInstanceForElement(editor);
+              if (edtInst) { edtInst.focus(); edtInst.setSelectionRange(seg.start, seg.end); }
+            } catch (err) { /* ignore */ }
             // Remove all selections that overlap with this segment
-            activeSelections = activeSelections.filter(sel => !(sel.start < seg.end && sel.end > seg.start));
+            activeSelections = activeSelections.filter(sel => !(sel.start < seg.end && sel.end > sel.start));
             // Re-render overlay
             renderEditorMathOverlay(true);
             // Re-mask
-            maskSelectedRanges(activeSelections);
-            previousMasked = elements.editor.value;
+            try { maskSelectedRanges(activeSelections, editor); } catch (e) {}
+            previousMasked = editor.value;
           });
           frag.appendChild(span);
         } else if (selectionOnly) {
@@ -10946,10 +12499,10 @@ const initialize = () => {
             }
             // Allow interactions on the overlay video; temporarily disable textarea pointerEvents while interacting
             video.style.pointerEvents = 'auto';
-            video.addEventListener('mouseenter', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
-            video.addEventListener('mouseleave', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
-            video.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
-            video.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+            video.addEventListener('mouseenter', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} });
+            video.addEventListener('mouseleave', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = ''; } catch (e) {} });
+            video.addEventListener('touchstart', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
+            video.addEventListener('touchend', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = ''; } catch (e) {} });
             // Fallback text for browsers that don't support <video>
             video.innerHTML = seg.text ? `Your browser does not support the video tag. ${escapeHtml(seg.text)}` : 'Your browser does not support the video tag.';
             frag.appendChild(video);
@@ -10982,11 +12535,11 @@ const initialize = () => {
             }
             // Allow interactions on the overlay video; temporarily disable textarea pointerEvents while interacting
             video.style.pointerEvents = 'auto';
-            video.addEventListener('mouseenter', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
-            video.addEventListener('mouseleave', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
-            video.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
-            video.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
-            video.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+            video.addEventListener('mouseenter', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} });
+            video.addEventListener('mouseleave', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = ''; } catch (e) {} });
+            video.addEventListener('touchstart', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
+            video.addEventListener('touchend', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} });
+            video.addEventListener('touchend', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = ''; } catch (e) {} });
             // Fallback text for browsers that don't support <video>
             video.innerHTML = seg.text ? `Your browser does not support the video tag. ${escapeHtml(seg.text)}` : 'Your browser does not support the video tag.';
             frag.appendChild(video);
@@ -11096,13 +12649,13 @@ const initialize = () => {
             // Ensure iframe interaction works when the overlay is sitting above the textarea.
             // Temporarily disable textarea pointer events while hovering/touching the iframe so clicks go to the iframe.
             iframe.addEventListener('mouseenter', () => {
-              try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {}
+              try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {}
             });
             iframe.addEventListener('mouseleave', () => {
-              try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {}
+              try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = ''; } catch (e) {}
             });
-            iframe.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
-            iframe.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+            iframe.addEventListener('touchstart', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
+            iframe.addEventListener('touchend', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = ''; } catch (e) {} });
             iframe.onload = function () { /* auto-resize handled via script in iframe */ };
             container.appendChild(iframe);
           } catch (err) {
@@ -11147,13 +12700,13 @@ const initialize = () => {
             // Ensure iframe interaction works when the overlay is sitting above the textarea.
             // Temporarily disable textarea pointer events while hovering/touching the iframe so clicks go to the iframe.
             iframe.addEventListener('mouseenter', () => {
-              try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {}
+              try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {}
             });
             iframe.addEventListener('mouseleave', () => {
-              try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {}
+              try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = ''; } catch (e) {}
             });
-            iframe.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
-            iframe.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+            iframe.addEventListener('touchstart', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
+            iframe.addEventListener('touchend', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = ''; } catch (e) {} });
             iframe.onload = function () { /* auto-resize handled via script in iframe */ };
             container.appendChild(iframe);
           } catch (err) {
@@ -11237,7 +12790,9 @@ const initialize = () => {
           h.className = `editor-heading editor-heading--h${seg.level}`;
           // render heading text as plain text (escaped)
           const escaped = seg.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          h.innerHTML = `<strong>${escaped}</strong>`;
+          const strong = document.createElement('strong');
+          try { strong.textContent = escaped; } catch (e) { strong.textContent = seg.text; }
+          h.appendChild(strong);
           frag.appendChild(h);
         } else if (selectionOnly) {
           // In selection-only mode, render transparent enhanced content to maintain layout
@@ -11246,7 +12801,9 @@ const initialize = () => {
           h.style.opacity = '0';
           // render heading text as plain text (escaped)
           const escaped = seg.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          h.innerHTML = `<strong>${escaped}</strong>`;
+          const strong2 = document.createElement('strong');
+          try { strong2.textContent = escaped; } catch (e) { strong2.textContent = seg.text; }
+          h.appendChild(strong2);
           frag.appendChild(h);
         } else {
           // In full mode, don't render non-selected headings
@@ -11254,15 +12811,15 @@ const initialize = () => {
       }
     });
 
-    mathOverlay.innerHTML = '';
-    console.log('[renderEditorMathOverlay] clearing overlay and appending', frag.children.length, 'elements');
-    console.log('[renderEditorMathOverlay] overlay element:', mathOverlay, 'hidden:', mathOverlay.hidden);
-    console.log('[renderEditorMathOverlay] overlay bounding rect:', mathOverlay.getBoundingClientRect());
-    console.log('[renderEditorMathOverlay] editor bounding rect:', elements.editor.getBoundingClientRect());
-    mathOverlay.appendChild(frag);
-    // ensure overlay scroll matches editor
-    mathOverlay.scrollTop = elements.editor.scrollTop;
-    console.log('[renderEditorMathOverlay] set overlay scrollTop to', elements.editor.scrollTop);
+  mathOverlay.innerHTML = '';
+  console.log('[renderEditorMathOverlay] clearing overlay and appending', frag.children.length, 'elements');
+  console.log('[renderEditorMathOverlay] overlay element:', mathOverlay, 'hidden:', mathOverlay.hidden);
+  console.log('[renderEditorMathOverlay] overlay bounding rect:', mathOverlay.getBoundingClientRect());
+  console.log('[renderEditorMathOverlay] editor bounding rect:', editor.getBoundingClientRect());
+  mathOverlay.appendChild(frag);
+  // ensure overlay scroll matches editor
+  mathOverlay.scrollTop = editor.scrollTop;
+  console.log('[renderEditorMathOverlay] set overlay scrollTop to', editor.scrollTop);
     // Resolve any iframe.html-embed-iframe[data-raw-src] inside the overlay (like preview)
     try {
       processOverlayHtmlIframes();
@@ -11273,14 +12830,28 @@ const initialize = () => {
     }
   };
 
-  const processOverlayHtmlIframes = async () => {
-    if (!mathOverlay || typeof window.api?.resolveResource !== 'function') return;
+  const processOverlayHtmlIframes = async (editorEl = null) => {
+  const mathOverlay = getOverlayForEditor(editorEl);
+  const editor = resolveEditorElement(editorEl);
+  if (!mathOverlay) return;
     const iframes = Array.from(mathOverlay.querySelectorAll('iframe.html-embed-iframe[data-raw-src]'));
     if (!iframes.length) return;
 
     await Promise.all(iframes.map(async (iframe) => {
       const rawSrc = iframe.getAttribute('data-raw-src');
       if (!rawSrc) return;
+
+      // Defensive: ignore raw sources pointing at app renderer files only
+      try {
+        const normalized = String(rawSrc).replace(/\\/g, '/');
+        if (normalized.includes('/src/renderer/')) {
+          console.warn('Skipping unsafe/renderer-local overlay iframe rawSrc:', rawSrc);
+          iframe.setAttribute('data-resolve-status', 'skipped-local');
+          return;
+        }
+      } catch (e) {
+        // continue if normalization fails
+      }
 
       if (isLikelyExternalUrl(rawSrc) || rawSrc.startsWith('data:') || rawSrc.startsWith('blob:')) {
         iframe.src = rawSrc;
@@ -11289,16 +12860,16 @@ const initialize = () => {
           iframe.classList.add('html-embed-iframe');
           iframe.style.pointerEvents = 'auto';
           // add helpers so the underlying textarea doesn't steal pointer events while interacting with iframe
-          iframe.addEventListener('mouseenter', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} });
-          iframe.addEventListener('mouseleave', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
-          iframe.addEventListener('touchstart', () => { try { if (elements.editor) elements.editor.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
-          iframe.addEventListener('touchend', () => { try { if (elements.editor) elements.editor.style.pointerEvents = ''; } catch (e) {} });
+          iframe.addEventListener('mouseenter', () => { try { const edt = getEditorForOverlay(mathOverlay); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} });
+          iframe.addEventListener('mouseleave', () => { try { const edt = getEditorForOverlay(mathOverlay); if (edt) edt.style.pointerEvents = ''; } catch (e) {} });
+          iframe.addEventListener('touchstart', () => { try { const edt = getEditorForOverlay(mathOverlay); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
+          iframe.addEventListener('touchend', () => { try { const edt = getEditorForOverlay(mathOverlay); if (edt) edt.style.pointerEvents = ''; } catch (e) {} });
         } catch (e) { /* ignore */ }
         iframe.onload = () => { if (window.autoResizeIframe) window.autoResizeIframe(iframe); };
         return;
       }
 
-      const noteId = iframe.getAttribute('data-note-id') || state.activeNoteId;
+  const noteId = iframe.getAttribute('data-note-id') || getPaneNoteId(editor === elements.editorRight ? 'right' : 'left') || state.activeNoteId;
       const cacheKey = `${noteId ?? 'unknown'}::${rawSrc}`;
       if (htmlResourceCache.has(cacheKey)) {
         const cached = htmlResourceCache.get(cacheKey);
@@ -11309,10 +12880,37 @@ const initialize = () => {
         return;
       }
 
+      if (typeof window.api?.resolveResource !== 'function') {
+        try {
+          let candidate = null;
+          if (rawSrc.startsWith('/')) {
+            candidate = rawSrc.startsWith('file://') ? rawSrc : `file://${rawSrc}`;
+          } else if (/^[A-Za-z]:\\/.test(rawSrc)) {
+            candidate = rawSrc.startsWith('file://') ? rawSrc : `file://${rawSrc.replace(/\\/g, '/')}`;
+          } else if (state.currentFolder) {
+            const joined = `${state.currentFolder.replace(/\/$/, '')}/${rawSrc}`;
+            candidate = `file://${joined}`;
+          }
+
+          if (candidate) {
+            htmlResourceCache.set(cacheKey, candidate);
+            iframe.src = candidate;
+            iframe.onload = () => { if (window.autoResizeIframe) window.autoResizeIframe(iframe); };
+            return;
+          }
+        } catch (err) {
+          // fall-through
+        }
+
+        htmlResourceCache.set(cacheKey, null);
+        return;
+      }
+
       const note = noteId ? state.notes.get(noteId) ?? null : null;
       const payload = { src: rawSrc, notePath: note?.absolutePath ?? null, folderPath: note?.folderPath ?? state.currentFolder ?? null };
       try {
         const result = await window.api.resolveResource(payload);
+        console.debug('resolveResource(overlay) ->', rawSrc, result);
         if (result?.value) {
           htmlResourceCache.set(cacheKey, result.value);
           iframe.src = result.value;
@@ -11327,8 +12925,10 @@ const initialize = () => {
     }));
   };
 
-  const processOverlayImages = async () => {
-    if (!mathOverlay || typeof window.api?.resolveResource !== 'function') return;
+  const processOverlayImages = async (editorEl = null) => {
+  const mathOverlay = getOverlayForEditor(editorEl);
+  const editor = resolveEditorElement(editorEl);
+  if (!mathOverlay) return;
     const images = Array.from(mathOverlay.querySelectorAll('img[data-raw-src]'));
     if (!images.length) return;
 
@@ -11345,8 +12945,8 @@ const initialize = () => {
         return;
       }
 
-      const noteId = img.getAttribute('data-note-id') || state.activeNoteId;
-      const cacheKey = `${noteId ?? 'unknown'}::${rawSrc}`;
+  const noteId = img.getAttribute('data-note-id') || getPaneNoteId(editor === elements.editorRight ? 'right' : 'left') || state.activeNoteId;
+  const cacheKey = `${noteId ?? 'unknown'}::${rawSrc}`;
       if (imageResourceCache.has(cacheKey)) {
         const cached = imageResourceCache.get(cacheKey);
         if (cached) img.src = cached;
@@ -11370,8 +12970,10 @@ const initialize = () => {
     }));
   };
 
-  const processOverlayVideos = async () => {
-    if (!mathOverlay || typeof window.api?.resolveResource !== 'function') return;
+  const processOverlayVideos = async (editorEl = null) => {
+  const mathOverlay = getOverlayForEditor(editorEl);
+  const editor = resolveEditorElement(editorEl);
+  if (!mathOverlay) return;
     const videos = Array.from(mathOverlay.querySelectorAll('video[data-raw-src]'));
     if (!videos.length) return;
 
@@ -11388,11 +12990,36 @@ const initialize = () => {
         return;
       }
 
-      const noteId = video.getAttribute('data-note-id') || state.activeNoteId;
-      const cacheKey = `${noteId ?? 'unknown'}::${rawSrc}`;
+  const noteId = video.getAttribute('data-note-id') || getPaneNoteId(editor === elements.editorRight ? 'right' : 'left') || state.activeNoteId;
+  const cacheKey = `${noteId ?? 'unknown'}::${rawSrc}`;
       if (videoResourceCache.has(cacheKey)) {
         const cached = videoResourceCache.get(cacheKey);
         if (cached) video.src = cached;
+        return;
+      }
+
+      if (typeof window.api?.resolveResource !== 'function') {
+        try {
+          let candidate = null;
+          if (rawSrc.startsWith('/')) {
+            candidate = rawSrc.startsWith('file://') ? rawSrc : `file://${rawSrc}`;
+          } else if (/^[A-Za-z]:\\/.test(rawSrc)) {
+            candidate = rawSrc.startsWith('file://') ? rawSrc : `file://${rawSrc.replace(/\\/g, '/')}`;
+          } else if (state.currentFolder) {
+            const joined = `${state.currentFolder.replace(/\/$/, '')}/${rawSrc}`;
+            candidate = `file://${joined}`;
+          }
+
+          if (candidate) {
+            videoResourceCache.set(cacheKey, candidate);
+            video.src = candidate;
+            return;
+          }
+        } catch (err) {
+          // fall-through
+        }
+
+        videoResourceCache.set(cacheKey, null);
         return;
       }
 
@@ -11414,9 +13041,10 @@ const initialize = () => {
   };
 
   // Masking math blocks in the textarea with invisible placeholders while overlay is active
-  const maskMathInEditor = (selectionOnly = false) => {
-    if (!elements.editor) return;
-    const orig = elements.editor.value || '';
+  const maskMathInEditor = (selectionOnly = false, editorEl = null) => {
+    const editor = resolveEditorElement(editorEl);
+    if (!editor) return;
+    const orig = editor.value || '';
     const segments = buildOverlaySegments(orig);
     const maskChar = '\u2800'; // braille blank
     let masked = '';
@@ -11439,18 +13067,19 @@ const initialize = () => {
     }
 
     // store original content and masked ranges
-    elements.editor.__originalContent = orig;
-    elements.editor.__maskedRanges = ranges;
-    elements.editor.value = masked;
+    editor.__originalContent = orig;
+    editor.__maskedRanges = ranges;
+    editor.value = masked;
   };
 
-  const maskSelectedRanges = (selections) => {
+  const maskSelectedRanges = (selections, editorEl = null) => {
     console.log('[maskSelectedRanges] called with selections:', selections);
-    if (!elements.editor || !elements.editor.__originalContent) {
+    const editor = resolveEditorElement(editorEl);
+    if (!editor || !editor.__originalContent) {
       console.log('[maskSelectedRanges] no editor or original content');
       return;
     }
-    let content = elements.editor.__originalContent;
+    let content = editor.__originalContent;
     console.log('[maskSelectedRanges] original content length:', content.length);
     // Sort selections by start position descending to avoid offset issues when replacing
     const sorted = selections.slice().sort((a, b) => b.start - a.start);
@@ -11464,36 +13093,39 @@ const initialize = () => {
       content = before + masked + after;
     }
     console.log('[maskSelectedRanges] final masked content length:', content.length);
-    elements.editor.value = content;
+    editor.value = content;
   };
 
-  const isInMaskedRange = (pos) => {
-    const ranges = elements.editor?.__maskedRanges || [];
+  const isInMaskedRange = (pos, editorEl = null) => {
+    const editor = resolveEditorElement(editorEl);
+    const ranges = editor?.__maskedRanges || [];
     for (const r of ranges) {
       if (pos >= r.start && pos <= r.end) return r;
     }
     return null;
   };
 
-  const unmaskEditor = () => {
-    if (elements.editor && elements.editor.__originalContent !== undefined) {
-      elements.editor.value = elements.editor.__originalContent;
-      delete elements.editor.__originalContent;
-      delete elements.editor.__maskedRanges;
+  const unmaskEditor = (editorEl = null) => {
+    const editor = resolveEditorElement(editorEl);
+    if (editor && editor.__originalContent !== undefined) {
+      editor.value = editor.__originalContent;
+      delete editor.__originalContent;
+      delete editor.__maskedRanges;
     }
   };
 
   const handleBeforeInput = (ev) => {
     try {
-      const start = elements.editor.selectionStart;
-      const end = elements.editor.selectionEnd;
-      const inStart = isInMaskedRange(start);
-      const inEnd = isInMaskedRange(end);
+      const editor = resolveEditorElement();
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+      const inStart = isInMaskedRange(start, editor);
+      const inEnd = isInMaskedRange(end, editor);
       if (inStart || inEnd) {
         // prevent edits inside masked math; move caret to end of masked block
         ev.preventDefault();
         const r = inEnd || inStart;
-        elements.editor.selectionStart = elements.editor.selectionEnd = r.end;
+        editor.selectionStart = editor.selectionEnd = r.end;
         return false;
       }
     } catch (e) {
@@ -11504,45 +13136,49 @@ const initialize = () => {
   const enableMathOverlay = (selectionOnly = false) => {
     mathOverlayEnabled = true;
     mathOverlaySelectionOnly = selectionOnly;
-    if (mathOverlay) {
-      mathOverlay.hidden = false;
-      mathOverlay.style.display = '';
-      mathOverlay.setAttribute('aria-hidden', 'false');
-        try { mathOverlay.style.pointerEvents = selectionOnly ? 'none' : 'auto'; } catch (e) {}
+    const editor = resolveEditorElement();
+    const overlay = getOverlayForEditor(editor);
+    if (overlay) {
+      overlay.hidden = false;
+      overlay.style.display = '';
+      overlay.setAttribute('aria-hidden', 'false');
+      try { overlay.style.pointerEvents = selectionOnly ? 'none' : 'auto'; } catch (e) {}
     }
-    
-    if (elements.editor) {
+
+    if (editor) {
       if (selectionOnly) {
         // For selection-only mode, keep text visible but mask selected ranges
-        elements.editor.__prevColor = elements.editor.style.color || '';
-        elements.editor.__originalContent = elements.editor.value;
+        editor.__prevColor = editor.style.color || '';
+        editor.__originalContent = editor.value;
         // Store current selection before masking
-        elements.editor.__storedSelection = { start: elements.editor.selectionStart, end: elements.editor.selectionEnd };
+        editor.__storedSelection = { start: editor.selectionStart, end: editor.selectionEnd };
         // Don't make text transparent for selection-only mode
-        elements.editor.style.caretColor = getComputedStyle(document.documentElement).getPropertyValue('--fg') || '#000';
+        editor.style.caretColor = getComputedStyle(document.documentElement).getPropertyValue('--fg') || '#000';
         // Mask the selected ranges
-        maskSelectedRanges(activeSelections);
-        previousMasked = elements.editor.value;
+        maskSelectedRanges(activeSelections, editor);
+        previousMasked = editor.value;
       } else {
         // For full document mode, make text transparent so overlay shows through
-        elements.editor.__prevColor = elements.editor.style.color || '';
-        elements.editor.style.color = 'transparent';
-        elements.editor.style.caretColor = getComputedStyle(document.documentElement).getPropertyValue('--fg') || '#000';
+        editor.__prevColor = editor.style.color || '';
+        editor.style.color = 'transparent';
+        editor.style.caretColor = getComputedStyle(document.documentElement).getPropertyValue('--fg') || '#000';
       }
-      
+
       // sync scroll
-      elements.editor.addEventListener('scroll', syncOverlayScroll);
-  // allow overlay interactions to scroll the editor: listen for wheel and touch events on overlay
-  mathOverlay.addEventListener('wheel', overlayWheelHandler, { passive: false });
-  mathOverlay.addEventListener('touchstart', overlayTouchStart, { passive: true });
-  mathOverlay.addEventListener('touchmove', overlayTouchMove, { passive: false });
-  // If user interacts directly with overlay scrollbar or scrollbar thumb, forward overlay scroll to editor
-  mathOverlay.addEventListener('scroll', overlayScrollHandler);
+      editor.addEventListener('scroll', syncOverlayScroll);
+      // allow overlay interactions to scroll the editor: listen for wheel and touch events on overlay
+      if (overlay) {
+        overlay.addEventListener('wheel', overlayWheelHandler, { passive: false });
+        overlay.addEventListener('touchstart', overlayTouchStart, { passive: true });
+        overlay.addEventListener('touchmove', overlayTouchMove, { passive: false });
+        // If user interacts directly with overlay scrollbar or scrollbar thumb, forward overlay scroll to editor
+        overlay.addEventListener('scroll', overlayScrollHandler);
+      }
       // mask math segments in editor so they temporarily disappear (only for full mode)
       if (!selectionOnly) {
-        maskMathInEditor(selectionOnly);
+        maskMathInEditor(selectionOnly, editor);
         // Prevent user from editing masked regions
-        elements.editor.addEventListener('beforeinput', handleBeforeInput, { capture: true });
+        editor.addEventListener('beforeinput', handleBeforeInput, { capture: true });
       }
     }
     // render overlay after masking so we base on original content
@@ -11567,50 +13203,53 @@ const initialize = () => {
     // Clear active selections when disabling overlay
     activeSelections = [];
     previousMasked = '';
-    if (mathOverlay) {
-      mathOverlay.hidden = true;
-      mathOverlay.style.display = 'none';
-      mathOverlay.setAttribute('aria-hidden', 'true');
-      mathOverlay.innerHTML = '';
-        try { mathOverlay.style.pointerEvents = 'none'; } catch (e) {}
+    const editor = resolveEditorElement();
+    const overlay = getOverlayForEditor(editor);
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.style.display = 'none';
+      overlay.setAttribute('aria-hidden', 'true');
+      overlay.innerHTML = '';
+      try { overlay.style.pointerEvents = 'none'; } catch (e) {}
     }
-    if (elements.editor) {
+    if (editor) {
       // restore editor content and styles
-      unmaskEditor();
-      elements.editor.style.color = elements.editor.__prevColor || '';
-      elements.editor.style.caretColor = '';
+      unmaskEditor(editor);
+      editor.style.color = editor.__prevColor || '';
+      editor.style.caretColor = '';
       // Restore stored selection if any
-      if (elements.editor.__storedSelection) {
-        elements.editor.selectionStart = elements.editor.__storedSelection.start;
-        elements.editor.selectionEnd = elements.editor.__storedSelection.end;
-        delete elements.editor.__storedSelection;
+      if (editor.__storedSelection) {
+        editor.selectionStart = editor.__storedSelection.start;
+        editor.selectionEnd = editor.__storedSelection.end;
+        delete editor.__storedSelection;
       }
-      elements.editor.removeEventListener('scroll', syncOverlayScroll);
-      if (mathOverlay) {
-  mathOverlay.removeEventListener('wheel', overlayWheelHandler, { passive: false });
-  mathOverlay.removeEventListener('touchstart', overlayTouchStart, { passive: true });
-  mathOverlay.removeEventListener('touchmove', overlayTouchMove, { passive: false });
-  mathOverlay.removeEventListener('scroll', overlayScrollHandler);
+      editor.removeEventListener('scroll', syncOverlayScroll);
+      if (overlay) {
+        overlay.removeEventListener('wheel', overlayWheelHandler, { passive: false });
+        overlay.removeEventListener('touchstart', overlayTouchStart, { passive: true });
+        overlay.removeEventListener('touchmove', overlayTouchMove, { passive: false });
+        overlay.removeEventListener('scroll', overlayScrollHandler);
       }
-      elements.editor.removeEventListener('beforeinput', handleBeforeInput, { capture: true });
+      editor.removeEventListener('beforeinput', handleBeforeInput, { capture: true });
     }
-      // revoke any blob URLs created for HTML blocks
-      if (window.htmlBlobUrls && window.htmlBlobUrls.size) {
-        try {
-          for (const u of window.htmlBlobUrls) {
-            try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ }
-          }
-        } finally {
-          window.htmlBlobUrls.clear();
+    // revoke any blob URLs created for HTML blocks
+    if (window.htmlBlobUrls && window.htmlBlobUrls.size) {
+      try {
+        for (const u of window.htmlBlobUrls) {
+          try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ }
         }
+      } finally {
+        window.htmlBlobUrls.clear();
       }
+    }
   };
   window.disableMathOverlay = disableMathOverlay;
 
   const toggleMathWysiwyg = (hasSelection = null) => {
     if (mathOverlayEnabled) {
       // Use provided selection state, or detect it if not provided
-      const selectionDetected = hasSelection !== null ? hasSelection : (elements.editor && elements.editor.selectionStart !== elements.editor.selectionEnd);
+      const activeEditor = resolveEditorElement();
+      const selectionDetected = hasSelection !== null ? hasSelection : (activeEditor && activeEditor.selectionStart !== activeEditor.selectionEnd);
       console.log('[toggleMathWysiwyg] overlay enabled, selectionDetected:', selectionDetected, 'mathOverlaySelectionOnly:', mathOverlaySelectionOnly, 'activeSelections:', activeSelections);
       
       if (selectionDetected) {
@@ -11620,8 +13259,8 @@ const initialize = () => {
           disableMathOverlay();
           // Add the current selection
           const currentSelection = {
-            start: elements.editor.selectionStart,
-            end: elements.editor.selectionEnd
+            start: activeEditor.selectionStart,
+            end: activeEditor.selectionEnd
           };
           console.log('[toggleMathWysiwyg] initial selection for selection-only mode:', currentSelection);
           activeSelections = [currentSelection];
@@ -11629,10 +13268,10 @@ const initialize = () => {
         } else {
           // Already in selection-only mode, toggle this selection in active selections
           const currentSelection = {
-            start: elements.editor.selectionStart,
-            end: elements.editor.selectionEnd
+            start: activeEditor.selectionStart,
+            end: activeEditor.selectionEnd
           };
-          console.log('[toggleMathWysiwyg] current selection detected:', currentSelection, 'editor value length:', elements.editor.value.length);
+          console.log('[toggleMathWysiwyg] current selection detected:', currentSelection, 'editor value length:', activeEditor.value.length);
           // Check if this selection already exists
           const existingIndex = activeSelections.findIndex(sel => 
             sel.start === currentSelection.start && sel.end === currentSelection.end
@@ -11673,19 +13312,20 @@ const initialize = () => {
       }
     } else {
       // Overlay not enabled, enable it
-      const selectionDetected = hasSelection !== null ? hasSelection : (elements.editor && elements.editor.selectionStart !== elements.editor.selectionEnd);
+      const activeEditor = resolveEditorElement();
+      const selectionDetected = hasSelection !== null ? hasSelection : (activeEditor && activeEditor.selectionStart !== activeEditor.selectionEnd);
       console.log('[toggleMathWysiwyg] enabling overlay, selectionDetected:', selectionDetected);
-      
-      if (selectionDetected && elements.editor) {
+
+      if (selectionDetected && activeEditor) {
         const currentSelection = {
-          start: elements.editor.selectionStart,
-          end: elements.editor.selectionEnd
+          start: activeEditor.selectionStart,
+          end: activeEditor.selectionEnd
         };
         activeSelections = [currentSelection];
       } else {
         activeSelections = [];
       }
-      
+
       enableMathOverlay(selectionDetected);
       mathWysiwygButton?.setAttribute('aria-pressed', 'true');
       mathWysiwygButton?.classList.add('active');
@@ -11697,9 +13337,16 @@ const initialize = () => {
   window.toggleMathWysiwyg = toggleMathWysiwyg;
 
   const syncOverlayScroll = () => {
-    if (!mathOverlay || !elements.editor) return;
-    mathOverlay.scrollTop = elements.editor.scrollTop;
-    mathOverlay.scrollLeft = elements.editor.scrollLeft;
+    // If called as an event listener, 'this' or event.currentTarget may be the editor textarea
+    try {
+      const editor = resolveEditorElement();
+      const overlay = getOverlayForEditor(editor);
+      if (!overlay || !editor) return;
+      overlay.scrollTop = editor.scrollTop;
+      overlay.scrollLeft = editor.scrollLeft;
+    } catch (e) {
+      // ignore
+    }
   };
 
   // Forward wheel events that occur on the overlay to the editor textarea so users can scroll
@@ -11707,22 +13354,19 @@ const initialize = () => {
   let lastTouchY = 0;
   const overlayWheelHandler = (ev) => {
     try {
-      if (!elements.editor) return;
-      // If the event target is an element that should handle its own scroll (like an iframe),
-      // allow default behavior. We only intercept when the overlay itself or inert elements are targeted.
+      const overlay = ev?.currentTarget || getOverlayForEditor();
+      const editor = getEditorForOverlay(overlay);
+      if (!editor || !overlay) return;
+      // If the event target is an element that should handle its own scroll (like an iframe), allow default behavior.
       const target = ev.target;
       if (target && (target.tagName === 'IFRAME' || target.closest && target.closest('iframe'))) {
-        // let iframe handle wheel normally; but also sync editor scroll if needed
         return;
       }
       ev.preventDefault();
-      // Scroll the overlay by the wheel delta. This lets the overlay scroll even when it's taller
-      // than the underlying textarea content. We'll then sync the editor position proportionally.
-      if (mathOverlay) {
-        mathOverlay.scrollTop += ev.deltaY;
-        // Call overlay scroll handler to propagate proportional scroll to the editor
-        overlayScrollHandler();
-      }
+      // Scroll the overlay by the wheel delta.
+      overlay.scrollTop += ev.deltaY;
+      // Call overlay scroll handler to propagate proportional scroll to the editor
+      overlayScrollHandler(overlay);
     } catch (e) {
       // ignore
     }
@@ -11735,7 +13379,9 @@ const initialize = () => {
 
   const overlayTouchMove = (ev) => {
     try {
-      if (!mathOverlay || !ev.touches || ev.touches.length === 0) return;
+      const overlay = ev?.currentTarget || getOverlayForEditor();
+      const editor = getEditorForOverlay(overlay);
+      if (!overlay || !ev.touches || ev.touches.length === 0) return;
       // If the touch originated inside an iframe, don't intercept
       const target = ev.target;
       if (target && (target.tagName === 'IFRAME' || target.closest && target.closest('iframe'))) return;
@@ -11744,10 +13390,8 @@ const initialize = () => {
       if (Math.abs(dy) > 0) {
         ev.preventDefault();
         // Scroll the overlay itself and let the overlayScrollHandler map it proportionally
-        if (mathOverlay) {
-          mathOverlay.scrollTop += dy;
-          overlayScrollHandler();
-        }
+        overlay.scrollTop += dy;
+        overlayScrollHandler(overlay);
       }
       lastTouchY = y;
     } catch (e) {
@@ -11755,27 +13399,31 @@ const initialize = () => {
     }
   };
 
-  const overlayScrollHandler = (ev) => {
+  const overlayScrollHandler = (evOrOverlay) => {
     try {
-      if (!mathOverlay || !elements.editor) return;
-      // Map overlay scroll position to editor scroll proportionally so the editor follows
-      // even when overlay.scrollHeight != editor.scrollHeight.
-      const overlayTop = mathOverlay.scrollTop || 0;
-      const overlayScrollable = Math.max(0, mathOverlay.scrollHeight - mathOverlay.clientHeight);
-      const editorScrollable = Math.max(0, elements.editor.scrollHeight - elements.editor.clientHeight);
+      let overlay = null;
+      if (!evOrOverlay) overlay = getOverlayForEditor();
+      else if (evOrOverlay.currentTarget) overlay = evOrOverlay.currentTarget;
+      else overlay = evOrOverlay;
+      const editor = getEditorForOverlay(overlay);
+      if (!overlay || !editor) return;
+      // Map overlay scroll position to editor scroll proportionally
+      const overlayTop = overlay.scrollTop || 0;
+      const overlayScrollable = Math.max(0, overlay.scrollHeight - overlay.clientHeight);
+      const editorScrollable = Math.max(0, editor.scrollHeight - editor.clientHeight);
 
       if (overlayScrollable <= 0 || editorScrollable <= 0) {
         // Fallback to direct mapping when one side isn't scrollable
-        if (Math.abs(overlayTop - (elements.editor.scrollTop || 0)) > 2) {
-          elements.editor.scrollTop = overlayTop;
+        if (Math.abs(overlayTop - (editor.scrollTop || 0)) > 2) {
+          editor.scrollTop = overlayTop;
         }
         return;
       }
 
       const ratio = overlayTop / overlayScrollable;
       const targetEditorTop = Math.round(ratio * editorScrollable);
-      if (Math.abs((elements.editor.scrollTop || 0) - targetEditorTop) > 2) {
-        elements.editor.scrollTop = targetEditorTop;
+      if (Math.abs((editor.scrollTop || 0) - targetEditorTop) > 2) {
+        editor.scrollTop = targetEditorTop;
       }
     } catch (e) {
       // ignore
@@ -11804,15 +13452,17 @@ const initialize = () => {
     }
   });
 
-  // Update overlay while editing (debounced)
-  elements.editor?.addEventListener('input', () => {
+  // Update overlay while editing (debounced) - attach to left editor instance
+  editorInstances.left?.addEventListener('input', () => {
     if (!mathOverlayEnabled) return;
     if (mathOverlayTimer) clearTimeout(mathOverlayTimer);
     mathOverlayTimer = setTimeout(() => {
       renderEditorMathOverlay(mathOverlaySelectionOnly);
       // Re-apply masking for selection-only mode after content changes
       if (mathOverlaySelectionOnly && activeSelections.length > 0) {
-        const currentMasked = elements.editor.value;
+  const edt = getActiveEditorInstance();
+  const ta = edt?.el ?? null;
+  const currentMasked = ta?.value ?? '';
         // Find the difference between previousMasked and currentMasked
         let diffPos = -1;
         let diffType = ''; // 'insert' or 'delete'
@@ -11855,9 +13505,9 @@ const initialize = () => {
           if (!isInBlank) {
             // Apply the change to __originalContent
             if (diffType === 'insert') {
-              elements.editor.__originalContent = elements.editor.__originalContent.slice(0, diffPos) + diffChar + elements.editor.__originalContent.slice(diffPos);
+              if (ta) ta.__originalContent = ta.__originalContent.slice(0, diffPos) + diffChar + ta.__originalContent.slice(diffPos);
             } else if (diffType === 'delete') {
-              elements.editor.__originalContent = elements.editor.__originalContent.slice(0, diffPos) + elements.editor.__originalContent.slice(diffPos + 1);
+              if (ta) ta.__originalContent = ta.__originalContent.slice(0, diffPos) + ta.__originalContent.slice(diffPos + 1);
             }
             // Adjust activeSelections if insertion/deletion before selections
             for (const sel of activeSelections) {
@@ -11874,15 +13524,99 @@ const initialize = () => {
           }
         }
 
-        // Preserve cursor position during masking
-        const savedStart = elements.editor.selectionStart;
-        const savedEnd = elements.editor.selectionEnd;
-        maskSelectedRanges(activeSelections);
-        previousMasked = elements.editor.value;
+  // Preserve cursor position during masking for the active editor (edt/ta defined above)
+  const savedStart = ta?.selectionStart ?? 0;
+        const savedEnd = ta?.selectionEnd ?? savedStart;
+        maskSelectedRanges(activeSelections, ta);
+        previousMasked = ta?.value ?? '';
         // Restore cursor position, clamped to new content length
-        const newLength = elements.editor.value.length;
-        elements.editor.selectionStart = Math.min(savedStart, newLength);
-        elements.editor.selectionEnd = Math.min(savedEnd, newLength);
+        const newLength = ta ? ta.value.length : 0;
+        try { if (ta) { ta.selectionStart = Math.min(savedStart, newLength); ta.selectionEnd = Math.min(savedEnd, newLength); } } catch (e) {}
+      }
+      try { void processOverlayImages(); void processOverlayVideos(); } catch (e) { /* ignore */ }
+    }, 220);
+  });
+
+  // Same for right editor instance
+  editorInstances.right?.addEventListener('input', () => {
+    if (!mathOverlayEnabled) return;
+    if (mathOverlayTimer) clearTimeout(mathOverlayTimer);
+    mathOverlayTimer = setTimeout(() => {
+      renderEditorMathOverlay(mathOverlaySelectionOnly);
+      // Re-apply masking for selection-only mode after content changes
+      if (mathOverlaySelectionOnly && activeSelections.length > 0) {
+  const edt = getActiveEditorInstance();
+  const ta = edt?.el ?? null;
+  const currentMasked = ta?.value ?? '';
+        // Find the difference between previousMasked and currentMasked
+        let diffPos = -1;
+        let diffType = ''; // 'insert' or 'delete'
+        let diffChar = '';
+        if (currentMasked.length > previousMasked.length) {
+          // Insertion
+          for (let i = 0; i < previousMasked.length; i++) {
+            if (currentMasked[i] !== previousMasked[i]) {
+              diffPos = i;
+              diffChar = currentMasked[i];
+              diffType = 'insert';
+              break;
+            }
+          }
+          if (diffPos === -1) {
+            // Insertion at end
+            diffPos = previousMasked.length;
+            diffChar = currentMasked.slice(previousMasked.length);
+            diffType = 'insert';
+          }
+        } else if (currentMasked.length < previousMasked.length) {
+          // Deletion
+          for (let i = 0; i < currentMasked.length; i++) {
+            if (currentMasked[i] !== previousMasked[i]) {
+              diffPos = i;
+              diffType = 'delete';
+              break;
+            }
+          }
+          if (diffPos === -1) {
+            // Deletion at end
+            diffPos = currentMasked.length;
+            diffType = 'delete';
+          }
+        }
+
+        if (diffPos !== -1) {
+          // Check if the position is in a blank area (braille blank)
+          const isInBlank = previousMasked[diffPos] === '\u2800';
+          if (!isInBlank) {
+            // Apply the change to __originalContent
+            if (diffType === 'insert') {
+              if (ta) ta.__originalContent = ta.__originalContent.slice(0, diffPos) + diffChar + ta.__originalContent.slice(diffPos);
+            } else if (diffType === 'delete') {
+              if (ta) ta.__originalContent = ta.__originalContent.slice(0, diffPos) + ta.__originalContent.slice(diffPos + 1);
+            }
+            // Adjust activeSelections if insertion/deletion before selections
+            for (const sel of activeSelections) {
+              if (diffPos <= sel.start) {
+                if (diffType === 'insert') {
+                  sel.start += diffChar.length;
+                  sel.end += diffChar.length;
+                } else if (diffType === 'delete') {
+                  sel.start = Math.max(sel.start - 1, diffPos);
+                  sel.end = Math.max(sel.end - 1, diffPos);
+                }
+              }
+            }
+          }
+        }
+
+  // Preserve cursor position during masking for the active editor (edt/ta defined above)
+  const savedStart = ta?.selectionStart ?? 0;
+        const savedEnd = ta?.selectionEnd ?? savedStart;
+        maskSelectedRanges(activeSelections, ta);
+        previousMasked = ta?.value ?? '';
+        // Restore cursor position, clamped to new content length
+        const newLength = ta ? ta.value.length : 0;
+        try { if (ta) { ta.selectionStart = Math.min(savedStart, newLength); ta.selectionEnd = Math.min(savedEnd, newLength); } } catch (e) {}
       }
       try { void processOverlayImages(); void processOverlayVideos(); } catch (e) { /* ignore */ }
     }, 220);
@@ -11929,18 +13663,19 @@ const initialize = () => {
     const newSource = mathEditTextarea.value || '';
 
     // Replace in the editor textarea source: find the $$...$$ occurrence by matching original source
-    const editor = elements.editor;
-    if (editor) {
+  const editorInstance = getActiveEditorInstance();
+  const editor = editorInstance?.el ?? null;
+  if (editor) {
       const original = currentEdit.source;
       // Build regex to find $$<original>$$; escape special regex chars in original
       const esc = original.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
       const re = new RegExp('\\$\\$\\s*' + esc + '\\s*\\$\\$', 'm');
-      if (re.test(editor.value)) {
-        editor.value = editor.value.replace(re, `$$\n${newSource}\n$$`);
-      } else {
-        // Fallback: try to replace the first math block occurrence
-        editor.value = editor.value.replace(/\$\$([\s\S]*?)\$\$/m, `$$\n${newSource}\n$$`);
-      }
+        if (re.test(editor.value)) {
+          editor.value = editor.value.replace(re, `$$\n${newSource}\n$$`);
+        } else {
+          // Fallback: try to replace the first math block occurrence
+          editor.value = editor.value.replace(/\$\$([\s\S]*?)\$\$/m, `$$\n${newSource}\n$$`);
+        }
       // Trigger re-render of preview
       renderActiveNote();
     }
@@ -12139,9 +13874,11 @@ const initialize = () => {
   elements.editorSearchNextButton?.addEventListener('click', handleEditorSearchNext);
   elements.editorSearchCloseButton?.addEventListener('click', handleEditorSearchClose);
 
-  elements.openFolderButtons.forEach((button) => {
-    button.addEventListener('click', handleOpenFolder);
-  });
+  if (elements.openFolderButtons && typeof elements.openFolderButtons.forEach === 'function') {
+    elements.openFolderButtons.forEach((button) => {
+      button.addEventListener('click', handleOpenFolder);
+    });
+  }
 
   elements.hashtagList?.addEventListener('click', handleHashtagListClick);
   elements.hashtagDetail?.addEventListener('click', handleHashtagDetailClick);
@@ -12195,6 +13932,25 @@ const initialize = () => {
     elements.hashtagResizeHandle.addEventListener('dblclick', () => setHashtagPanelHeight(200));
   }
 
+  // Tab event listeners
+  const newTabBtn = document.getElementById('new-tab-button');
+  if (newTabBtn) {
+    newTabBtn.addEventListener('click', () => {
+      // If workspace folder is open, create a physical file. Otherwise create an in-memory untitled note.
+      if (state.currentFolder) {
+        void createFileInWorkspace('');
+        return;
+      }
+
+      // Create in-memory untitled note and open it in a new tab
+      const note = createUntitledNote();
+      const tab = createTab(note.id, note.title || 'Untitled');
+      setActiveTab(tab.id);
+      renderTabs();
+      renderActiveNote();
+    });
+  }
+
   window.addEventListener('pointermove', handleSplitterPointerMove);
   window.addEventListener('pointermove', handleSidebarResizePointerMove);
   window.addEventListener('pointermove', handleHashtagPanelResizeMove);
@@ -12239,15 +13995,31 @@ const initialize = () => {
 // Auto-resize iframe functionality
 window.autoResizeIframe = (iframe) => {
   if (!iframe) return;
-  
-  console.log('Auto-resizing iframe:', iframe.src || iframe.dataset.rawSrc);
-  
-  // Function to attempt resize
+
+  // Reduce noise unless debugging explicitly enabled
+  if (window.__nta_debug_iframe) {
+    console.log('Auto-resizing iframe:', iframe.src || iframe.dataset.rawSrc);
+  }
+
+  // If iframe appears to point to a file:// URL or to an unavailable local path,
+  // avoid trying to access contentDocument (which will throw) and set a safe default.
+  try {
+    const src = String(iframe.src || iframe.getAttribute('src') || iframe.dataset?.rawSrc || '');
+    const normalized = src.replace(/\\/g, '/');
+    if (normalized.startsWith('file://') || normalized.includes('/src/renderer/')) {
+      // Use a reasonable fallback height and don't attempt same-origin access
+      iframe.style.height = iframe.style.height || '800px';
+      return;
+    }
+  } catch (e) {
+    // ignore and continue to safe attempt
+  }
+
   const attemptResize = () => {
     try {
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+      const iframeDoc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
       if (iframeDoc && iframeDoc.body) {
-        // Wait a bit more for content to render
+        // Wait a bit for content to render
         setTimeout(() => {
           try {
             const contentHeight = Math.max(
@@ -12257,29 +14029,25 @@ window.autoResizeIframe = (iframe) => {
               iframeDoc.documentElement.scrollHeight,
               iframeDoc.documentElement.offsetHeight
             );
-            
-            // Set height with some padding, ensuring minimum
             const finalHeight = Math.min(Math.max(contentHeight + 40, 400), 1200);
             iframe.style.height = finalHeight + 'px';
-            console.log('Iframe resized to:', finalHeight + 'px', 'Content height was:', contentHeight);
-          } catch (e) {
-            console.log('Failed to resize iframe:', e);
+          } catch (err) {
+            if (window.__nta_debug_iframe) console.warn('Failed to calculate iframe height', err);
           }
         }, 200);
         return true;
       }
-    } catch (e) {
-      console.log('Cross-origin iframe, using postMessage approach');
-      // For cross-origin or file:// protocol, set a larger default height
-      iframe.style.height = '800px';
+    } catch (err) {
+      // Cross-origin or other access problem — rely on postMessage or default size
+      if (window.__nta_debug_iframe) console.log('Cross-origin or inaccessible iframe; using fallback height');
+      iframe.style.height = iframe.style.height || '800px';
       return false;
     }
     return false;
   };
-  
-  // Try immediate resize
+
+  // Try immediate resize and then delayed attempts for dynamic content
   if (!attemptResize()) {
-    // Try after delays for dynamic content
     setTimeout(attemptResize, 500);
     setTimeout(attemptResize, 1000);
     setTimeout(attemptResize, 2000);
@@ -12313,6 +14081,44 @@ window.addEventListener('message', (event) => {
     }
   }
 });
+
+// Diagnostic helpers you can call from renderer DevTools:
+window.dumpVideoDiagnostics = () => {
+  try {
+    const videos = Array.from(document.querySelectorAll('video[data-raw-src], video'));
+    const out = videos.map((v) => {
+      const raw = v.getAttribute('data-raw-src') || null;
+      return {
+        node: v,
+        dataRawSrc: raw,
+        src: v.getAttribute('src') || v.src || null,
+        currentSrc: v.currentSrc || null,
+        readyState: v.readyState,
+        networkState: v.networkState,
+        paused: v.paused,
+        hasMetadata: !!(v.readyState >= 1),
+      };
+    });
+    console.log('Video diagnostics:', out);
+    return out;
+  } catch (e) {
+    console.error('dumpVideoDiagnostics failed', e);
+    return null;
+  }
+};
+
+window.dumpResourceCaches = () => {
+  try {
+    const htmlCache = Array.from(htmlResourceCache.entries());
+    const imageCache = Array.from(imageResourceCache.entries());
+    const videoCache = Array.from(videoResourceCache.entries());
+    console.log('Resource caches:', { htmlCache, imageCache, videoCache });
+    return { htmlCache, imageCache, videoCache };
+  } catch (e) {
+    console.error('dumpResourceCaches failed', e);
+    return null;
+  }
+};
 
 // Update notification functionality
 const updateNotification = document.getElementById('update-notification');
@@ -14393,17 +16199,18 @@ function updateTitleBarDisplay() {
   const showPath = localStorage.getItem('titlebar-show-path') !== 'false';
   const titleElement = document.querySelector('.title-bar__title');
   
-  if (titleElement && currentNotePath) {
+  const activeNote = getActiveNote();
+  if (titleElement && activeNote?.path) {
     if (showPath) {
       // Show full path
-      titleElement.textContent = currentNotePath;
+      titleElement.textContent = activeNote.path;
     } else {
       // Show only filename
-      const fileName = currentNotePath.split('/').pop() || 'Untitled';
+      const fileName = activeNote.path.split(/[\\/]/).pop() || 'Untitled';
       titleElement.textContent = fileName;
     }
   } else if (titleElement) {
-  titleElement.textContent = 'NTA';
+    titleElement.textContent = 'NTA';
   }
 }
 
@@ -15270,12 +17077,26 @@ const addImageHoverPreviews = () => {
 
     img.setAttribute('data-hover-preview', 'true');
 
-    const showPreview = (event) => {
+      const showPreview = (event) => {
       const src = img.src || img.getAttribute('data-raw-src');
       if (!src) return;
 
-      // Create a larger preview of the image
-      elements.mathPreviewPopupContent.innerHTML = `<img src="${src}" alt="Preview" style="max-width: 300px; max-height: 300px; object-fit: contain; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" onload="this.style.display='block';" onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=color:#6c757d;text-align:center;>Image not found</div>';">`;
+      try {
+        elements.mathPreviewPopupContent.textContent = '';
+        const previewImg = document.createElement('img');
+        previewImg.src = src;
+        previewImg.alt = 'Preview';
+        previewImg.style.maxWidth = '300px';
+        previewImg.style.maxHeight = '300px';
+        previewImg.style.objectFit = 'contain';
+        previewImg.style.borderRadius = '4px';
+        previewImg.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+        previewImg.addEventListener('load', () => { previewImg.style.display = 'block'; });
+        previewImg.addEventListener('error', () => { try { elements.mathPreviewPopupContent.textContent = 'Image not found'; } catch (e) { /* swallow */ } });
+        elements.mathPreviewPopupContent.appendChild(previewImg);
+      } catch (e) {
+        try { elements.mathPreviewPopupContent.textContent = src; } catch (e2) { /* swallow */ }
+      }
 
       // Position the popup near the cursor
       const popupX = event.clientX + 10;
@@ -15342,6 +17163,41 @@ function updateHighContrastMode(enabled) {
   }
 }
 
+// --- Keybindings: minimal safe stubs to avoid startup errors ---
+let _keybindings = [];
+function loadKeybindings() {
+  try {
+    const raw = localStorage.getItem('NTA.keybindings');
+    _keybindings = raw ? JSON.parse(raw) : [];
+  } catch (e) { _keybindings = []; }
+}
+
+function renderKeybindingsList() {
+  if (!elements.keybindingsList) return;
+  elements.keybindingsList.innerHTML = '';
+  (_keybindings || []).forEach(k => {
+    const div = document.createElement('div');
+    div.className = 'keybinding-item';
+    div.textContent = `${k.action || 'unknown'} — ${k.keys || ''}`;
+    elements.keybindingsList.appendChild(div);
+  });
+}
+
+function resetKeybindings() {
+  _keybindings = [];
+  try { localStorage.removeItem('NTA.keybindings'); } catch (e) {}
+  renderKeybindingsList();
+}
+
+function handleKeybinding(e) {
+  // Minimal: intercept Ctrl/Cmd+Shift+P as example
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
+    e.preventDefault();
+    // Toggle command palette or similar — not implemented here
+    setStatus('Keybinding triggered: Cmd/Ctrl+Shift+P', true);
+  }
+}
+
 // Initialize accessibility features when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initializeAccessibility);
@@ -15357,7 +17213,7 @@ async function handleExport(format) {
   if (!note) return;
   
   const title = note.title || 'Untitled';
-  const html = elements.preview.innerHTML;
+  const html = elements.preview ? elements.preview.innerHTML : '';
   const folderPath = elements.workspacePath?.title;
   
   try {

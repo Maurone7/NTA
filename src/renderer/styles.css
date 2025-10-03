@@ -99,6 +99,135 @@ body.platform-linux {
   font-family: "Ubuntu", "Liberation Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+/* Tab Bar */
+.tab-bar {
+  height: 35px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  position: relative;
+  z-index: 900;
+}
+
+.tab-bar__tabs {
+  display: flex;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tab-bar__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-bar__new-tab {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--fg-soft);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tab-bar__new-tab:hover {
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+
+.tab-bar__new-tab .icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Individual Tabs */
+.tab {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  min-width: 120px;
+  max-width: 200px;
+  background: transparent;
+  border: none;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  padding: 0 12px;
+  margin-right: 2px;
+  position: relative;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab:hover {
+  background: var(--bg-muted);
+}
+
+.tab--active {
+  background: var(--bg);
+  border-bottom: 2px solid var(--accent);
+}
+
+.tab--active:hover {
+  background: var(--bg);
+}
+
+.tab__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-soft);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 8px;
+}
+
+.tab--active .tab__title {
+  color: var(--fg);
+}
+
+.tab__close {
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: var(--fg-soft);
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.tab__close:hover {
+  opacity: 1;
+  background: var(--bg-muted);
+}
+
+.tab__close .icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* Adjust app layout for tab bar */
+.app-shell {
+  height: calc(100vh - var(--title-bar-height) - 35px);
+}
+
 /* Windows-specific scrollbar styling */
 body.platform-win32 ::-webkit-scrollbar {
   width: 12px;
@@ -231,7 +360,12 @@ body[data-high-contrast="true"] {
 
 /* Math Preview Popup */
 .math-preview-popup {
-  position: absolute;
+  /* Use fixed positioning so the popup is positioned relative to the viewport.
+     This prevents it from being clipped or mis-positioned when the popup
+     element is contained inside a positioned ancestor (for example the
+     left editor pane) while the math expression originates from the right
+     editor textarea. */
+  position: fixed;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -248,13 +382,34 @@ body[data-high-contrast="true"] {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
+  /* Ensure popup floats above most UI elements */
+  z-index: 2147483646; /* very high but below fullscreen modals (10000) if needed) */
 }
 
+/* Temporary visual aid for debugging visibility during development.
+   You can remove this later if not needed. */
+
+
+
 .math-preview-popup__content {
-  padding: 8px 12px;
+  padding: 6px 8px; /* slightly smaller so popup fits tighter */
   font-size: 14px;
   line-height: 1.4;
   color: var(--text);
+}
+
+/* Make header previews (e.g. when previewing '# Title') shrink-wrap to their text
+   so the popup just barely fits the heading content. Keep headings single-line. */
+.math-preview-popup__content h1,
+.math-preview-popup__content h2,
+.math-preview-popup__content h3,
+.math-preview-popup__content h4,
+.math-preview-popup__content h5,
+.math-preview-popup__content h6 {
+  display: inline-block;
+  margin: 0;
+  padding: 0;
+  white-space: nowrap;
 }
 
 .math-preview-popup__content .katex {
@@ -1229,6 +1384,24 @@ button[data-tooltip]:hover::after {
   color: var(--accent);
 }
 
+/* Split editor toggle button */
+#toggle-split-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--fg-soft);
+}
+#toggle-split-button[aria-pressed="true"] {
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+
 button {
   padding: 8px 14px;
   border-radius: 8px;
@@ -1670,19 +1843,132 @@ button.small {
 }
 
 .editor-drop-target {
-  background: var(--bg-hover) !important;
-  border: 2px dashed var(--accent) !important;
-  border-radius: 4px;
+  /* Highlight removed: neutralize any visual effects when class is present. */
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .preview-pane {
-  flex: 1 0 calc((1 - var(--local-editor-ratio)) * 100%);
-  min-width: clamp(220px, 40vw, 640px);
+  /* Fixed-width right sidebar for live preview */
+  flex: 0 0 360px;
+  width: 360px;
+  max-width: 42vw;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--border);
   background: var(--bg-elevated);
   min-height: 0;
+}
+
+/* Layout for split editors: left and right editor panes side-by-side
+   The right editor is hidden by default and can be toggled visible.
+   When visible, both editors share the available space left of the preview. */
+.workspace__content {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.editor-pane {
+  /* Editors live in the center area and share available space horizontally */
+  flex: 1 1 0%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: transparent;
+}
+
+.editor-pane--left {
+  border-right: 1px solid rgba(0,0,0,0.04);
+}
+
+.editor-pane--right {
+  border-left: 1px solid rgba(0,0,0,0.04);
+}
+
+#note-editor-right {
+  flex: 1;
+  border: none;
+  resize: none;
+  padding: 24px 16px 24px 24px;
+  font-size: 15px;
+  line-height: 1.6;
+  background: transparent;
+  color: var(--fg);
+  position: relative;
+  z-index: 1;
+  overflow-y: auto;
+}
+
+/* Ensure any textarea inside an editor pane (including dynamic panes)
+   uses the same layout and fills available space. This catches
+   dynamically-created textareas like #note-editor-<id>. */
+.editor-pane textarea {
+  flex: 1 1 0%;
+  border: none;
+  resize: none;
+  padding: 24px 16px 24px 24px;
+  font-size: 15px;
+  line-height: 1.6;
+  background: transparent;
+  color: var(--fg);
+  position: relative;
+  z-index: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Mirror scrollbar styles for right editor */
+#note-editor-right::-webkit-scrollbar { width: 4px; }
+#note-editor-right::-webkit-scrollbar-track { background: transparent; }
+#note-editor-right::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+#note-editor-right:focus { outline: none; }
+
+/* Editor pane badges and active pane styling */
+.editor-pane__badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0,0,0,0.06);
+  color: var(--fg-soft);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  z-index: 30;
+  pointer-events: none;
+}
+
+/* Actions container in editor pane (e.g., close button for right editor) */
+.editor-pane__actions {
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  display: flex;
+  gap: 6px;
+  z-index: 35;
+}
+
+.editor-pane__actions .icon-button.small {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editor-pane--left.active,
+.editor-pane--right.active {
+  box-shadow: 0 0 0 2px rgba(76,110,245,0.06) inset;
+}
+
+.editor-pane--left.active .editor-pane__badge,
+.editor-pane--right.active .editor-pane__badge {
+  background: var(--accent);
+  color: white;
 }
 
 .workspace__splitter {
@@ -1696,6 +1982,18 @@ button.small {
   margin-left: -6px; /* Pull 6px into the editor pane */
   margin-right: -6px; /* Pull 6px into the preview pane */
   z-index: 10; /* Ensure it's above both panes */
+}
+
+/* Small divider between the two central editors (visual only) */
+.editors__divider {
+  width: 1px;
+  background: rgba(0,0,0,0.04);
+  margin: 0 6px;
+  align-self: stretch;
+}
+
+.preview-pane[tabindex="-1"] {
+  outline: none;
 }
 
 .workspace__splitter::after {

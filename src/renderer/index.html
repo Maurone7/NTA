@@ -5,6 +5,9 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NTA</title>
+    <!-- Content Security Policy: relaxed in dev to allow file:// for local preview assets (images, media, frames).
+      In production you should remove file: and serve resources via a secure preload/handler. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; media-src 'self' data: blob: file:; connect-src 'self' http: https:; object-src 'none'; frame-src 'self' data: blob: file:;">
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="../../node_modules/katex/dist/katex.min.css" />
   </head>
@@ -36,6 +39,16 @@
           <button id="update-dismiss-button" class="button ghost small">Later</button>
         </div>
       </div>
+    </div>
+
+    <!-- Tab Bar -->
+    <div id="tab-bar" class="tab-bar">
+      <div class="tab-bar__tabs" id="tab-bar-tabs">
+        <!-- Tabs will be dynamically added here -->
+      </div>
+      <button id="new-tab-button" class="tab-bar__new-tab" title="New Tab (Cmd+T)" aria-label="Open new tab">
+        <span class="icon">+</span>
+      </button>
     </div>
 
     <div class="app-shell">
@@ -190,10 +203,22 @@
                 </button>
               </div>
             </div>
+            <!-- Create new editor pane -->
+            <button
+              id="toggle-split-button"
+              type="button"
+              class="ghost icon-button"
+              title="Create new editor pane"
+              aria-label="Create new editor pane"
+              aria-pressed="false"
+            >
+              <span class="icon" aria-hidden="true">＋</span>
+            </button>
           </div>
         </div>
         <div class="workspace__content">
-          <section class="editor-pane" aria-label="Markdown editor">
+          <section class="editor-pane editor-pane--left" aria-label="Markdown editor (left)">
+            <div class="editor-pane__badge" data-pane="left">Left</div>
             <div
               id="editor-search-highlights"
               class="editor-search-highlights"
@@ -202,7 +227,7 @@
             >
               <div id="editor-search-highlights-content" class="editor-search-highlights__content"></div>
             </div>
-            <textarea id="note-editor" spellcheck="true" aria-label="Markdown editor"></textarea>
+            <textarea id="note-editor" spellcheck="true" aria-label="Markdown editor (left)"></textarea>
             <div id="editor-math-overlay" class="editor-math-overlay" aria-hidden="true" hidden></div>
             
             <!-- Math Preview Popup -->
@@ -264,6 +289,26 @@
               </div>
             </div>
           </section>
+          <!-- Divider between the two central editors -->
+          <div class="editors__divider" aria-hidden="true"></div>
+          <!-- Add right editor pane for side-by-side editing -->
+          <section class="editor-pane editor-pane--right" aria-label="Markdown editor (right)">
+            <div class="editor-pane__badge" data-pane="right">Right</div>
+            <div class="editor-pane__actions">
+              <button id="close-right-editor" class="icon-button small" type="button" title="Close right editor" aria-label="Close right editor">✕</button>
+            </div>
+            <div
+              id="editor-search-highlights-right"
+              class="editor-search-highlights"
+              aria-hidden="true"
+              hidden
+            >
+              <div id="editor-search-highlights-content-right" class="editor-search-highlights__content"></div>
+            </div>
+            <textarea id="note-editor-right" spellcheck="true" aria-label="Markdown editor (right)"></textarea>
+            <div id="editor-math-overlay-right" class="editor-math-overlay" aria-hidden="true" hidden></div>
+          </section>
+
           <div
             id="workspace-splitter"
             class="workspace__splitter"
@@ -272,8 +317,8 @@
             aria-label="Resize editor and preview"
             tabindex="0"
           ></div>
-          <!-- Secondary editor removed -->
-          <section class="preview-pane" aria-label="Preview">
+
+          <section class="preview-pane" aria-label="Preview" tabindex="-1">
             <div id="markdown-preview" class="preview-scroll"></div>
             <pre id="code-viewer" class="code-viewer"><code></code></pre>
             <figure id="image-viewer" class="image-viewer" aria-label="Image preview">
@@ -291,7 +336,8 @@
               </div>
             </figure>
             <div id="html-viewer" class="html-viewer" aria-label="HTML preview">
-              <iframe id="html-viewer-frame" title="HTML Viewer" sandbox="allow-scripts allow-same-origin"></iframe>
+              <!-- The viewer iframe should not have allow-same-origin to prevent sandbox escape. -->
+              <iframe id="html-viewer-frame" title="HTML Viewer" sandbox="allow-scripts allow-forms allow-popups"></iframe>
               <div id="html-viewer-error" class="html-viewer__fallback" hidden>
                 Unable to load this HTML file.
               </div>
