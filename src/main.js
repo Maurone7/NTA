@@ -300,7 +300,7 @@ const setupAutoUpdater = () => {
   autoUpdater.setFeedURL({
     provider: 'github',
     owner: 'Maurone7',
-    repo: 'NoteTakingApp'
+    repo: 'NTA'
   });
 
   // Auto-updater events

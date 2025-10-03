@@ -1,25 +1,96 @@
-# NoteTakingApp
+# NTA
 
 A beautiful, cross-platform note-taking app built with Electron. Available for **macOS**, **Windows**, and **Linux**.
 
+## 🍎 macOS Unsigned Builds: How to Open
+
+If you downloaded a macOS build from the Releases page but haven't signed up for the Apple Developer Program (the $99/year fee), Apple Gatekeeper may prevent the app from opening and show a message such as "NTA.app is damaged and can't be opened." Notarization and Developer ID signing are only available to registered Apple Developers.
+
+You can still run the app locally — here are safe, repeatable options you can publish alongside your release so users know what to do.
+
+1) GUI (recommended for non-technical users)
+
+   - In Finder, control‑click (or right‑click) the app icon and choose "Open".
+   - A dialog will appear saying the app is from an unidentified developer; click "Open" to run it anyway. macOS will remember this choice for that app copy.
+
+2) Terminal (one-line: remove quarantine attribute)
+
+   - This removes the quarantine flag for the downloaded app copy and allows it to run. Only run this if you trust the release source.
+
+```bash
+# after you expand the downloaded DMG/ZIP and have NTA.app in the current folder
+xattr -r -d com.apple.quarantine ./NTA.app
+open ./NTA.app
+```
+
+3) Small installer helper (recommended to ship in the Release as `install.sh`)
+
+   - Create a tiny script that moves the app to `/Applications`, removes quarantine, and opens it for the user. Example content you can include in the release:
+
+```bash
+#!/usr/bin/env bash
+set -e
+
+APP_NAME="NTA.app"
+SRC_DIR="${1:-.}"
+SRC_PATH="$SRC_DIR/$APP_NAME"
+
+if [ ! -d "$SRC_PATH" ]; then
+  echo "Cannot find $SRC_PATH"
+  exit 1
+fi
+
+echo "Removing quarantine attribute..."
+xattr -r -d com.apple.quarantine "$SRC_PATH" || true
+
+echo "Moving to /Applications (may ask for admin password)..."
+mv -f "$SRC_PATH" /Applications/
+
+echo "Opening app..."
+open "/Applications/$APP_NAME"
+
+echo "Done."
+```
+
+   - Make it executable and instruct users to run it after expanding the DMG/ZIP:
+
+```bash
+chmod +x install.sh
+./install.sh
+```
+
+Verification commands (optional, for advanced users)
+
+```bash
+# Check Gatekeeper assessment
+spctl -a -v /path/to/NTA.app
+
+# Check code signature (will fail for unsigned apps but useful to show the output)
+codesign --verify -vvv --deep --strict /path/to/NTA.app || true
+```
+
+Security & distribution notes
+
+- These instructions let users run unsigned builds locally but do not replace proper code signing and notarization. For distribution to a broad audience (public releases), signing with a Developer ID certificate and notarizing through Apple is the recommended route.
+- If you later join the Apple Developer Program, you can sign and notarize binaries so Gatekeeper won't require these manual steps.
+- Include these instructions in your Release notes or attach `install.sh` and a short `INSTALL.md` to make the process smooth for non-technical users.
+
+---
+
 ## 🔄 Stay Updated
 
-NoteTakingApp checks for updates when you first open the app and notifies you when new versions are available. You can also manually check for updates anytime through the settings (gear icon in bottom status bar). Just click "Download" when prompted, and the app will update itself automatically.
+NTA checks for updates when you first open the app and notifies you when new versions are available. You can also manually check for updates anytime through the settings (gear icon in bottom status bar). Just click "Download" when prompted, and the app will update itself automatically.
 
 ## 📞 Support
 
-- **Issues or suggestions?** [Open an issue](https://github.com/Maurone7/NoteTakingApp/issues)
-- **Questions?** Check our [documentation](https://github.com/Maurone7/NoteTakingApp/wiki)
+- **Issues or suggestions?** [Open an issue](https://github.com/Maurone7/NTA/issues)
+- **Questions?** Check our [documentation](https://github.com/Maurone7/NTA/wiki)
 
 ## 📄 License
 
 MIT
 
 ---
-
-[Download Latest Release](https://github.com/Maurone7/NoteTakingApp/releases/latest) live preview, view PDFs side-by-side, and organize your thoughts with wiki-style linking.
-
-<!-- ![NoteTakingApp Screenshot](https://via.placeholder.com/800x500/4c6ef5/ffffff?text=NoteTakingApp+Screenshot) -->
 
 ## ✨ Key Features
 
@@ -70,28 +141,22 @@ Click the **gear icon** in the bottom status bar to access comprehensive customi
 **Just want to start taking notes?** Download the app for your platform:
 
 #### 🍎 For macOS:
-**Apple Silicon Macs (M1, M2, M3, M4):**
-**[⬇️ Download NoteTakingApp-1.2.0-arm64.dmg](https://github.com/Maurone7/NoteTakingApp/releases/latest/download/NoteTakingApp-1.2.0-arm64.dmg)**
-
-**Intel Macs:**
-**[⬇️ Download NoteTakingApp-1.2.0-x64.dmg](https://github.com/Maurone7/NoteTakingApp/releases/latest/download/NoteTakingApp-1.2.0-x64.dmg)**
+- **Apple Silicon Macs (M1, M2, M3, M4)**
+- **Intel Macs**
 
 #### 🪟 For Windows:
-**64-bit Windows:**
-**[⬇️ Download NoteTakingApp-1.2.0-x64.exe](https://github.com/Maurone7/NoteTakingApp/releases/latest/download/NoteTakingApp-1.2.0-x64.exe)**
-
-**32-bit Windows:**
-**[⬇️ Download NoteTakingApp-1.2.0-ia32.exe](https://github.com/Maurone7/NoteTakingApp/releases/latest/download/NoteTakingApp-1.2.0-ia32.exe)**
+- **64-bit Windows**
+- **32-bit Windows**
 
 #### 🐧 For Linux:
-**[⬇️ Download NoteTakingApp-1.2.0.AppImage](https://github.com/Maurone7/NoteTakingApp/releases/latest/download/NoteTakingApp-1.2.0.AppImage)**
+- **Linux AppImage**
 
 ### Platform-Specific Installation:
 
 #### 🍎 macOS Installation:
 1. **Download** the appropriate DMG file for your Mac (Apple Silicon or Intel)
 2. **Open** the downloaded DMG file
-3. **Drag** NoteTakingApp to your Applications folder
+3. **Drag** NTA to your Applications folder
 4. **Launch** from Applications or Spotlight
 
 #### 🪟 Windows Installation:
@@ -102,8 +167,8 @@ Click the **gear icon** in the bottom status bar to access comprehensive customi
 
 #### 🐧 Linux Installation:
 1. **Download** the AppImage file
-2. **Make executable**: `chmod +x NoteTakingApp-1.2.0.AppImage`
-3. **Run**: `./NoteTakingApp-1.2.0.AppImage`
+2. **Make executable**: `chmod +x NTA-1.2.0.AppImage`
+3. **Run**: `./NTA-1.2.0.AppImage`
 
 **That's it! No additional software needed on any platform.** ✨
 
@@ -118,8 +183,8 @@ Click the **gear icon** in the bottom status bar to access comprehensive customi
 
 #### Setup:
 ```bash
-git clone https://github.com/Maurone7/NoteTakingApp.git
-cd NoteTakingApp
+git clone https://github.com/Maurone7/NTA.git
+cd NTA
 npm install
 npm run dev
 ```
@@ -172,7 +237,7 @@ $$\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}$$
 
 ## 🔗 Wiki-Style Linking Explained
 
-NoteTakingApp supports two types of wiki-style links to connect your notes:
+NTA supports two types of wiki-style links to connect your notes:
 
 ### Regular Links: `[[Note Name]]`
 Creates a clickable link to another note:

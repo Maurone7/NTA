@@ -1762,13 +1762,33 @@ button.small {
   min-width: 0;
 }
 
-.workspace__content.pdf-mode .editor-pane,
-.workspace__content.pdf-mode .workspace__splitter {
-  display: none;
+.workspace__content.pdf-mode .preview-pane {
+  /* Show the PDF in the preview pane but keep editor panes visible.
+     Previously editor panes and the splitter were hidden which caused
+     the PDF to occupy the full workspace. Keep the split layout so
+     users can keep editing while previewing PDFs. */
+  flex: 1 1 auto;
 }
 
-.workspace__content.pdf-mode .preview-pane {
+/* Per-pane PDF iframe used when rendering a PDF inside an editor pane */
+.editor-pane .pdf-pane-viewer {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+  box-sizing: border-box;
+}
+
+/* Make sure editor panes have constrained layout so iframe can fill them */
+.editor-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.editor-pane textarea {
   flex: 1 1 auto;
+  min-height: 0;
 }
 
 .workspace__content.pdf-mode #markdown-preview {

@@ -1728,6 +1728,77 @@ const applyPdfResource = (resource) => {
   return true;
 };
 
+// Helpers for per-pane PDF rendering. Some users prefer PDFs to open inside
+// the editor pane they dropped the file into rather than the central live
+// preview. The functions below create a pane-local iframe viewer and hide
+// the textarea for that pane while a non-markdown viewer is active.
+const getPaneRootElement = (paneId) => {
+  if (!paneId) return null;
+  if (paneId === 'left') return document.querySelector('.editor-pane--left');
+  if (paneId === 'right') return document.querySelector('.editor-pane--right');
+  return document.querySelector(`[data-pane-id="${paneId}"]`);
+};
+
+const clearPaneViewer = (paneId) => {
+  try {
+    const root = getPaneRootElement(paneId);
+    if (!root) return;
+    const existing = root.querySelector('.pdf-pane-viewer');
+    if (existing) existing.remove();
+    const ta = root.querySelector('textarea');
+    if (ta) ta.hidden = false;
+  } catch (e) { /* ignore */ }
+};
+
+const renderPdfInPane = async (note, paneId) => {
+  if (!note || note.type !== 'pdf' || !paneId) return false;
+  const root = getPaneRootElement(paneId);
+  if (!root) return false;
+
+  // Remove any global PDF preview to avoid duplicates
+  try { elements.pdfViewer?.classList.remove('visible'); elements.pdfViewer?.removeAttribute('src'); } catch (e) {}
+
+  // Clear existing pane viewer and hide textarea
+  clearPaneViewer(paneId);
+  const ta = root.querySelector('textarea');
+  if (ta) ta.hidden = true;
+
+  // Resolve resource (object URL or data URI)
+  try {
+    let resource = null;
+    if (note.absolutePath) {
+      const binary = await window.api.readPdfBinary({ absolutePath: note.absolutePath });
+      const uint8 = ensureUint8Array(binary);
+      if (uint8 && uint8.byteLength) {
+        const blob = new Blob([uint8], { type: 'application/pdf' });
+        resource = { type: 'objectUrl', value: URL.createObjectURL(blob) };
+      }
+    } else if (note.storedPath) {
+      const dataUri = await window.api.loadPdfData({ storedPath: note.storedPath });
+      if (dataUri) resource = { type: 'dataUri', value: dataUri };
+    }
+
+    if (!resource || !resource.value) {
+      console.warn('No PDF resource available for pane render', note.id);
+      if (ta) ta.hidden = false;
+      return false;
+    }
+
+    const viewerUrl = './pdfjs/pdf-viewer.html?file=' + encodeURIComponent(resource.value);
+    const iframe = document.createElement('iframe');
+    iframe.className = 'pdf-pane-viewer';
+    iframe.src = viewerUrl;
+    iframe.title = note.title ?? 'PDF Preview';
+    // Insert after the textarea so it occupies the editor pane area
+    root.appendChild(iframe);
+    return true;
+  } catch (error) {
+    console.error('Failed to render PDF in pane', paneId, error);
+    if (ta) ta.hidden = false;
+    return false;
+  }
+};
+
 const clearPdfCache = () => {
   for (const resource of pdfCache.values()) {
     releasePdfResource(resource);
@@ -2918,6 +2989,11 @@ const handleTreeNodeDragStart = (event) => {
   
   // Add visual feedback
   nodeElement.classList.add('tree-node--dragging');
+  // When dragging internally, temporarily make per-pane PDF iframes
+  // ignore pointer events so the parent document can receive drop events
+  try {
+    document.querySelectorAll('.pdf-pane-viewer').forEach((f) => { f.style.pointerEvents = 'none'; });
+  } catch (e) { /* ignore */ }
 };
 
 const handleTreeNodeDragEnd = (event) => {
@@ -2925,6 +3001,10 @@ const handleTreeNodeDragEnd = (event) => {
   if (nodeElement) {
     nodeElement.classList.remove('tree-node--dragging');
   }
+  // Restore pointer events on per-pane PDF iframes
+  try {
+    document.querySelectorAll('.pdf-pane-viewer').forEach((f) => { f.style.pointerEvents = ''; });
+  } catch (e) { /* ignore */ }
 };
 
 // Drop handlers for editors
@@ -3600,16 +3680,32 @@ const setActiveEditorPane = (pane) => {
     try { editorInstances.left?.focus?.({ preventScroll: true }); } catch (e2) {}
   }
   // Re-render preview for the newly active pane
-  const noteId = getPaneNoteId(pane) || state.activeNoteId;
-  // Keep activeNoteId in sync with the pane's resolved note so other flows
-  // that rely on state.activeNoteId see the correct current note.
-  state.activeNoteId = noteId ?? null;
-  const note = noteId ? state.notes.get(noteId) : null;
-  if (note && note.type === 'markdown') {
-    renderMarkdownPreview(note.content ?? '', note.id);
-  } else if (note) {
-    // non-markdown types: delegate to existing handlers
-    renderActiveNote();
+  const paneNoteId = getPaneNoteId(pane);
+  const paneNote = paneNoteId ? state.notes.get(paneNoteId) : null;
+
+  // If the pane's note is markdown, switch the live preview to it and
+  // remember it as the last active markdown note. If it's not markdown
+  // (e.g., a PDF), do not change the live preview — keep showing the
+  // last markdown note the user viewed.
+  if (paneNote && paneNote.type === 'markdown') {
+    state.activeNoteId = paneNoteId;
+    state.lastActiveMarkdownNoteId = paneNoteId;
+    renderMarkdownPreview(paneNote.content ?? '', paneNote.id);
+  } else {
+    // Keep existing active markdown note for the live preview
+    const activeMdId = state.lastActiveMarkdownNoteId || state.activeNoteId;
+    const activeMdNote = activeMdId ? state.notes.get(activeMdId) : null;
+    if (activeMdNote && activeMdNote.type === 'markdown') {
+      // Render the remembered markdown preview (do not change activeNoteId to PDFs)
+      state.activeNoteId = activeMdId;
+      renderMarkdownPreview(activeMdNote.content ?? '', activeMdNote.id);
+    } else if (paneNote) {
+      // If there's no remembered markdown note, fall back to existing behavior
+      state.activeNoteId = paneNoteId ?? null;
+      renderActiveNote();
+    } else {
+      renderActiveNote();
+    }
   }
   // Update pane visuals and file metadata UI
   updateEditorPaneVisuals();
@@ -3642,11 +3738,17 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
   try {
     const inst = editorInstances[pane];
     if (inst && inst.el) {
+      // If the new note is a markdown file, ensure any pane-local PDF viewer is removed
+      // and the textarea is visible/populated. If it's a non-markdown file (PDF, image,
+      // video, etc.) we do not populate the textarea and may render a specialized
+      // viewer instead.
       if (note.type === 'markdown') {
+        // Remove any per-pane PDF viewer that would otherwise block the textarea
+        try { clearPaneViewer(pane); } catch (e) {}
+        inst.el.hidden = false;
         inst.el.disabled = false;
         inst.el.value = note.content ?? '';
       } else {
-        // Non-markdown types don't populate the textarea; keep it disabled/empty
         inst.el.disabled = true;
         inst.el.value = '';
       }
@@ -3655,13 +3757,25 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
 
   // If caller wants the pane to become active, update active pane/tab and preview
   if (options && options.activate !== false) {
-    // Maintain legacy activeNoteId for compatibility with other code paths
-    state.activeNoteId = noteId;
+    // Maintain legacy activeNoteId for compatibility with other code paths.
+    // However, do NOT set the global active note to a PDF. The live preview
+    // should continue to show the last markdown note the user was viewing.
+    if (note.type === 'markdown') {
+      state.activeNoteId = noteId;
+      state.lastActiveMarkdownNoteId = noteId;
+    }
     // Activate pane and tab
     setActiveEditorPane(pane);
     setActiveTab(existingTab.id);
     renderWorkspaceTree();
-    renderActiveNote();
+    if (note.type === 'pdf') {
+      // Render the PDF inside the target pane.
+      void renderPdfInPane(note, pane);
+      // Do NOT change the global preview (keep last markdown preview visible).
+    } else {
+      // For markdown and other non-PDF types, update the main preview area.
+      renderActiveNote();
+    }
     updateEditorPaneVisuals();
     setStatus(`File opened in ${pane} editor.`, true);
   } else {
@@ -5165,7 +5279,16 @@ const openNoteById = (noteId, silent = false, blockId = null, pane = null) => {
 };
 
 const renderActiveNote = () => {
-  const note = getActiveNote();
+  // Prefer the global active note if set, but fall back to the note
+  // assigned to the currently active editor pane. This avoids a scenario
+  // where a manual "render" triggered from a pane clears that pane
+  // because `state.activeNoteId` is unset (for example when a PDF was
+  // previously active in the global preview).
+  let note = getActiveNote();
+  if (!note) {
+    const paneNoteId = getPaneNoteId(state.activeEditorPane) || null;
+    if (paneNoteId) note = state.notes.get(paneNoteId) ?? null;
+  }
   updateFileMetadataUI(note);
   updateActionAvailability(note);
   closeWikiSuggestions();
@@ -5235,6 +5358,22 @@ const renderActiveNote = () => {
       elements.htmlViewerError.hidden = true;
     }
     state.htmlPreviewToken = null;
+    // Remove any per-pane PDF viewers that are no longer mapped to PDFs.
+    // This avoids clearing viewers in other panes when the user opens a
+    // different file in a separate pane (e.g., dropping an MD into pane B
+    // should not blank a PDF that's intentionally displayed in pane A).
+    try {
+      for (const pid of Object.keys(state.editorPanes || {})) {
+        try {
+          const mappedNoteId = state.editorPanes?.[pid]?.noteId;
+          const mappedNote = mappedNoteId ? state.notes.get(mappedNoteId) : null;
+          // Only clear the pane viewer if the mapped note is not a PDF
+          if (!mappedNote || mappedNote.type !== 'pdf') {
+            try { clearPaneViewer(pid); } catch (e) {}
+          }
+        } catch (e) { /* ignore per-pane errors */ }
+      }
+    } catch (e) { /* ignore */ }
   };
 
   if (!note) {
@@ -11824,7 +11963,26 @@ const initialize = () => {
 
   if (!paneId || !editorInstances[paneId]) paneId = resolvePaneFallback(true);
 
-      // Prevent others from handling it
+          // If this is a markdown note being dropped onto a pane that currently
+          // hosts a per-pane PDF viewer, remove the viewer and reveal the textarea
+          // before we proceed to open it in the pane. This ensures the pane updates
+          // even when an iframe was present.
+          try {
+            const droppedNote = state.notes.get(noteId);
+            if (droppedNote && droppedNote.type === 'markdown') {
+              try { clearPaneViewer(paneId); } catch (e) {}
+              try {
+                const inst = editorInstances[paneId];
+                if (inst && inst.el) {
+                  inst.el.hidden = false;
+                  inst.el.disabled = false;
+                  inst.el.value = droppedNote.content ?? '';
+                }
+              } catch (e) {}
+            }
+          } catch (e) {}
+
+          // Prevent others from handling it
       try { ev.preventDefault(); } catch (e) {}
       try { ev.stopPropagation(); } catch (e) {}
       try { if (ev.stopImmediatePropagation) ev.stopImmediatePropagation(); } catch (e) {}
