@@ -3617,15 +3617,13 @@ const setActiveEditorPane = (pane) => {
 
 // Open a note in a given pane (left or right). Ensures tab exists, activates pane/tab,
 // persists per-pane mapping, and updates UI. Reused by drag/drop and other flows.
-const openNoteInPane = (noteId, pane = 'left') => {
+const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => {
   if (!noteId || !state.notes.has(noteId)) return null;
   // If requested pane doesn't exist, default to 'left'
   if (!pane || !editorInstances[pane]) pane = 'left';
 
   state.editorPanes[pane] = state.editorPanes[pane] || {};
   state.editorPanes[pane].noteId = noteId;
-  // Maintain legacy activeNoteId for compatibility with other code paths
-  state.activeNoteId = noteId;
 
   const note = state.notes.get(noteId);
   document.title = note?.absolutePath || 'NoteTakingApp';
@@ -3636,28 +3634,42 @@ const openNoteInPane = (noteId, pane = 'left') => {
     existingTab = createTab(noteId, note?.title || 'Untitled');
   }
 
-  // Activate pane and tab
-  setActiveEditorPane(pane);
-  setActiveTab(existingTab.id);
-
   // Persist pane assignments
   try { localStorage.setItem(storageKeys.editorPanes, JSON.stringify(state.editorPanes)); } catch (e) { /* ignore */ }
 
-  // Defensive immediate population: ensure the target pane's textarea is
-  // updated immediately so opening the same note in multiple panes works
-  // reliably (e.g., left then a dynamic pane).
+  // Defensive immediate population for markdown notes: update the target pane's textarea
+  // immediately so opening the same note in multiple panes works reliably.
   try {
     const inst = editorInstances[pane];
     if (inst && inst.el) {
-      inst.el.disabled = false;
-      inst.el.value = note.content ?? '';
+      if (note.type === 'markdown') {
+        inst.el.disabled = false;
+        inst.el.value = note.content ?? '';
+      } else {
+        // Non-markdown types don't populate the textarea; keep it disabled/empty
+        inst.el.disabled = true;
+        inst.el.value = '';
+      }
     }
   } catch (e) { /* ignore */ }
 
-  renderWorkspaceTree();
-  renderActiveNote();
-  updateEditorPaneVisuals();
-  setStatus(`File opened in ${pane} editor.`, true);
+  // If caller wants the pane to become active, update active pane/tab and preview
+  if (options && options.activate !== false) {
+    // Maintain legacy activeNoteId for compatibility with other code paths
+    state.activeNoteId = noteId;
+    // Activate pane and tab
+    setActiveEditorPane(pane);
+    setActiveTab(existingTab.id);
+    renderWorkspaceTree();
+    renderActiveNote();
+    updateEditorPaneVisuals();
+    setStatus(`File opened in ${pane} editor.`, true);
+  } else {
+    // Non-activating open: update UI lists/badges without changing preview/active pane
+    renderWorkspaceTree();
+    updateEditorPaneVisuals();
+    setStatus(`File assigned to ${pane} editor.`, true);
+  }
 
   return existingTab;
 };
@@ -5315,8 +5327,35 @@ const renderActiveNote = () => {
       }
     }
   } else {
-  // disable/clear both editors to be safe for non-markdown previews
-  Object.values(editorInstances).forEach(inst => { if (inst?.el) { inst.el.disabled = true; inst.el.value = ''; } });
+    // For non-markdown notes we should NOT clear other panes' editor contents.
+    // Each pane can hold a different file type. Only the pane that has this
+    // note assigned (or the active pane) should be used to render the file.
+    // Disable the textarea for panes that are non-markdown or not mapped to this note.
+    try {
+      for (const [k, inst] of Object.entries(editorInstances)) {
+        try {
+          const mappedNoteId = state.editorPanes?.[k]?.noteId;
+          const mappedNote = mappedNoteId ? state.notes.get(mappedNoteId) : null;
+          if (mappedNote && mappedNote.type === 'markdown') {
+            // keep markdown editors enabled only for markdown-mapped panes
+            inst.el.disabled = false;
+            // Do not overwrite content here; content should already be set when the note was opened
+          } else if (mappedNote && mappedNote.type !== 'markdown') {
+            // non-markdown pane: disable textarea (visual/editor not used)
+            if (inst && inst.el) {
+              inst.el.disabled = true;
+              inst.el.value = '';
+            }
+          } else {
+            // no mapped note for this pane: keep textarea disabled and empty
+            if (inst && inst.el) {
+              inst.el.disabled = true;
+              inst.el.value = '';
+            }
+          }
+        } catch (e) { /* per-instance ignore */ }
+      }
+    } catch (e) { /* ignore full loop errors */ }
 
     if (note.type === 'image') {
       elements.workspaceContent?.classList.add('image-mode');
