@@ -6,7 +6,7 @@ const fsp = fs.promises;
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { createNotesStore } = require('./store/notesStore');
-const { loadFolderNotes, readPdfAsDataUri, createMarkdownFile, renameMarkdownFile, saveMarkdownFile } = require('./store/folderManager');
+const { loadFolderNotes, readPdfAsDataUri, readPdfBuffer, createMarkdownFile, renameMarkdownFile, saveMarkdownFile } = require('./store/folderManager');
 
 // Helper function to convert HTML to DOCX children
 async function htmlToDocxChildren(html, folderPath) {
@@ -515,7 +515,14 @@ const bootstrap = async () => {
       return null;
     }
 
-    return readExternalPdfBuffer(payload.absolutePath);
+    try {
+      // Use the folderManager helper to read a PDF as a Buffer
+      const buf = await readPdfBuffer(payload.absolutePath);
+      return buf;
+    } catch (error) {
+      console.error('workspace:readPdfBinary failed', error);
+      return null;
+    }
   });
 
   ipcMain.handle('workspace:resolveResource', async (_event, payload) => {
