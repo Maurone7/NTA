@@ -4,10 +4,28 @@ const path = require('path');
 const crypto = require('crypto');
 
 const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown', '.mdx']);
+const LATEX_EXTENSIONS = new Set(['.tex']);
+const BIB_EXTENSIONS = new Set(['.bib']);
 const PDF_EXTENSION = '.pdf';
+const PPTX_EXTENSION = '.pptx';
 const DEFAULT_MARKDOWN_EXTENSION = '.md';
 const SCRIPT_EXTENSIONS = {
-  '.py': { language: 'python' }
+  '.py': { language: 'python' },
+  '.txt': { language: 'text' },
+  '.aux': { language: 'latex' },
+  '.log': { language: 'text' },
+  '.lot': { language: 'latex' },
+  '.lof': { language: 'latex' },
+  '.fls': { language: 'text' },
+  '.blg': { language: 'bibtex' },
+  '.bbl': { language: 'bibtex' },
+  '.cls': { language: 'latex' },
+  '.iges': { language: 'text' },
+  '.sh': { language: 'shell' },
+  '.fdb_latexmk': { language: 'latex' },
+  '.out': { language: 'text' },
+  '.synctex.gz': { language: 'text' },
+  '.toc': { language: 'latex' }
 };
 const IMAGE_EXTENSIONS = new Set([
   '.png',
@@ -41,6 +59,30 @@ const HTML_EXTENSIONS = new Set([
   '.htm'
 ]);
 
+// File size limits (in bytes) - will be configurable via settings
+const DEFAULT_FILE_SIZE_LIMITS = {
+  image: 10 * 1024 * 1024, // 10MB
+  video: 100 * 1024 * 1024, // 100MB
+  script: 5 * 1024 * 1024   // 5MB
+};
+
+function getFileSizeLimit(fileType, fileSizeLimits = null) {
+  if (fileSizeLimits && fileSizeLimits[fileType]) {
+    return fileSizeLimits[fileType];
+  }
+  return DEFAULT_FILE_SIZE_LIMITS[fileType] || 10 * 1024 * 1024; // 10MB default
+}
+
+function isFileSizeAllowed(absolutePath, fileType, fileSizeLimits = null) {
+  try {
+    const stats = fs.statSync(absolutePath);
+    const limit = getFileSizeLimit(fileType, fileSizeLimits);
+    return stats.size <= limit;
+  } catch (error) {
+    return true; // Allow if we can't check
+  }
+}
+
 const hashPath = (absolutePath) =>
   crypto.createHash('sha1').update(absolutePath).digest('hex');
 
@@ -73,9 +115,8 @@ const pathExists = async (absolutePath) =>
     .then(() => true)
     .catch(() => false);
 
-const buildDirectoryTree = async (directoryPath) => {
+const buildDirectoryTree = async (directoryPath, fileSizeLimits = null) => {
   const entries = await fsp.readdir(directoryPath, { withFileTypes: true }).catch((error) => {
-    console.error(`Failed to read directory ${directoryPath}`, error);
     return [];
   });
 
@@ -94,7 +135,7 @@ const buildDirectoryTree = async (directoryPath) => {
     }
 
     if (entry.isDirectory()) {
-      const { tree, notes } = await buildDirectoryTree(absolutePath);
+      const { tree, notes } = await buildDirectoryTree(absolutePath, fileSizeLimits);
       children.push(tree);
       collectedNotes.push(...notes);
       continue;
@@ -103,7 +144,6 @@ const buildDirectoryTree = async (directoryPath) => {
     if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
       const stats = await fsp.stat(absolutePath).catch((error) => {
-        console.error(`Failed to stat file ${absolutePath}`, error);
         return null;
       });
 
@@ -141,13 +181,73 @@ const buildDirectoryTree = async (directoryPath) => {
             noteId
           });
         } catch (error) {
-          console.error(`Failed to read markdown file ${absolutePath}`, error);
+          children.push(baseNode);
+        }
+        continue;
+      }
+
+      if (LATEX_EXTENSIONS.has(ext)) {
+        try {
+          const content = await fsp.readFile(absolutePath, 'utf-8');
+          const noteId = `external-${hashPath(absolutePath)}`;
+          collectedNotes.push({
+            id: noteId,
+            title: path.parse(entry.name).name,
+            type: 'latex',
+            origin: 'external',
+            absolutePath,
+            folderPath: directoryPath,
+            content,
+            createdAt: toIsoString(stats.birthtime),
+            updatedAt: toIsoString(stats.mtime)
+          });
+          children.push({
+            ...baseNode,
+            supported: true,
+            noteId
+          });
+        } catch (error) {
+          children.push(baseNode);
+        }
+        continue;
+      }
+
+      if (BIB_EXTENSIONS.has(ext)) {
+        try {
+          const content = await fsp.readFile(absolutePath, 'utf-8');
+          const noteId = `external-${hashPath(absolutePath)}`;
+          collectedNotes.push({
+            id: noteId,
+            title: path.parse(entry.name).name,
+            type: 'bib',
+            origin: 'external',
+            absolutePath,
+            folderPath: directoryPath,
+            content,
+            createdAt: toIsoString(stats.birthtime),
+            updatedAt: toIsoString(stats.mtime)
+          });
+          children.push({
+            ...baseNode,
+            supported: true,
+            noteId
+          });
+        } catch (error) {
           children.push(baseNode);
         }
         continue;
       }
 
       if (IMAGE_EXTENSIONS.has(ext)) {
+        if (!isFileSizeAllowed(absolutePath, 'image', fileSizeLimits)) {
+          children.push({
+            ...baseNode,
+            supported: false,
+            error: 'File too large'
+          });
+          continue;
+        }
+        
         const noteId = `external-${hashPath(absolutePath)}`;
         collectedNotes.push({
           id: noteId,
@@ -168,6 +268,15 @@ const buildDirectoryTree = async (directoryPath) => {
       }
 
       if (VIDEO_EXTENSIONS.has(ext)) {
+        if (!isFileSizeAllowed(absolutePath, 'video', fileSizeLimits)) {
+          children.push({
+            ...baseNode,
+            supported: false,
+            error: 'File too large'
+          });
+          continue;
+        }
+        
         const noteId = `external-${hashPath(absolutePath)}`;
         collectedNotes.push({
           id: noteId,
@@ -227,7 +336,36 @@ const buildDirectoryTree = async (directoryPath) => {
         continue;
       }
 
+      if (ext === PPTX_EXTENSION) {
+        const noteId = `external-${hashPath(absolutePath)}`;
+        collectedNotes.push({
+          id: noteId,
+          title: path.parse(entry.name).name,
+          type: 'pptx',
+          origin: 'external',
+          absolutePath,
+          folderPath: directoryPath,
+          createdAt: toIsoString(stats.birthtime),
+          updatedAt: toIsoString(stats.mtime)
+        });
+        children.push({
+          ...baseNode,
+          supported: true,
+          noteId
+        });
+        continue;
+      }
+
       if (ext in SCRIPT_EXTENSIONS) {
+        if (!isFileSizeAllowed(absolutePath, 'script', fileSizeLimits)) {
+          children.push({
+            ...baseNode,
+            supported: false,
+            error: 'File too large'
+          });
+          continue;
+        }
+        
         try {
           const content = await fsp.readFile(absolutePath, 'utf-8');
           const noteId = `external-${hashPath(absolutePath)}`;
@@ -250,7 +388,6 @@ const buildDirectoryTree = async (directoryPath) => {
             noteId
           });
         } catch (error) {
-          console.error(`Failed to read code file ${absolutePath}`, error);
           children.push(baseNode);
         }
         continue;
@@ -330,11 +467,45 @@ const buildDirectoryTree = async (directoryPath) => {
             noteId
           });
         } catch (error) {
-          console.error(`Failed to read notebook file ${absolutePath}`, error);
           children.push(baseNode);
         }
         continue;
       }
+
+      // Handle unknown extensions as code files
+      if (!isFileSizeAllowed(absolutePath, 'script', fileSizeLimits)) {
+        children.push({
+          ...baseNode,
+          supported: false,
+          error: 'File too large'
+        });
+        continue;
+      }
+      
+      try {
+        const content = await fsp.readFile(absolutePath, 'utf-8');
+        const noteId = `external-${hashPath(absolutePath)}`;
+        collectedNotes.push({
+          id: noteId,
+          title: path.parse(entry.name).name,
+          type: 'code',
+          language: 'text',
+          origin: 'external',
+          absolutePath,
+          folderPath: directoryPath,
+          content,
+          createdAt: toIsoString(stats.birthtime),
+          updatedAt: toIsoString(stats.mtime)
+        });
+        children.push({
+          ...baseNode,
+          supported: true,
+          noteId
+        });
+      } catch (error) {
+        children.push(baseNode);
+      }
+      continue;
 
       children.push(baseNode);
     }
@@ -354,7 +525,7 @@ const buildDirectoryTree = async (directoryPath) => {
   };
 };
 
-const loadFolderNotes = async (folderPath) => {
+const loadFolderNotes = async (folderPath, fileSizeLimits = null) => {
   if (!folderPath) {
     throw new Error('folderPath is required');
   }
@@ -364,7 +535,7 @@ const loadFolderNotes = async (folderPath) => {
     throw new Error(`${folderPath} is not a directory`);
   }
 
-  const { tree, notes } = await buildDirectoryTree(folderPath);
+  const { tree, notes } = await buildDirectoryTree(folderPath, fileSizeLimits);
 
   return {
     tree,
@@ -372,7 +543,7 @@ const loadFolderNotes = async (folderPath) => {
   };
 };
 
-const createMarkdownFile = async (folderPath, requestedName) => {
+const createMarkdownFile = async (folderPath, requestedName, initialContent = '') => {
   if (!folderPath) {
     throw new Error('folderPath is required');
   }
@@ -392,7 +563,7 @@ const createMarkdownFile = async (folderPath, requestedName) => {
     suffix += 1;
   }
 
-  await fsp.writeFile(candidate, '', 'utf-8');
+  await fsp.writeFile(candidate, initialContent, 'utf-8');
 
   const { tree, notes } = await loadFolderNotes(folderPath);
   const createdNote = notes.find((note) => note.absolutePath === candidate) ?? null;
@@ -460,7 +631,6 @@ const readPdfAsDataUri = async (absolutePath) => {
     const buffer = await fsp.readFile(absolutePath);
     return `data:application/pdf;base64,${buffer.toString('base64')}`;
   } catch (error) {
-    console.error(`Failed to read external PDF ${absolutePath}`, error);
     return null;
   }
 };
@@ -482,7 +652,6 @@ const readPdfBuffer = async (absolutePath) => {
   try {
     return await fsp.readFile(absolutePath);
   } catch (error) {
-    console.error(`Failed to read external PDF buffer ${absolutePath}`, error);
     return null;
   }
 };

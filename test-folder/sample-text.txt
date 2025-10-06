@@ -1,0 +1,9 @@
+This is a plain text file.
+
+It contains some sample content for testing.
+
+- Bullet point 1
+- Bullet point 2
+- Bullet point 3
+
+End of file.

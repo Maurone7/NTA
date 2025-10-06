@@ -33,7 +33,66 @@ See https://github.com/adobe-type-tools/cmap-resources
 
     <link rel="stylesheet" href="viewer.css">
 
-  <script src="viewer.mjs" type="module"></script>
+  <script>
+    // Check for forceToolbar parameter to override responsive hiding
+    const urlParams = new URLSearchParams(window.location.search);
+    const forceToolbar = urlParams.get('forceToolbar') === 'true';
+    
+    if (forceToolbar) {
+      console.log('Force toolbar enabled, overriding responsive hiding');
+      // Add CSS to override responsive hiding
+      const style = document.createElement('style');
+      style.textContent = `
+        @media all and (max-width: 750px) {
+          .hiddenMediumView {
+            display: inherit !important;
+          }
+          .verticalToolbarSeparator.hiddenMediumView {
+            display: inherit !important;
+          }
+        }
+        @media all and (max-width: 690px) {
+          .hiddenSmallView,
+          .hiddenSmallView * {
+            display: inherit !important;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // Dark mode toggle functionality for PDF viewer
+    document.addEventListener('DOMContentLoaded', function() {
+      const darkModeToggle = document.getElementById('darkModeToggle');
+      const viewerContainer = document.getElementById('viewerContainer');
+      
+      if (darkModeToggle && viewerContainer) {
+        // Check for saved dark mode preference
+        const isDarkMode = localStorage.getItem('pdfDarkMode') === 'true';
+        if (isDarkMode) {
+          viewerContainer.classList.add('dark-mode');
+          darkModeToggle.classList.add('toggled');
+          darkModeToggle.querySelector('span').textContent = '☀️ Light Mode';
+        }
+        
+        // Toggle dark mode on button click
+        darkModeToggle.addEventListener('click', function() {
+          const isCurrentlyDark = viewerContainer.classList.contains('dark-mode');
+          if (isCurrentlyDark) {
+            viewerContainer.classList.remove('dark-mode');
+            darkModeToggle.classList.remove('toggled');
+            darkModeToggle.querySelector('span').textContent = '🌙 Dark Mode';
+            localStorage.setItem('pdfDarkMode', 'false');
+          } else {
+            viewerContainer.classList.add('dark-mode');
+            darkModeToggle.classList.add('toggled');
+            darkModeToggle.querySelector('span').textContent = '☀️ Light Mode';
+            localStorage.setItem('pdfDarkMode', 'true');
+          }
+        });
+      }
+    });
+  </script>
   </head>
 
   <body tabindex="1">
@@ -267,6 +326,12 @@ See https://github.com/adobe-type-tools/cmap-resources
 
             <div class="horizontalToolbarSeparator"></div>
 
+            <button id="darkModeToggle" class="toolbarButton labeled" type="button" title="Toggle Dark Mode" tabindex="71" data-l10n-id="pdfjs-dark-mode-button">
+              <span data-l10n-id="pdfjs-dark-mode-button-label">🌙 Dark Mode</span>
+            </button>
+
+            <div class="horizontalToolbarSeparator"></div>
+
             <button id="documentProperties" class="toolbarButton labeled" type="button" title="Document Properties…" tabindex="70" data-l10n-id="pdfjs-document-properties-button" aria-controls="documentPropertiesDialog">
               <span data-l10n-id="pdfjs-document-properties-button-label">Document Properties…</span>
             </button>
@@ -327,7 +392,7 @@ See https://github.com/adobe-type-tools/cmap-resources
                 <div class="verticalToolbarSeparator hiddenMediumView"></div>
 
                 <button id="secondaryToolbarToggle" class="toolbarButton" type="button" title="Tools" tabindex="43" data-l10n-id="pdfjs-tools-button" aria-expanded="false" aria-controls="secondaryToolbar">
-                  <span data-l10n-id="pdfjs-tools-button-label">Tools</span>
+                  <span data-l10n-id="pdfjs-tools-button-label">🔧</span>
                 </button>
               </div>
               <div id="toolbarViewerMiddle">

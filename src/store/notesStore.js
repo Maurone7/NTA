@@ -54,7 +54,6 @@ const createNotesStore = (basePath) => {
 
   const loadNotes = async () => {
     const json = await readJsonFile(notesFile).catch(async (err) => {
-      console.error('Failed to read notes file; recreating', err);
       await fsp.writeFile(notesFile, `${defaultContent}\n`, 'utf-8');
       return JSON.parse(defaultContent);
     });

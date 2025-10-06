@@ -1,12 +1,12 @@
 # NTA
 
+[![CI](https://github.com/Maurone7/NoteTakingApp/actions/workflows/ci.yml/badge.svg)](https://github.com/Maurone7/NoteTakingApp/actions/workflows/ci.yml)
+
 A beautiful, cross-platform note-taking app built with Electron. Available for **macOS**, **Windows**, and **Linux**.
 
 ## 🍎 macOS Unsigned Builds: How to Open
 
-If you downloaded a macOS build from the Releases page but haven't signed up for the Apple Developer Program (the $99/year fee), Apple Gatekeeper may prevent the app from opening and show a message such as "NTA.app is damaged and can't be opened." Notarization and Developer ID signing are only available to registered Apple Developers.
-
-You can still run the app locally — here are safe, repeatable options you can publish alongside your release so users know what to do.
+Installation guide
 
 1) GUI (recommended for non-technical users)
 
@@ -22,60 +22,6 @@ You can still run the app locally — here are safe, repeatable options you can 
 xattr -r -d com.apple.quarantine ./NTA.app
 open ./NTA.app
 ```
-
-3) Small installer helper (recommended to ship in the Release as `install.sh`)
-
-   - Create a tiny script that moves the app to `/Applications`, removes quarantine, and opens it for the user. Example content you can include in the release:
-
-```bash
-#!/usr/bin/env bash
-set -e
-
-APP_NAME="NTA.app"
-SRC_DIR="${1:-.}"
-SRC_PATH="$SRC_DIR/$APP_NAME"
-
-if [ ! -d "$SRC_PATH" ]; then
-  echo "Cannot find $SRC_PATH"
-  exit 1
-fi
-
-echo "Removing quarantine attribute..."
-xattr -r -d com.apple.quarantine "$SRC_PATH" || true
-
-echo "Moving to /Applications (may ask for admin password)..."
-mv -f "$SRC_PATH" /Applications/
-
-echo "Opening app..."
-open "/Applications/$APP_NAME"
-
-echo "Done."
-```
-
-   - Make it executable and instruct users to run it after expanding the DMG/ZIP:
-
-```bash
-chmod +x install.sh
-./install.sh
-```
-
-Verification commands (optional, for advanced users)
-
-```bash
-# Check Gatekeeper assessment
-spctl -a -v /path/to/NTA.app
-
-# Check code signature (will fail for unsigned apps but useful to show the output)
-codesign --verify -vvv --deep --strict /path/to/NTA.app || true
-```
-
-Security & distribution notes
-
-- These instructions let users run unsigned builds locally but do not replace proper code signing and notarization. For distribution to a broad audience (public releases), signing with a Developer ID certificate and notarizing through Apple is the recommended route.
-- If you later join the Apple Developer Program, you can sign and notarize binaries so Gatekeeper won't require these manual steps.
-- Include these instructions in your Release notes or attach `install.sh` and a short `INSTALL.md` to make the process smooth for non-technical users.
-
----
 
 ## 🔄 Stay Updated
 
@@ -98,6 +44,8 @@ MIT
 - **📊 Smart content tools**: Auto-complete matrices, tables, and equations
 - **🔗 Wiki-style linking**: Connect notes with `[[Note Name]]` links
 - **📄 Integrated PDF viewer** for research and reference materials
+- **📓 Code file support** for Python, JavaScript, LaTeX, shell scripts, and more
+- **🖼️ Media support** for images, videos, and presentations
 - **🏷️ Hashtag organization** with automatic indexing
 - **🔍 Full-text search** across all your notes
 - **🎨 Comprehensive customization**: Themes, fonts, colors, and layout options
@@ -136,7 +84,7 @@ Click the **gear icon** in the bottom status bar to access comprehensive customi
 
 ## 🚀 Quick Start
 
-### Option 1: Download Ready-to-Use App (Recommended)
+### Download Ready-to-Use App
 
 **Just want to start taking notes?** Download the app for your platform:
 
@@ -167,43 +115,10 @@ Click the **gear icon** in the bottom status bar to access comprehensive customi
 
 #### 🐧 Linux Installation:
 1. **Download** the AppImage file
-2. **Make executable**: `chmod +x NTA-1.2.0.AppImage`
-3. **Run**: `./NTA-1.2.0.AppImage`
+2. **Make executable**: `chmod +x NTA-[Version #].AppImage`
+3. **Run**: `./NTA-[Version #].AppImage`
 
 **That's it! No additional software needed on any platform.** ✨
-
-### Option 2: Build from Source (For Developers)
-
-<details>
-<summary>Click to expand developer setup instructions</summary>
-
-#### Prerequisites:
-- **Any platform**: macOS, Windows, or Linux
-- [Node.js](https://nodejs.org/) 18 or newer
-
-#### Setup:
-```bash
-git clone https://github.com/Maurone7/NTA.git
-cd NTA
-npm install
-npm run dev
-```
-
-#### Build standalone app:
-```bash
-# For your current platform
-npm run build
-
-# Platform-specific builds
-npm run build:mac      # macOS (DMG + ZIP)
-npm run build:win      # Windows (EXE + ZIP)
-npm run build:linux    # Linux (AppImage)
-
-# Build for all platforms (requires platform-specific dependencies)
-npm run build:all
-```
-
-</details>
 
 ## 💡 Getting Started
 
@@ -220,6 +135,8 @@ npm run build:all
 Check out my [[Research Notes]] and [[Project Ideas]].
 
 Embed content inline: ![[Important Quote]]
+
+Add content inline: !![[Table]]
 ```
 
 ### LaTeX Math Support
@@ -261,6 +178,10 @@ Important reminder: ![[Daily Checklist]]
 - **Images too**: Use `![[diagram.png]]` to embed images
 
 **Pro tip**: Use `[[Note|Custom Text]]` to change how the link appears while keeping the same target.
+
+### Hidden Embded Links: `![[Note Name]]`
+Embeds the actual content of another note inline, but hide it's from another file
+
 ### PDF Viewing
 
 - **Enhanced PDF.js viewer**: Integrated PDF.js provides professional-grade PDF viewing with full text selection capabilities.
@@ -293,7 +214,7 @@ Important reminder: ![[Daily Checklist]]
 - **Rename link text on the fly** with alias syntax: `[[My Note|Custom title]]` keeps the link target intact while changing the label you see.
 - **Trigger the wiki-link autocomplete** by typing `[[`—use the arrow keys to pick a note or labelled block, then press Enter or Tab to insert it.
 - **Toggle PDF view** by importing a PDF from the toolbar; it appears as its own entry in the note list with full text selection, zoom controls, and professional navigation features powered by PDF.js.
-- **Open an existing folder** with Markdown/PDF files via the **Open Folder** button; Markdown files are editable and PDFs open inline.
+- **Open an existing folder** with Markdown, PDF, code, and media files via the **Open Folder** button; supported files are editable or viewable inline.
 - **Use the workspace explorer** on the left to drill into sub-folders and click files to open them instantly.
 - **Create wiki links** by wrapping note titles in double brackets (e.g. `[[Daily Log]]`); existing notes open immediately, missing ones prompt you to create them. Add an exclamation mark (`![[Daily Log]]`) to embed the note inside the current page or use `![[diagram.png]]` to display images inline.
 - **Insert code blocks** with the toolbar button or ⌘⇧C — a quick picker lets you choose a language and remembers the last one you used (hold ⌥ while pressing ⌘⇧C to reuse it instantly).
@@ -308,3 +229,9 @@ Important reminder: ![[Daily Checklist]]
 - **Resize the panes** by dragging the vertical divider (or focus it and use the arrow keys for keyboard control).
 - **Collect related ideas** by dropping `#hashtags` anywhere in your Markdown; the sidebar’s Hashtags panel groups them so you can focus on every matching note at once (use Clear to reset the filter).
 - **Auto-save** happens on every keystroke, so there's no Save button.
+
+# TO-DOs
+Implement drag and drop function that opens a new pane
+Implement function that allows user to change color of certain characters/patterns
+Fix search function
+Make "x" to close window more neat

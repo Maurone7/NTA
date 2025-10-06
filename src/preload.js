@@ -9,6 +9,10 @@ const api = {
   loadWorkspaceAtPath: (data) => ipcRenderer.invoke('workspace:loadAtPath', data),
   saveExternalMarkdown: (data) => ipcRenderer.invoke('workspace:saveExternalMarkdown', data),
   createMarkdownFile: (data) => ipcRenderer.invoke('workspace:createMarkdownFile', data),
+  // Read a bibliography file (e.g., bibliography.bib) from the workspace
+  readBibliography: (data) => ipcRenderer.invoke('workspace:readBibliography', data),
+  // Open a file chooser to select a .bib file and return its content
+  chooseBibFile: () => ipcRenderer.invoke('workspace:chooseBibFile'),
   renameMarkdownFile: (data) => ipcRenderer.invoke('workspace:renameMarkdownFile', data),
   readPdfBinary: (data) => ipcRenderer.invoke('workspace:readPdfBinary', data),
   resolveResource: (data) => ipcRenderer.invoke('workspace:resolveResource', data),
@@ -20,6 +24,11 @@ const api = {
   revealInFinder: (path) => ipcRenderer.invoke('workspace:revealInFinder', path),
   deleteFile: (path) => ipcRenderer.invoke('workspace:deleteFile', path),
   pasteFile: (data) => ipcRenderer.invoke('workspace:pasteFile', data),
+  // Debug helper: append a JSON line to a temp logfile (useful when console forwarding is unavailable)
+  writeDebugLog: (payload) => ipcRenderer.invoke('debug:write', payload),
+  
+  // Set window title
+  setTitle: (title) => ipcRenderer.invoke('window:setTitle', title),
   
   // Traffic light positioning
   setTrafficLightPosition: (position) => ipcRenderer.invoke('window:setTrafficLightPosition', position),

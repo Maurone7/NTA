@@ -1846,475 +1846,15 @@
       border-color:transparent;
     }
 
-[dir="ltr"] :is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar){
+[dir="ltr"] :is(:is(.annotationEditorLayer :is([data-main-rotation="0"] [data-editor-rotation="90"],[data-main-rotation="90"] [data-editor-rotation="0"],[data-main-rotation="180"] [data-editor-rotation="270"],[data-main-rotation="270"] [data-editor-rotation="180"])) .editToolbar){
       transform-origin:100% 0;
     }
 
-[dir="rtl"] :is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar){
+[dir="rtl"] :is(:is(.annotationEditorLayer :is([data-main-rotation="0"] [data-editor-rotation="90"],[data-main-rotation="90"] [data-editor-rotation="0"],[data-main-rotation="180"] [data-editor-rotation="270"],[data-main-rotation="270"] [data-editor-rotation="180"])) .editToolbar){
       transform-origin:0 0;
     }
 
-:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons{
-      display:flex;
-      justify-content:center;
-      align-items:center;
-      gap:0;
-      height:100%;
-    }
-
-:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .divider{
-        width:1px;
-        height:calc(
-          2 * var(--editor-toolbar-padding) + var(--editor-toolbar-height)
-        );
-        background-color:var(--editor-toolbar-border-color);
-        display:inline-block;
-        margin-inline:2px;
-      }
-
-:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .highlightButton{
-        width:var(--editor-toolbar-height);
-      }
-
-:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .highlightButton)::before{
-          content:"";
-          -webkit-mask-image:var(--editor-toolbar-highlight-image);
-                  mask-image:var(--editor-toolbar-highlight-image);
-          -webkit-mask-repeat:no-repeat;
-                  mask-repeat:no-repeat;
-          -webkit-mask-position:center;
-                  mask-position:center;
-          display:inline-block;
-          background-color:var(--editor-toolbar-fg-color);
-          width:100%;
-          height:100%;
-        }
-
-:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .highlightButton):hover::before{
-          background-color:var(--editor-toolbar-hover-fg-color);
-        }
-
-:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .delete{
-        width:var(--editor-toolbar-height);
-      }
-
-:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .delete)::before{
-          content:"";
-          -webkit-mask-image:var(--editor-toolbar-delete-image);
-                  mask-image:var(--editor-toolbar-delete-image);
-          -webkit-mask-repeat:no-repeat;
-                  mask-repeat:no-repeat;
-          -webkit-mask-position:center;
-                  mask-position:center;
-          display:inline-block;
-          background-color:var(--editor-toolbar-fg-color);
-          width:100%;
-          height:100%;
-        }
-
-:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .delete):hover::before{
-          background-color:var(--editor-toolbar-hover-fg-color);
-        }
-
-:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons)  > *{
-        height:var(--editor-toolbar-height);
-      }
-
-:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons)  > :not(.divider){
-        border:none;
-        background-color:transparent;
-        cursor:pointer;
-      }
-
-:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) > :not(.divider)):hover{
-          border-radius:2px;
-          background-color:var(--editor-toolbar-hover-bg-color);
-          color:var(--editor-toolbar-hover-fg-color);
-          outline:var(--editor-toolbar-hover-outline);
-          outline-offset:1px;
-        }
-
-:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) > :not(.divider)):hover:active{
-            outline:none;
-          }
-
-:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) > :not(.divider)):focus-visible{
-          border-radius:2px;
-          outline:2px solid var(--editor-toolbar-focus-outline-color);
-        }
-
-:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText{
-        --alt-text-add-image:url(images/altText_add.svg);
-        --alt-text-done-image:url(images/altText_done.svg);
-
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        width:-moz-max-content;
-        width:max-content;
-        padding-inline:8px;
-        pointer-events:all;
-        font:menu;
-        font-weight:590;
-        font-size:12px;
-        color:var(--editor-toolbar-fg-color);
-      }
-
-:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText):disabled{
-          pointer-events:none;
-        }
-
-:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText)::before{
-          content:"";
-          -webkit-mask-image:var(--alt-text-add-image);
-                  mask-image:var(--alt-text-add-image);
-          -webkit-mask-repeat:no-repeat;
-                  mask-repeat:no-repeat;
-          -webkit-mask-position:center;
-                  mask-position:center;
-          display:inline-block;
-          width:12px;
-          height:13px;
-          background-color:var(--editor-toolbar-fg-color);
-          margin-inline-end:4px;
-        }
-
-:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText):hover::before{
-          background-color:var(--editor-toolbar-hover-fg-color);
-        }
-
-.done:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText)::before{
-          -webkit-mask-image:var(--alt-text-done-image);
-                  mask-image:var(--alt-text-done-image);
-        }
-
-.new:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText)::before{
-            width:16px;
-            height:16px;
-            -webkit-mask-image:var(--new-alt-text-warning-image);
-                    mask-image:var(--new-alt-text-warning-image);
-            background-color:var(--alt-text-warning-color);
-            -webkit-mask-size:cover;
-                    mask-size:cover;
-          }
-
-.new:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText):hover::before{
-            background-color:var(--alt-text-hover-warning-color);
-          }
-
-.new.done:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText)::before{
-              -webkit-mask-image:var(--alt-text-done-image);
-                      mask-image:var(--alt-text-done-image);
-              background-color:var(--alt-text-done-color);
-            }
-
-.new.done:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText):hover::before{
-              background-color:var(--alt-text-hover-done-color);
-            }
-
-:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText) .tooltip{
-          display:none;
-        }
-
-.show:is(:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText) .tooltip){
-            --alt-text-tooltip-bg:#f0f0f4;
-            --alt-text-tooltip-fg:#15141a;
-            --alt-text-tooltip-border:#8f8f9d;
-            --alt-text-tooltip-shadow:0px 2px 6px 0px rgb(58 57 68 / 0.2);
-          }
-
-@media (prefers-color-scheme: dark){
-
-:where(html:not(.is-light)) .show:is(:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText) .tooltip){
-              --alt-text-tooltip-bg:#1c1b22;
-              --alt-text-tooltip-fg:#fbfbfe;
-              --alt-text-tooltip-shadow:0px 2px 6px 0px #15141a;
-          }
-            }
-
-:where(html.is-dark) .show:is(:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText) .tooltip){
-              --alt-text-tooltip-bg:#1c1b22;
-              --alt-text-tooltip-fg:#fbfbfe;
-              --alt-text-tooltip-shadow:0px 2px 6px 0px #15141a;
-          }
-
-@media screen and (forced-colors: active){
-
-.show:is(:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText) .tooltip){
-              --alt-text-tooltip-bg:Canvas;
-              --alt-text-tooltip-fg:CanvasText;
-              --alt-text-tooltip-border:CanvasText;
-              --alt-text-tooltip-shadow:none;
-          }
-            }
-
-.show:is(:is(:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor,.highlightEditor),.textLayer) .editToolbar) .buttons) .altText) .tooltip){
-
-            display:inline-flex;
-            flex-direction:column;
-            align-items:center;
-            justify-content:center;
-            position:absolute;
-            top:calc(100% + 2px);
-            inset-inline-start:0;
-            padding-block:2px 3px;
-            padding-inline:3px;
-            max-width:300px;
-            width:-moz-max-content;
-            width:max-content;
-            height:auto;
-            font-size:12px;
-
-            border:0.5px solid var(--alt-text-tooltip-border);
-            background:var(--alt-text-tooltip-bg);
-            box-shadow:var(--alt-text-tooltip-shadow);
-            color:var(--alt-text-tooltip-fg);
-
-            pointer-events:none;
-          }
-
-.annotationEditorLayer .freeTextEditor{
-  padding:calc(var(--freetext-padding) * var(--scale-factor));
-  width:auto;
-  height:auto;
-  touch-action:none;
-}
-
-.annotationEditorLayer .freeTextEditor .internal{
-  background:transparent;
-  border:none;
-  inset:0;
-  overflow:visible;
-  white-space:nowrap;
-  font:10px sans-serif;
-  line-height:var(--freetext-line-height);
-  -webkit-user-select:none;
-     -moz-user-select:none;
-          user-select:none;
-}
-
-.annotationEditorLayer .freeTextEditor .overlay{
-  position:absolute;
-  display:none;
-  background:transparent;
-  inset:0;
-  width:100%;
-  height:100%;
-}
-
-.annotationEditorLayer freeTextEditor .overlay.enabled{
-  display:block;
-}
-
-.annotationEditorLayer .freeTextEditor .internal:empty::before{
-  content:attr(default-content);
-  color:gray;
-}
-
-.annotationEditorLayer .freeTextEditor .internal:focus{
-  outline:none;
-  -webkit-user-select:auto;
-     -moz-user-select:auto;
-          user-select:auto;
-}
-
-.annotationEditorLayer .inkEditor{
-  width:100%;
-  height:100%;
-}
-
-.annotationEditorLayer .inkEditor.editing{
-  cursor:inherit;
-}
-
-.annotationEditorLayer .inkEditor .inkEditorCanvas{
-  position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
-  touch-action:none;
-}
-
-.annotationEditorLayer .stampEditor{
-  width:auto;
-  height:auto;
-}
-
-:is(.annotationEditorLayer .stampEditor) canvas{
-    position:absolute;
-    width:100%;
-    height:100%;
-    margin:0;
-    top:0;
-    left:0;
-  }
-
-:is(.annotationEditorLayer .stampEditor) .noAltTextBadge{
-    --no-alt-text-badge-border-color:#f0f0f4;
-    --no-alt-text-badge-bg-color:#cfcfd8;
-    --no-alt-text-badge-fg-color:#5b5b66;
-  }
-
-@media (prefers-color-scheme: dark){
-
-:where(html:not(.is-light)) :is(.annotationEditorLayer .stampEditor) .noAltTextBadge{
-      --no-alt-text-badge-border-color:#52525e;
-      --no-alt-text-badge-bg-color:#fbfbfe;
-      --no-alt-text-badge-fg-color:#15141a;
-  }
-    }
-
-:where(html.is-dark) :is(.annotationEditorLayer .stampEditor) .noAltTextBadge{
-      --no-alt-text-badge-border-color:#52525e;
-      --no-alt-text-badge-bg-color:#fbfbfe;
-      --no-alt-text-badge-fg-color:#15141a;
-  }
-
-@media screen and (forced-colors: active){
-
-:is(.annotationEditorLayer .stampEditor) .noAltTextBadge{
-      --no-alt-text-badge-border-color:ButtonText;
-      --no-alt-text-badge-bg-color:ButtonFace;
-      --no-alt-text-badge-fg-color:ButtonText;
-  }
-    }
-
-:is(.annotationEditorLayer .stampEditor) .noAltTextBadge{
-
-    position:absolute;
-    inset-inline-end:5px;
-    inset-block-end:5px;
-    display:inline-flex;
-    width:32px;
-    height:32px;
-    padding:3px;
-    justify-content:center;
-    align-items:center;
-    pointer-events:none;
-    z-index:1;
-
-    border-radius:2px;
-    border:1px solid var(--no-alt-text-badge-border-color);
-    background:var(--no-alt-text-badge-bg-color);
-  }
-
-:is(:is(.annotationEditorLayer .stampEditor) .noAltTextBadge)::before{
-      content:"";
-      display:inline-block;
-      width:16px;
-      height:16px;
-      -webkit-mask-image:var(--new-alt-text-warning-image);
-              mask-image:var(--new-alt-text-warning-image);
-      -webkit-mask-size:cover;
-              mask-size:cover;
-      background-color:var(--no-alt-text-badge-fg-color);
-    }
-
-:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor)) > .resizers{
-      position:absolute;
-      inset:0;
-    }
-
-.hidden:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor)) > .resizers){
-        display:none;
-      }
-
-:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor)) > .resizers) > .resizer{
-        width:var(--resizer-size);
-        height:var(--resizer-size);
-        background:content-box var(--resizer-bg-color);
-        border:var(--focus-outline-around);
-        border-radius:2px;
-        position:absolute;
-      }
-
-.topLeft:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor)) > .resizers) > .resizer){
-          top:var(--resizer-shift);
-          left:var(--resizer-shift);
-        }
-
-.topMiddle:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor)) > .resizers) > .resizer){
-          top:var(--resizer-shift);
-          left:calc(50% + var(--resizer-shift));
-        }
-
-.topRight:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor)) > .resizers) > .resizer){
-          top:var(--resizer-shift);
-          right:var(--resizer-shift);
-        }
-
-.middleRight:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor)) > .resizers) > .resizer){
-          top:calc(50% + var(--resizer-shift));
-          right:var(--resizer-shift);
-        }
-
-.bottomRight:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor)) > .resizers) > .resizer){
-          bottom:var(--resizer-shift);
-          right:var(--resizer-shift);
-        }
-
-.bottomMiddle:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor)) > .resizers) > .resizer){
-          bottom:var(--resizer-shift);
-          left:calc(50% + var(--resizer-shift));
-        }
-
-.bottomLeft:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor)) > .resizers) > .resizer){
-          bottom:var(--resizer-shift);
-          left:var(--resizer-shift);
-        }
-
-.middleLeft:is(:is(:is(.annotationEditorLayer :is(.freeTextEditor,.inkEditor,.stampEditor)) > .resizers) > .resizer){
-          top:calc(50% + var(--resizer-shift));
-          left:var(--resizer-shift);
-        }
-
-.topLeft:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="180"],[data-editor-rotation="0"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="90"],[data-editor-rotation="270"])) > .resizers > .resizer),.bottomRight:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="180"],[data-editor-rotation="0"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="90"],[data-editor-rotation="270"])) > .resizers > .resizer){
-        cursor:nwse-resize;
-      }
-
-.topMiddle:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="180"],[data-editor-rotation="0"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="90"],[data-editor-rotation="270"])) > .resizers > .resizer),.bottomMiddle:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="180"],[data-editor-rotation="0"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="90"],[data-editor-rotation="270"])) > .resizers > .resizer){
-        cursor:ns-resize;
-      }
-
-.topRight:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="180"],[data-editor-rotation="0"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="90"],[data-editor-rotation="270"])) > .resizers > .resizer),.bottomLeft:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="180"],[data-editor-rotation="0"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="90"],[data-editor-rotation="270"])) > .resizers > .resizer){
-        cursor:nesw-resize;
-      }
-
-.middleRight:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="180"],[data-editor-rotation="0"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="90"],[data-editor-rotation="270"])) > .resizers > .resizer),.middleLeft:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="180"],[data-editor-rotation="0"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="90"],[data-editor-rotation="270"])) > .resizers > .resizer){
-        cursor:ew-resize;
-      }
-
-.topLeft:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="90"],[data-editor-rotation="270"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="180"],[data-editor-rotation="0"])) > .resizers > .resizer),.bottomRight:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="90"],[data-editor-rotation="270"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="180"],[data-editor-rotation="0"])) > .resizers > .resizer){
-        cursor:nesw-resize;
-      }
-
-.topMiddle:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="90"],[data-editor-rotation="270"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="180"],[data-editor-rotation="0"])) > .resizers > .resizer),.bottomMiddle:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="90"],[data-editor-rotation="270"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="180"],[data-editor-rotation="0"])) > .resizers > .resizer){
-        cursor:ew-resize;
-      }
-
-.topRight:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="90"],[data-editor-rotation="270"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="180"],[data-editor-rotation="0"])) > .resizers > .resizer),.bottomLeft:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="90"],[data-editor-rotation="270"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="180"],[data-editor-rotation="0"])) > .resizers > .resizer){
-        cursor:nwse-resize;
-      }
-
-.middleRight:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="90"],[data-editor-rotation="270"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="180"],[data-editor-rotation="0"])) > .resizers > .resizer),.middleLeft:is(:is(.annotationEditorLayer[data-main-rotation="0"] :is([data-editor-rotation="90"],[data-editor-rotation="270"]),.annotationEditorLayer[data-main-rotation="90"] :is([data-editor-rotation="0"],[data-editor-rotation="180"]),.annotationEditorLayer[data-main-rotation="180"] :is([data-editor-rotation="270"],[data-editor-rotation="90"]),.annotationEditorLayer[data-main-rotation="270"] :is([data-editor-rotation="180"],[data-editor-rotation="0"])) > .resizers > .resizer){
-        cursor:ns-resize;
-      }
-
-:is(.annotationEditorLayer :is([data-main-rotation="0"] [data-editor-rotation="90"],[data-main-rotation="90"] [data-editor-rotation="0"],[data-main-rotation="180"] [data-editor-rotation="270"],[data-main-rotation="270"] [data-editor-rotation="180"])) .editToolbar{
-      rotate:270deg;
-    }
-
-[dir="ltr"] :is(:is(.annotationEditorLayer :is([data-main-rotation="0"] [data-editor-rotation="90"],[data-main-rotation="90"] [data-editor-rotation="0"],[data-main-rotation="180"] [data-editor-rotation="270"],[data-main-rotation="270"] [data-editor-rotation="180"])) .editToolbar){
-        inset-inline-end:calc(0px - var(--editor-toolbar-vert-offset));
-        inset-block-start:0;
-      }
-
-[dir="rtl"] :is(:is(.annotationEditorLayer :is([data-main-rotation="0"] [data-editor-rotation="90"],[data-main-rotation="90"] [data-editor-rotation="0"],[data-main-rotation="180"] [data-editor-rotation="270"],[data-main-rotation="270"] [data-editor-rotation="180"])) .editToolbar){
-        inset-inline-end:calc(100% + var(--editor-toolbar-vert-offset));
-        inset-block-start:0;
-      }
-
-:is(.annotationEditorLayer :is([data-main-rotation="0"] [data-editor-rotation="180"],[data-main-rotation="90"] [data-editor-rotation="90"],[data-main-rotation="180"] [data-editor-rotation="0"],[data-main-rotation="270"] [data-editor-rotation="270"])) .editToolbar{
+:is(:is(.annotationEditorLayer :is([data-main-rotation="0"] [data-editor-rotation="180"],[data-main-rotation="90"] [data-editor-rotation="90"],[data-main-rotation="180"] [data-editor-rotation="0"],[data-main-rotation="270"] [data-editor-rotation="270"])) .editToolbar{
       rotate:180deg;
       inset-inline-end:100%;
       inset-block-start:calc(0pc - var(--editor-toolbar-vert-offset));
@@ -2380,7 +1920,7 @@
 
 :is(:is(.dialog.altText #altTextContainer) #addDescription) .descriptionArea{
         flex:1;
-        padding-inline:24px 10px;
+        padding-inline-start:24px;
       }
 
 :is(:is(:is(.dialog.altText #altTextContainer) #addDescription) .descriptionArea) textarea{
@@ -3098,6 +2638,15 @@
   background-color:rgb(255 255 255);
 }
 
+.pdfViewer.dark-mode .page{
+  background-color:#1a1a1a;
+  filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(1.1);
+}
+
+.pdfViewer.dark-mode .page canvas{
+  filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(1.1);
+}
+
 .pdfViewer .dummyPage{
   position:relative;
   width:0;
@@ -3215,7 +2764,7 @@
   --toolbar-border-bottom:none;
   --toolbar-height:32px;
   --toolbarSidebar-box-shadow:inset calc(-1px * var(--dir-factor)) 0 0 rgb(0 0 0 / 0.25), 0 1px 0 rgb(0 0 0 / 0.15), 0 0 1px rgb(0 0 0 / 0.1);
-  --toolbarSidebar-border-bottom:none;
+  --toolbarSidebar-border-bottom:1px solid var(--toolbar-border-color);
   --button-hover-color:rgb(221 222 223);
   --toggled-btn-color:rgb(0 0 0);
   --toggled-btn-bg-color:rgb(0 0 0 / 0.3);
@@ -4012,7 +3561,7 @@ body.wait::before{
 
 #editorFreeText::before{
   -webkit-mask-image:var(--toolbarButton-editorFreeText-icon);
-          mask-image:var(--toolbarButton-editorFreeText-icon);
+          mask-image:var,--toolbarButton-editorFreeText-icon);
 }
 
 #editorHighlight::before{
@@ -4164,10 +3713,6 @@ body.wait::before{
 .loadingInput.end::after{
     inset-inline-end:4px;
   }
-
-.toolbarField:focus{
-  border-color:#0a84ff;
-}
 
 .toolbarLabel{
   min-width:16px;
@@ -4511,7 +4056,7 @@ dialog :link{
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #secondaryPrint::before{
       -webkit-mask-image:var(--toolbarButton-print-icon);
-              mask-image:var(--toolbarButton-print-icon);
+              mask-image:var,--toolbarButton-print-icon);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #secondaryDownload::before{
@@ -4526,7 +4071,7 @@ dialog :link{
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #viewBookmark::before{
       -webkit-mask-image:var(--toolbarButton-bookmark-icon);
-              mask-image:var(--toolbarButton-bookmark-icon);
+              mask-image:var,--toolbarButton-bookmark-icon);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #firstPage::before{
@@ -4536,72 +4081,72 @@ dialog :link{
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #lastPage::before{
       -webkit-mask-image:var(--secondaryToolbarButton-lastPage-icon);
-              mask-image:var(--secondaryToolbarButton-lastPage-icon);
+              mask-image:var,--secondaryToolbarButton-lastPage.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #pageRotateCcw::before{
       -webkit-mask-image:var(--secondaryToolbarButton-rotateCcw-icon);
-              mask-image:var(--secondaryToolbarButton-rotateCcw-icon);
+              mask-image:var,--secondaryToolbarButton-rotateCcw.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #pageRotateCw::before{
       -webkit-mask-image:var(--secondaryToolbarButton-rotateCw-icon);
-              mask-image:var(--secondaryToolbarButton-rotateCw-icon);
+              mask-image:var,--secondaryToolbarButton-rotateCw.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #cursorSelectTool::before{
       -webkit-mask-image:var(--secondaryToolbarButton-selectTool-icon);
-              mask-image:var(--secondaryToolbarButton-selectTool-icon);
+              mask-image:var,--secondaryToolbarButton-selectTool.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #cursorHandTool::before{
       -webkit-mask-image:var(--secondaryToolbarButton-handTool-icon);
-              mask-image:var(--secondaryToolbarButton-handTool-icon);
+              mask-image:var,--secondaryToolbarButton-handTool.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #scrollPage::before{
       -webkit-mask-image:var(--secondaryToolbarButton-scrollPage-icon);
-              mask-image:var(--secondaryToolbarButton-scrollPage-icon);
+              mask-image:var,--secondaryToolbarButton-scrollPage.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #scrollVertical::before{
       -webkit-mask-image:var(--secondaryToolbarButton-scrollVertical-icon);
-              mask-image:var(--secondaryToolbarButton-scrollVertical-icon);
+              mask-image:var,--secondaryToolbarButton-scrollVertical.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #scrollHorizontal::before{
       -webkit-mask-image:var(--secondaryToolbarButton-scrollHorizontal-icon);
-              mask-image:var(--secondaryToolbarButton-scrollHorizontal-icon);
+              mask-image:var,--secondaryToolbarButton-scrollHorizontal.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #scrollWrapped::before{
       -webkit-mask-image:var(--secondaryToolbarButton-scrollWrapped-icon);
-              mask-image:var(--secondaryToolbarButton-scrollWrapped-icon);
+              mask-image:var,--secondaryToolbarButton-scrollWrapped.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #spreadNone::before{
       -webkit-mask-image:var(--secondaryToolbarButton-spreadNone-icon);
-              mask-image:var(--secondaryToolbarButton-spreadNone-icon);
+              mask-image:var,--secondaryToolbarButton-spreadNone.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #spreadOdd::before{
       -webkit-mask-image:var(--secondaryToolbarButton-spreadOdd-icon);
-              mask-image:var(--secondaryToolbarButton-spreadOdd-icon);
+              mask-image:var,--secondaryToolbarButton-spreadOdd.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #spreadEven::before{
       -webkit-mask-image:var(--secondaryToolbarButton-spreadEven-icon);
-              mask-image:var(--secondaryToolbarButton-spreadEven-icon);
+              mask-image:var,--secondaryToolbarButton-spreadEven.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #imageAltTextSettings::before{
       -webkit-mask-image:var(--secondaryToolbarButton-imageAltTextSettings-icon);
-              mask-image:var(--secondaryToolbarButton-imageAltTextSettings-icon);
+              mask-image:var,--secondaryToolbarButton-imageAltTextSettings.svg);
     }
 
 :is(#secondaryToolbar #secondaryToolbarButtonContainer) #documentProperties::before{
       -webkit-mask-image:var(--secondaryToolbarButton-documentProperties-icon);
-              mask-image:var(--secondaryToolbarButton-documentProperties-icon);
+              mask-image:var,--secondaryToolbarButton-documentProperties.svg);
     }
 
 #findbar{
@@ -4724,64 +4269,6 @@ dialog :link{
     }
   }
 
-@page{
-  margin:0;
-}
-
-#printContainer{
-  display:none;
-}
-
-@media print{
-  body{
-    background:rgb(0 0 0 / 0) none;
-  }
-  body[data-pdfjsprinting] #outerContainer{
-    display:none;
-  }
-  body[data-pdfjsprinting] #printContainer{
-    display:block;
-  }
-  #printContainer{
-    height:100%;
-  }
-  #printContainer > .printedPage{
-    page-break-after:always;
-    page-break-inside:avoid;
-    height:100%;
-    width:100%;
-
-    display:flex;
-    flex-direction:column;
-    justify-content:center;
-    align-items:center;
-  }
-
-  #printContainer > .xfaPrintedPage .xfaPage{
-    position:absolute;
-  }
-
-  #printContainer > .xfaPrintedPage{
-    page-break-after:always;
-    page-break-inside:avoid;
-    width:100%;
-    height:100%;
-    position:relative;
-  }
-
-  #printContainer > .printedPage :is(canvas, img){
-    max-width:100%;
-    max-height:100%;
-
-    direction:ltr;
-    display:block;
-  }
-}
-
-.visibleMediumView{
-  display:none !important;
-}
-
 @media all and (max-width: 900px){
   #toolbarViewerMiddle{
     display:table;
@@ -4827,4 +4314,30 @@ dialog :link{
   #scaleSelectContainer{
     display:none;
   }
+}
+
+/* Dark mode styles for PDF viewer */
+.dark-mode #viewerContainer {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+.dark-mode #viewerContainer .canvasWrapper canvas {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+.dark-mode #viewerContainer .textLayer {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+.dark-mode #viewerContainer .annotationLayer {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Dark mode toggle button styles */
+#darkModeToggle.toggled {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+#darkModeToggle.toggled span {
+  color: #007acc;
 }

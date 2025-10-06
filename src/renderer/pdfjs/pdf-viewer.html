@@ -16,6 +16,11 @@
             background: #f5f5f5;
             height: 100vh;
             overflow: hidden;
+            transition: background-color 0.3s ease;
+        }
+        
+        body.dark-theme {
+            background: #1a1a1a;
         }
         
         .pdf-container {
@@ -32,6 +37,12 @@
             align-items: center;
             gap: 12px;
             flex-shrink: 0;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        
+        body.dark-theme .pdf-toolbar {
+            background: #2d2d2d;
+            border-bottom: 1px solid #444;
         }
         
         .pdf-toolbar button {
@@ -41,10 +52,22 @@
             padding: 6px 12px;
             cursor: pointer;
             font-size: 14px;
+            color: #333;
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+        }
+        
+        body.dark-theme .pdf-toolbar button {
+            background: #3d3d3d;
+            border: 1px solid #555;
+            color: #e0e0e0;
         }
         
         .pdf-toolbar button:hover {
             background: #f8f9fa;
+        }
+        
+        body.dark-theme .pdf-toolbar button:hover {
+            background: #4d4d4d;
         }
         
         .pdf-toolbar button:disabled {
@@ -59,6 +82,15 @@
             font-size: 14px;
             width: 60px;
             text-align: center;
+            background: #fff;
+            color: #333;
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+        }
+        
+        body.dark-theme .pdf-toolbar input {
+            background: #3d3d3d;
+            border: 1px solid #555;
+            color: #e0e0e0;
         }
         
         .pdf-toolbar select {
@@ -66,6 +98,15 @@
             border-radius: 4px;
             padding: 6px 8px;
             font-size: 14px;
+            background: #fff;
+            color: #333;
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+        }
+        
+        body.dark-theme .pdf-toolbar select {
+            background: #3d3d3d;
+            border: 1px solid #555;
+            color: #e0e0e0;
         }
         
         .pdf-viewer {
@@ -73,6 +114,11 @@
             overflow: auto;
             background: #e4e4e4;
             padding: 20px;
+            transition: background-color 0.3s ease;
+        }
+        
+        body.dark-theme .pdf-viewer {
+            background: #121212;
         }
         
         .pdf-page {
@@ -81,6 +127,13 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             position: relative;
             display: block;
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        body.dark-theme .pdf-page {
+            background: #2d2d2d;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            filter: invert(1) hue-rotate(180deg);
         }
         
         .pdf-page canvas {
@@ -116,6 +169,10 @@
             background: rgba(0, 100, 255, 0.3);
         }
         
+        body.dark-theme .text-layer > span::selection {
+            background: rgba(100, 150, 255, 0.4);
+        }
+        
         .loading {
             display: flex;
             align-items: center;
@@ -123,6 +180,11 @@
             height: 200px;
             color: #666;
             font-size: 16px;
+            transition: color 0.3s ease;
+        }
+        
+        body.dark-theme .loading {
+            color: #ccc;
         }
         
         .error {
@@ -135,6 +197,11 @@
             text-align: center;
             flex-direction: column;
             gap: 10px;
+            transition: color 0.3s ease;
+        }
+        
+        body.dark-theme .error {
+            color: #ff6b6b;
         }
     </style>
 </head>
@@ -148,6 +215,7 @@
             <button id="nextPage" title="Next Page">→</button>
             
             <div style="margin-left: auto; display: flex; gap: 12px; align-items: center;">
+                <button id="themeToggle" title="Toggle Dark/Light Theme">🌙</button>
                 <button id="zoomOut" title="Zoom Out">−</button>
                 <select id="zoomSelect">
                     <option value="auto">Fit Width</option>
@@ -198,6 +266,20 @@
                 this.zoomSelect = document.getElementById('zoomSelect');
                 this.zoomInButton = document.getElementById('zoomIn');
                 this.zoomOutButton = document.getElementById('zoomOut');
+                this.themeToggleButton = document.getElementById('themeToggle');
+                
+                // Initialize theme from URL parameter or localStorage
+                const urlParams = new URLSearchParams(window.location.search);
+                const themeParam = urlParams.get('theme');
+                let initialTheme = themeParam || localStorage.getItem('pdf-viewer-theme') || 'light';
+                
+                // Handle 'system' theme preference
+                if (initialTheme === 'system') {
+                    initialTheme = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light';
+                }
+                
+                this.currentTheme = initialTheme;
+                this.applyTheme();
             }
             
             bindEvents() {
@@ -207,6 +289,7 @@
                 this.zoomSelect.addEventListener('change', () => this.onZoomChange());
                 this.zoomInButton.addEventListener('click', () => this.zoomIn());
                 this.zoomOutButton.addEventListener('click', () => this.zoomOut());
+                this.themeToggleButton.addEventListener('click', () => this.toggleTheme());
             }
             
             async loadPDF() {
@@ -409,6 +492,25 @@
                 this.scale /= 1.25;
                 this.zoomSelect.value = 'custom';
                 this.renderAllPages();
+            }
+            
+            applyTheme() {
+                const body = document.body;
+                if (this.currentTheme === 'dark') {
+                    body.classList.add('dark-theme');
+                    this.themeToggleButton.textContent = '☀️';
+                    this.themeToggleButton.title = 'Switch to Light Theme';
+                } else {
+                    body.classList.remove('dark-theme');
+                    this.themeToggleButton.textContent = '🌙';
+                    this.themeToggleButton.title = 'Switch to Dark Theme';
+                }
+                localStorage.setItem('pdf-viewer-theme', this.currentTheme);
+            }
+            
+            toggleTheme() {
+                this.currentTheme = this.currentTheme === 'dark' ? 'light' : 'dark';
+                this.applyTheme();
             }
         }
         

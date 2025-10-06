@@ -1,13 +1,14 @@
 {
   "name": "note-taking-app",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Cross-platform Markdown note taking app with PDF viewing support",
   "main": "src/main.js",
   "homepage": "https://github.com/Maurone7/NTA",
   "scripts": {
     "start": "electron .",
     "dev": "electronmon .",
-    "test": "node scripts/smoke-test.js",
+  "test": "mocha --recursive tests --reporter spec --ignore tests/e2e/**",
+    "test:smoke": "node scripts/smoke-test.js",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
@@ -30,15 +31,20 @@
     "marked": "^12.0.2",
     "turndown": "^7.2.1"
   },
-  "devDependencies": {
+    "devDependencies": {
     "electron": "^30.0.0",
     "electron-builder": "^26.0.12",
     "electronmon": "^2.0.2",
-    "eslint": "^8.57.0"
+    "eslint": "^8.57.0",
+  "jsdom": "^27.0.0",
+  "mocha": "^10.2.0",
+  "mocha-junit-reporter": "^2.0.0",
+  "playwright": "^1.43.0",
+  "@playwright/test": "^1.43.0"
   },
   "build": {
     "appId": "com.maurone7.notetakingapp",
-  "productName": "NTA",
+    "productName": "NTA",
     "directories": {
       "output": "dist"
     },
@@ -49,7 +55,7 @@
     "publish": {
       "provider": "github",
       "owner": "Maurone7",
-  "repo": "NoteTakingApp"
+      "repo": "NTA"
     },
     "mac": {
       "category": "public.app-category.productivity",

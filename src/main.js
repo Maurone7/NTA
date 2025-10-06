@@ -99,11 +99,12 @@ const startFileWatcher = (folderPath, mainWindow) => {
       
       // Only watch for actual file changes that affect the workspace structure
       const isMarkdown = filename.endsWith('.md');
+      const isLatex = filename.endsWith('.tex');
       const isDirectory = !path.extname(filename);
       const isMediaFile = filename.match(/\.(html?|mp4|webm|ogg|avi|mov|wmv|jpg|jpeg|png|gif|svg|webp)$/i);
       
       // Only trigger updates for files that affect the workspace structure or are new/deleted
-      if ((isMarkdown || isDirectory || isMediaFile) && (eventType === 'rename')) {
+      if ((isMarkdown || isLatex || isDirectory || isMediaFile) && (eventType === 'rename')) {
         // Debounce the refresh with a longer delay to avoid interrupting user interactions
         clearTimeout(fileWatcher.refreshTimeout);
         fileWatcher.refreshTimeout = setTimeout(async () => {
@@ -115,16 +116,13 @@ const startFileWatcher = (folderPath, mainWindow) => {
               tree
             });
           } catch (error) {
-            console.error('Failed to refresh workspace after file change:', error);
           }
         }, 2000); // Increased from 300ms to 2000ms
       }
     });
     
     currentWatchedPath = folderPath;
-    console.log(`Started watching folder: ${folderPath}`);
   } catch (error) {
-    console.error('Failed to start file watcher:', error);
   }
 };
 
@@ -177,6 +175,31 @@ const protocolRelativePattern = /^\/\//;
 
 let mainWindow;
 let notesStore;
+
+// Debug IPC: write a JSON line to a temp logfile so renderer activity can be captured
+ipcMain.handle('debug:write', async (_event, payload) => {
+  try {
+    const line = JSON.stringify({ ts: new Date().toISOString(), payload }) + '\n';
+    const tmp = require('os').tmpdir();
+    const tmpFile = path.join(tmp, 'nta-debug.log');
+    // Append to system temp logfile for users who prefer /tmp
+    await fsp.appendFile(tmpFile, line, 'utf8');
+
+    // Also append to a workspace-local debug file so the assistant can read it
+    try {
+      const workspaceDebugDir = path.join(__dirname, '..', '.debug');
+      await fsp.mkdir(workspaceDebugDir, { recursive: true });
+      const workspaceFile = path.join(workspaceDebugDir, 'nta-debug.log');
+      await fsp.appendFile(workspaceFile, line, 'utf8');
+      return { ok: true, file: tmpFile, workspaceFile };
+    } catch (innerErr) {
+      // If workspace write fails, still return success for tmp file
+      return { ok: true, file: tmpFile, workspaceFile: null, error: String(innerErr) };
+    }
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
 
 const toFileUrl = (targetPath) => {
   if (!targetPath) {
@@ -268,7 +291,6 @@ const createMainWindow = () => {
     mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
       const levels = ['debug', 'info', 'warn', 'error'];
       const lvl = levels[level] ?? `level-${level}`;
-      console.log(`[renderer:${lvl}] ${message} (${sourceId}:${line})`);
     });
   } catch (err) {
     // Older/newer electron versions may not emit console-message; ignore if unsupported
@@ -278,7 +300,6 @@ const createMainWindow = () => {
   try {
     mainWindow.webContents.on('console', (event, level, ...args) => {
       // Level may be 'log', 'warn', 'error', etc.
-      console.log('[renderer:console]', level, ...args);
     });
   } catch (err) {
     // ignore if not supported
@@ -286,7 +307,17 @@ const createMainWindow = () => {
 
   // Show window when ready to prevent visual flash
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+    // Show and focus window to ensure it appears in foreground
+    try {
+      mainWindow.show();
+      mainWindow.focus();
+      // On macOS an additional activate call can help bring the app forward
+      if (process.platform === 'darwin') {
+        app.focus({ steal: true });
+      }
+    } catch (e) {
+      try { mainWindow.show(); } catch (ee) {}
+    }
   });
 
   if (process.env.NODE_ENV === 'development') {
@@ -305,11 +336,9 @@ const setupAutoUpdater = () => {
 
   // Auto-updater events
   autoUpdater.on('checking-for-update', () => {
-    console.log('Checking for update...');
   });
 
   autoUpdater.on('update-available', (info) => {
-    console.log('Update available:', info.version);
     // Notify user about available update
     if (mainWindow) {
       mainWindow.webContents.send('update-available', info);
@@ -317,18 +346,15 @@ const setupAutoUpdater = () => {
   });
 
   autoUpdater.on('update-not-available', (info) => {
-    console.log('Update not available.');
   });
 
   autoUpdater.on('error', (err) => {
-    console.log('Error in auto-updater:', err);
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
     let log_message = `Download speed: ${progressObj.bytesPerSecond}`;
     log_message += ` - Downloaded ${progressObj.percent}%`;
     log_message += ` (${progressObj.transferred}/${progressObj.total})`;
-    console.log(log_message);
     
     // Send progress to renderer
     if (mainWindow) {
@@ -337,7 +363,6 @@ const setupAutoUpdater = () => {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('Update downloaded');
     // Notify user that update is ready to install
     if (mainWindow) {
       mainWindow.webContents.send('update-downloaded', info);
@@ -410,7 +435,6 @@ const bootstrap = async () => {
     try {
       return await autoUpdater.checkForUpdatesAndNotify();
     } catch (error) {
-      console.error('Error checking for updates:', error);
       return { error: error.message };
     }
   });
@@ -422,6 +446,28 @@ const bootstrap = async () => {
   ipcMain.handle('app:getVersion', async () => {
     return app.getVersion();
   });
+
+  ipcMain.handle('settings:getFileSizeLimits', async () => {
+    // Get file size limits from renderer process via IPC
+    // For now, return defaults - this will be enhanced to get from renderer settings
+    return {
+      image: 10 * 1024 * 1024, // 10MB
+      video: 100 * 1024 * 1024, // 100MB
+      script: 5 * 1024 * 1024   // 5MB
+    };
+  });
+
+    // Read a bibliography file (simple text read) from disk and return content
+    ipcMain.handle('workspace:readBibliography', async (_event, payload) => {
+      try {
+        if (!payload || !payload.path) return { error: 'No path provided' };
+        const bibPath = payload.path;
+        const content = await fsp.readFile(bibPath, { encoding: 'utf8' });
+        return { content };
+      } catch (error) {
+        return { error: error?.message ?? 'Failed to read bibliography' };
+      }
+    });
 
   ipcMain.handle('workspace:chooseFolder', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
@@ -436,11 +482,29 @@ const bootstrap = async () => {
 
     const folderPath = filePaths[0];
     try {
-      const { notes, tree } = await loadFolderNotes(folderPath);
+      const { notes, tree } = await loadFolderNotes(folderPath, null); // Use defaults for chooseFolder
       return { folderPath, notes, tree };
     } catch (error) {
-      console.error(`Failed to load folder contents for ${folderPath}`, error);
       throw error;
+    }
+  });
+
+  // Let renderer ask user to pick a .bib file and return its content
+  ipcMain.handle('workspace:chooseBibFile', async () => {
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select bibliography (.bib) file',
+        buttonLabel: 'Open',
+        filters: [{ name: 'BibTeX', extensions: ['bib'] }],
+        properties: ['openFile']
+      });
+
+      if (canceled || !filePaths || !filePaths.length) return { canceled: true };
+      const bibPath = filePaths[0];
+      const content = await fsp.readFile(bibPath, { encoding: 'utf8' });
+      return { canceled: false, filePath: bibPath, content };
+    } catch (error) {
+      return { canceled: true, error: error?.message };
     }
   });
 
@@ -450,7 +514,7 @@ const bootstrap = async () => {
     }
 
     try {
-      const { notes, tree } = await loadFolderNotes(payload.folderPath);
+      const { notes, tree } = await loadFolderNotes(payload.folderPath, payload.fileSizeLimits);
       
       // Start file watcher for this workspace
       const mainWindow = BrowserWindow.fromWebContents(event.sender);
@@ -460,7 +524,6 @@ const bootstrap = async () => {
       
       return { folderPath: payload.folderPath, notes, tree };
     } catch (error) {
-      console.error(`Failed to load workspace at ${payload.folderPath}`, error);
       throw error;
     }
   });
@@ -486,9 +549,8 @@ const bootstrap = async () => {
       if (typeof folderManager.createMarkdownFile !== 'function') {
         throw new Error('createMarkdownFile is not available');
       }
-      return await folderManager.createMarkdownFile(payload.folderPath, payload.fileName);
+      return await folderManager.createMarkdownFile(payload.folderPath, payload.fileName, payload.content || '');
     } catch (error) {
-      console.error('Failed to create markdown file', error);
       throw error;
     }
   });
@@ -505,7 +567,6 @@ const bootstrap = async () => {
       }
       return await folderManager.renameMarkdownFile(payload.workspaceFolder, payload.oldPath, payload.newFileName);
     } catch (error) {
-      console.error('Failed to rename markdown file', error);
       throw error;
     }
   });
@@ -520,13 +581,14 @@ const bootstrap = async () => {
       const buf = await readPdfBuffer(payload.absolutePath);
       return buf;
     } catch (error) {
-      console.error('workspace:readPdfBinary failed', error);
       return null;
     }
   });
 
   ipcMain.handle('workspace:resolveResource', async (_event, payload) => {
     const { src, notePath, folderPath } = payload || {};
+
+    try { console.log('resolveResource called', { src, notePath, folderPath }); } catch (e) {}
 
     if (!src || typeof src !== 'string') {
       return { value: null };
@@ -556,17 +618,19 @@ const bootstrap = async () => {
       absolutePath = path.resolve(baseDir, absolutePath);
     }
 
+    try { console.log('resolveResource: resolved absolutePath', { absolutePath }); } catch (e) {}
+
     try {
       // Ensure the file exists and is accessible before attempting to read it.
       try {
         const st = await fsp.stat(absolutePath);
+        try { console.log('resolveResource: stat succeeded', { absolutePath, isFile: st.isFile() }); } catch (e) {}
         if (!st.isFile()) {
-          console.warn(`Resource resolved but not a file: ${absolutePath}`);
           return { value: null };
         }
       } catch (statErr) {
+        try { console.log('resolveResource: stat failed', { absolutePath, error: String(statErr) }); } catch (e) {}
         // File does not exist or is inaccessible
-        console.warn(`Resource not found or inaccessible: ${absolutePath}`, statErr);
         return { value: null };
       }
 
@@ -589,7 +653,6 @@ const bootstrap = async () => {
         mimeType
       };
     } catch (error) {
-      console.warn(`Failed to resolve resource ${absolutePath}`, error);
       return { value: null };
     }
   });
@@ -666,6 +729,13 @@ ${rootVariables}
         padding: 24px;
         color: ${bodyColor};
       }
+      /* Ensure links are visible and printed in color */
+      a, a:link, a:visited {
+        color: #1a73e8 !important;
+        text-decoration: underline !important;
+        -webkit-text-size-adjust: 100%;
+        -webkit-print-color-adjust: exact !important;
+      }
     </style>
   </head>
   <body>
@@ -733,7 +803,6 @@ ${rootVariables}
         appStyles = await fsp.readFile(stylesPath, 'utf-8');
         katexStyles = await fsp.readFile(katexPath, 'utf-8');
       } catch (error) {
-        console.warn('Failed to read CSS files for export:', error);
       }
 
       // Process HTML to make embedded content self-contained
@@ -783,7 +852,6 @@ ${rootVariables}
             processedHtml = processedHtml.replace(fullMatch, embeddedIframe);
           }
         } catch (error) {
-          console.warn(`Failed to embed HTML file ${srcPath}:`, error);
         }
       }
       
@@ -805,7 +873,6 @@ ${rootVariables}
               processedHtml = processedHtml.replace(match[0], newVideo);
             }
           } catch (error) {
-            console.warn(`Failed to resolve video path ${srcPath}:`, error);
           }
         }
       }
@@ -879,7 +946,6 @@ ${rootVariables}
       // Handle iframe resize messages from embedded content
       window.addEventListener('message', function(event) {
         if (event.data && event.data.type === 'iframe-resize') {
-          console.log('Embedded content resize message received:', event.data);
           // Find the iframe that sent the message and resize it
           const iframes = document.querySelectorAll('.embedded-html-iframe');
           iframes.forEach(iframe => {
@@ -1107,7 +1173,6 @@ ${rootVariables}
 
       return { success: true, path: destPath, url: fileUrl, family: familyName };
     } catch (error) {
-      console.error('fonts:import failed', error);
       return { success: false, error: error.message };
     }
   });
@@ -1150,7 +1215,6 @@ ${rootVariables}
       
       return { success: true, position, options };
     } catch (error) {
-      console.error('Failed to set traffic light position:', error);
       return { success: false, error: error.message };
     }
   });
@@ -1169,12 +1233,18 @@ ${rootVariables}
       
       return { success: true, offset, position };
     } catch (error) {
-      console.error('Failed to set traffic light offset:', error);
       return { success: false, error: error.message };
     }
   });
 
-  createMainWindow();
+  ipcMain.handle('window:setTitle', async (event, title) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) {
+      win.setTitle(title);
+      return { success: true };
+    }
+    return { success: false, error: 'Window not found' };
+  });
 };
 
 app.whenReady().then(bootstrap);

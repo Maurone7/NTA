@@ -18,62 +18,6 @@ const safeAll = (selector) => {
   try { const nodes = document.querySelectorAll(selector); return nodes && nodes.length ? nodes : []; } catch (e) { return []; }
 };
 
-// Lazy-load KaTeX (CSS + JS) when math rendering is first needed.
-// This avoids shipping KaTeX at initial render time and makes startup lighter.
-const ensureKaTeX = () => {
-  try {
-    if (typeof window === 'undefined') return Promise.resolve();
-    if (window.katex) return Promise.resolve();
-    if (ensureKaTeX._loading) return ensureKaTeX._loading;
-
-    const cssHref = '../../node_modules/katex/dist/katex.min.css';
-    const jsSrc = '../../node_modules/katex/dist/katex.min.js';
-
-  ensureKaTeX._loading = new Promise((resolve, reject) => {
-      try {
-        // Inject stylesheet
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = cssHref;
-  link.onload = () => {
-          // Then inject script
-          const script = document.createElement('script');
-          script.src = jsSrc;
-          script.onload = () => resolve();
-          script.onerror = (err) => reject(err);
-          document.head.appendChild(script);
-        };
-  link.onerror = (err) => reject(err);
-        document.head.appendChild(link);
-      } catch (e) { reject(e); }
-    });
-
-    return ensureKaTeX._loading;
-  } catch (e) { return Promise.resolve(); }
-};
-
-// Synchronous-friendly helper to render LaTeX when KaTeX is available.
-// Returns rendered HTML string or null if KaTeX isn't loaded yet.
-const renderLatexSync = (content, options = { throwOnError: false, displayMode: false }) => {
-  try {
-    if (window.katex && typeof window.katex.renderToString === 'function') {
-      return window.katex.renderToString(content, options);
-    }
-  } catch (e) {}
-  return null;
-};
-
-// Async helper to render LaTeX; ensures KaTeX is loaded first.
-const renderLatex = async (content, options = { throwOnError: false, displayMode: false }) => {
-  try {
-    await ensureKaTeX();
-    if (window.katex && typeof window.katex.renderToString === 'function') {
-      return window.katex.renderToString(content, options);
-    }
-  } catch (e) {}
-  return null;
-};
-
 // Global error handler to capture stack traces during development so we can find
 // where uncaught exceptions (like setting innerHTML on null) originate.
 if (typeof window !== 'undefined' && !window.__nta_global_error_handler_installed) {
@@ -105,7 +49,6 @@ const elements = {
   hashtagEmpty: document.getElementById('hashtag-empty') || document.createElement('div'),
   hashtagDetail: document.getElementById('hashtag-detail') || document.createElement('div'),
   clearHashtagFilter: document.getElementById('clear-hashtag-filter') || document.createElement('button'),
-  toggleHashtagMinimize: document.getElementById('toggle-hashtag-minimize') || document.createElement('button'),
   explorer: document.querySelector('.explorer') || document.createElement('div'),
   editor: document.getElementById('note-editor') || document.createElement('textarea'),
   editorRight: document.getElementById('note-editor-right') || document.createElement('textarea'),
@@ -279,12 +222,7 @@ const elements = {
   autocompleteDelayValue: document.getElementById('autocomplete-delay-value') || document.createElement('span'),
   resetAutocompleteDelayButton: document.getElementById('reset-autocomplete-delay') || document.createElement('button'),
   fileTreeSortSelect: document.getElementById('file-tree-sort-select') || document.createElement('select'),
-  mathRenderingQualitySelect: document.getElementById('math-rendering-quality-select') || document.createElement('select'),
-  // Keybinding elements
-  keybindingActionSelect: document.getElementById('keybinding-action-select') || document.createElement('select'),
-  keybindingKeysInput: document.getElementById('keybinding-keys-input') || document.createElement('input'),
-  addKeybindingBtn: document.getElementById('add-keybinding-btn') || document.createElement('button'),
-  resetKeybindingsBtn: document.getElementById('reset-keybindings-btn') || document.createElement('button')
+  mathRenderingQualitySelect: document.getElementById('math-rendering-quality-select') || document.createElement('select')
 };
 
 // Minimal implementations for new advanced settings handlers.
@@ -397,21 +335,9 @@ const storageKeys = {
   editorSpellcheck: 'NTA.editorSpellcheck',
   editorSoftWrap: 'NTA.editorSoftWrap',
   defaultExportFormat: 'NTA.defaultExportFormat'
-  ,
-  // New display preference: when true, only show the filename (not full path)
-  showFileNameOnly: 'NTA.showFileNameOnly'
 };
 
 // ...existing code...
-
-function getKeyCombo(e) {
-  const parts = [];
-  if (e.ctrlKey || e.metaKey) parts.push('Cmd');
-  if (e.altKey) parts.push('Alt');
-  if (e.shiftKey) parts.push('Shift');
-  parts.push(e.key.toUpperCase());
-  return parts.join('+');
-}
 
 function executeKeybindingAction(action, event) {
   switch (action) {
@@ -442,14 +368,6 @@ function executeKeybindingAction(action, event) {
     case 'link':
       event.preventDefault();
       wrapSelection('[', '](url)');
-      break;
-    case 'insert-latex':
-      event.preventDefault();
-      insertLatexBlockAtCursor();
-      break;
-    case 'open-citation':
-      event.preventDefault();
-      openCitationPicker();
       break;
   }
 }
@@ -570,27 +488,18 @@ function initCommonSettingsControls() {
     // Spellcheck
     const spell = readStorage(storageKeys.editorSpellcheck);
     elements.spellcheckToggle.checked = spell === null ? true : ('' + spell === 'true');
-    // Initialize shared config
-    Editor.sharedConfig = Editor.sharedConfig || {};
-    Editor.sharedConfig.spellcheck = elements.spellcheckToggle.checked;
     elements.spellcheckToggle.addEventListener('change', (e) => {
       writeStorage(storageKeys.editorSpellcheck, e.target.checked);
-      Editor.sharedConfig.spellcheck = e.target.checked;
       // apply to existing editors
-      Object.values(editorInstances).forEach(inst => { try { if (inst && typeof inst.applySharedSettings === 'function') inst.applySharedSettings(); } catch (err) {} });
-      // also apply to raw elements if present
-      try { if (elements.editor && elements.editor.tagName) editorInstances.left?.applySharedSettings?.(); } catch (e) {}
-      try { if (elements.editorRight && elements.editorRight.tagName) editorInstances.right?.applySharedSettings?.(); } catch (e) {}
+      Object.values(editorInstances).forEach(inst => { try { if (inst && inst.el) inst.el.spellcheck = e.target.checked; } catch (err) {} });
     });
 
     // Soft wrap
     const sw = readStorage(storageKeys.editorSoftWrap);
     elements.softwrapToggle.checked = sw === null ? true : ('' + sw === 'true');
-    Editor.sharedConfig.softwrap = elements.softwrapToggle.checked;
     elements.softwrapToggle.addEventListener('change', (e) => {
       writeStorage(storageKeys.editorSoftWrap, e.target.checked);
-      Editor.sharedConfig.softwrap = e.target.checked;
-      Object.values(editorInstances).forEach(inst => { try { if (inst && typeof inst.applySharedSettings === 'function') inst.applySharedSettings(); } catch (err) {} });
+      Object.values(editorInstances).forEach(inst => { try { if (inst && inst.el) { if (e.target.checked) { inst.el.style.whiteSpace = 'pre-wrap'; inst.el.style.wordWrap = 'break-word'; } else { inst.el.style.whiteSpace = 'pre'; inst.el.style.wordWrap = 'normal'; } } } catch (err) {} });
     });
 
     // Default export format
@@ -600,10 +509,8 @@ function initCommonSettingsControls() {
       writeStorage(storageKeys.defaultExportFormat, e.target.value);
     });
 
-  // Apply shared settings to existing editor instances/elements
-  Object.values(editorInstances).forEach(inst => { try { if (inst && typeof inst.applySharedSettings === 'function') inst.applySharedSettings(); } catch (e) {} });
-  try { if (elements.editor && elements.editor.tagName && editorInstances.left) editorInstances.left.applySharedSettings(); } catch (e) {}
-  try { if (elements.editorRight && elements.editorRight.tagName && editorInstances.right) editorInstances.right.applySharedSettings(); } catch (e) {}
+    // Apply settings to existing editor elements
+    [elements.editor, elements.editorRight].forEach(el => { try { if (el && el.tagName) applyEditorSettingsToEl(el); } catch (e) {} });
 
     // Autosave UI: update indicator
     function updateAutosaveIndicator(active) {
@@ -748,7 +655,6 @@ const state = {
   hashtagResizePointerId: null,
   initialMouseY: null, // Store initial mouse Y position for resize
   initialHashtagHeight: null, // Store initial hashtag height for resize
-  hashtagPrevHeight: null,
   saveTimer: null,
   saving: false,
   currentFolder: null,
@@ -775,9 +681,6 @@ const state = {
   previewHighlightTimer: null,
   previewHighlightedElement: null,
   activeHashtag: null,
-  // Track the last pane-opened note that can be shown in the global preview.
-  // This covers markdown, latex, bib, notebook, and code previews.
-  lastRenderableNoteId: null,
   wikiSuggest: {
     open: false,
     items: [],
@@ -920,7 +823,6 @@ function toWikiSlug(value) {
 // Minimal tab activation helper to keep state in sync. Real implementation
 // should update DOM and focus, but this keeps flows from throwing.
 function setActiveTab(tabId) {
-  try { console.log('setActiveTab called', { tabId }); } catch (e) {}
   if (!tabId) return;
   state.activeTabId = tabId;
   const existing = state.tabs.find((t) => t.id === tabId);
@@ -932,21 +834,10 @@ function setActiveTab(tabId) {
   const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
   if (activeTab) {
     const noteId = activeTab.noteId;
-    const leftMatches = state.editorPanes.left?.noteId === noteId;
-    const rightMatches = state.editorPanes.right?.noteId === noteId;
-    // If both panes point to the same note, prefer keeping the currently active pane
-    if (leftMatches && rightMatches) {
-      try { console.log('setActiveTab -> both panes contain note; keeping current active pane', { noteId, activePane: state.activeEditorPane }); } catch (e) {}
-    } else if (leftMatches) {
-      if (state.activeEditorPane !== 'left') {
-        try { console.log('setActiveTab -> switching active pane to left for note', { noteId }); } catch (e) {}
-        setActiveEditorPane('left');
-      }
-    } else if (rightMatches) {
-      if (state.activeEditorPane !== 'right') {
-        try { console.log('setActiveTab -> switching active pane to right for note', { noteId }); } catch (e) {}
-        setActiveEditorPane('right');
-      }
+    if (state.editorPanes.left?.noteId === noteId) {
+      setActiveEditorPane('left');
+    } else if (state.editorPanes.right?.noteId === noteId) {
+      setActiveEditorPane('right');
     }
   }
 }
@@ -1014,39 +905,8 @@ class Editor {
   get selectionEnd() { return this.el ? this.el.selectionEnd : 0; }
 }
 
-// Shared editor configuration — instances inherit these settings but remain
-// independent (so each pane can open different files while sharing appearance
-// and behavior settings). Call `Editor.sharedConfig = { ... }` to override.
-Editor.sharedConfig = {
-  spellcheck: true,
-  softwrap: true,
-  fontFamily: null,
-  fontSize: null
-};
-
-// Apply the shared configuration to this instance's underlying element
-Editor.prototype.applySharedSettings = function() {
-  try {
-    if (!this.el) return;
-    const cfg = Editor.sharedConfig || {};
-    // Spellcheck
-    if (typeof cfg.spellcheck !== 'undefined') this.el.spellcheck = !!cfg.spellcheck;
-    // Soft wrap
-    if (typeof cfg.softwrap !== 'undefined') {
-      if (cfg.softwrap) { this.el.style.whiteSpace = 'pre-wrap'; this.el.style.wordWrap = 'break-word'; }
-      else { this.el.style.whiteSpace = 'pre'; this.el.style.wordWrap = 'normal'; }
-    }
-    // Font family/size (optional)
-    if (cfg.fontFamily) try { this.el.style.fontFamily = cfg.fontFamily; } catch (e) {}
-    if (cfg.fontSize) try { this.el.style.fontSize = typeof cfg.fontSize === 'number' ? `${cfg.fontSize}px` : cfg.fontSize; } catch (e) {}
-  } catch (e) { /* ignore */ }
-};
-
 // Editor instances for left/right panes (wire elements immediately)
 const editorInstances = { left: new Editor(elements.editor), right: new Editor(elements.editorRight) };
-
-// Ensure existing instances pick up the shared settings immediately
-Object.values(editorInstances).forEach(inst => { try { if (inst && typeof inst.applySharedSettings === 'function') inst.applySharedSettings(); } catch (e) {} });
 
 // Return any available editor instance. Prefer the currently active pane,
 // otherwise return the first defined editor instance.
@@ -1125,8 +985,6 @@ const createEditorPane = (paneId = null, label = '') => {
   // Create Editor instance and wire basic events
   const inst = new Editor(ta);
   editorInstances[id] = inst;
-  // Apply shared settings so dynamic panes inherit appearance/behavior
-  try { if (typeof inst.applySharedSettings === 'function') inst.applySharedSettings(); } catch (e) {}
 
   // Basic wiring similar to left/right
   inst.addEventListener('input', (e) => handleEditorInput(e, { editorEl: inst.el, pane: id }));
@@ -2288,36 +2146,10 @@ const clearPaneViewer = (paneId) => {
   try {
     const root = getPaneRootElement(paneId);
     if (!root) return;
-    // Remove any pane-local viewers (pdf, image, video, html) and any
-    // generic media elements so a new file can fully replace the pane.
-    const selectors = ['.pdf-pane-viewer', '.image-pane-viewer', '.video-pane-viewer', '.html-pane-viewer', '.pane-viewer'];
-    selectors.forEach((sel) => {
-      try {
-        const el = root.querySelector(sel);
-        if (el) el.remove();
-      } catch (e) { }
-    });
-
-    // Also remove any direct media elements that might have been inserted
-    // (img/iframe/video) to be safe.
-    try {
-      const media = Array.from(root.querySelectorAll('img, iframe, video'));
-      media.forEach((m) => {
-        // Avoid removing the image viewer inside the global workspace (it won't be inside a pane root)
-        if (m && m.parentElement && m.parentElement.closest && m.parentElement.closest('.editor-pane') === root) {
-          m.remove();
-        }
-      });
-    } catch (e) { }
-
-    // Show the CodeMirror editor
-    const cm = root.querySelector('.CodeMirror');
-    if (cm) cm.style.display = '';
+    const existing = root.querySelector('.pdf-pane-viewer');
+    if (existing) existing.remove();
     const ta = root.querySelector('textarea');
-    if (ta) {
-      ta.hidden = false;
-      ta.disabled = false;
-    }
+    if (ta) ta.hidden = false;
   } catch (e) { /* ignore */ }
 };
 
@@ -2329,15 +2161,10 @@ const renderPdfInPane = async (note, paneId) => {
   // Remove any global PDF preview to avoid duplicates
   try { elements.pdfViewer?.classList.remove('visible'); elements.pdfViewer?.removeAttribute('src'); } catch (e) {}
 
-  // Clear existing pane viewer and hide CodeMirror editor
+  // Clear existing pane viewer and hide textarea
   clearPaneViewer(paneId);
-  const cm = root.querySelector('.CodeMirror');
-  if (cm) cm.style.display = 'none';
   const ta = root.querySelector('textarea');
-  if (ta) {
-    ta.hidden = true;
-    ta.disabled = true;
-  }
+  if (ta) ta.hidden = true;
 
   // Resolve resource (object URL or data URI)
   try {
@@ -2356,13 +2183,7 @@ const renderPdfInPane = async (note, paneId) => {
 
     if (!resource || !resource.value) {
   // Debug prints removed
-      const cm = root.querySelector('.CodeMirror');
-      if (cm) cm.style.display = '';
-      const ta = root.querySelector('textarea');
-      if (ta) {
-        ta.hidden = false;
-        ta.disabled = false;
-      }
+      if (ta) ta.hidden = false;
       return false;
     }
 
@@ -2382,65 +2203,6 @@ const renderPdfInPane = async (note, paneId) => {
     if (ta) ta.hidden = false;
     return false;
   }
-};
-
-// Render an image inside a specific editor pane (pane-local viewer)
-const renderImageInPane = async (note, paneId) => {
-  if (!note || note.type !== 'image' || !paneId) return false;
-  const root = getPaneRootElement(paneId);
-  if (!root) return false;
-
-  // Clear existing pane viewers and hide textarea
-  clearPaneViewer(paneId);
-
-  // Create pane viewer wrapper
-  const wrapper = document.createElement('div');
-  wrapper.className = 'image-pane-viewer pane-viewer';
-  wrapper.setAttribute('data-note-id', note.id);
-  wrapper.style.display = 'flex';
-  wrapper.style.justifyContent = 'center';
-  wrapper.style.alignItems = 'center';
-  wrapper.style.padding = '8px';
-
-  const img = document.createElement('img');
-  img.alt = note.title ?? 'Image';
-  img.style.maxWidth = '100%';
-  img.style.maxHeight = '100%';
-  img.dataset.noteId = note.id;
-
-  wrapper.appendChild(img);
-  root.appendChild(wrapper);
-
-  // Hide the CodeMirror editor so it's not covered by the image
-  const cm = root.querySelector('.CodeMirror');
-  if (cm) cm.style.display = 'none';
-  const ta = root.querySelector('textarea');
-  if (ta) {
-    ta.hidden = true;
-    ta.disabled = true;
-  }
-
-  try {
-    const payload = {
-      src: note.absolutePath ?? note.storedPath ?? '',
-      notePath: note.absolutePath ?? null,
-      folderPath: note.folderPath ?? state.currentFolder ?? null
-    };
-    const result = await window.api.resolveResource(payload);
-    const value = result?.value ?? null;
-    if (value) {
-      img.src = value;
-      try { console.log('renderImageInPane: image set in pane', { paneId, noteId: note.id }); } catch (e) {}
-      return true;
-    }
-  } catch (e) {
-    try { console.error('renderImageInPane failed', e); } catch (e2) {}
-  }
-
-  // Fallback: show textarea again
-  try { if (ta) { ta.hidden = false; } } catch (e) {}
-  if (wrapper && wrapper.parentNode) wrapper.remove();
-  return false;
 };
 
 const clearPdfCache = () => {
@@ -3691,9 +3453,9 @@ const createWorkspaceTreeNode = (node, depth = 0) => {
     if (node.ext === '.md' || node.ext === '.markdown' || node.ext === '.mdx') {
       icon.textContent = '📝';
     } else if (node.ext === '.tex') {
-      icon.textContent = 'TeX';
+      icon.textContent = '∑';
     } else if (node.ext === '.pdf') {
-      icon.textContent = '�';
+      icon.textContent = '📄';
     } else if (node.ext === '.py') {
       icon.textContent = '🐍';
     } else if (node.ext === '.js' || node.ext === '.mjs') {
@@ -3706,8 +3468,6 @@ const createWorkspaceTreeNode = (node, depth = 0) => {
       icon.textContent = '📋';
     } else if (node.ext === '.ipynb') {
       icon.textContent = '📓';
-    } else if (node.ext === '.pptx') {
-      icon.textContent = '📊';
     } else if (imageExtensions.has(node.ext)) {
       icon.textContent = '🖼️';
     } else if (videoExtensions.has(node.ext)) {
@@ -4579,23 +4339,7 @@ const getPaneNoteId = (pane = state.activeEditorPane) => {
   return p ? p.noteId : null;
 };
 
-// Return the pane id that currently maps to the given noteId, or null
-// if the note is not mapped to any pane. Useful to prevent global
-// preview handlers from activating when the file is already shown in a pane.
-const getPaneForNote = (noteId) => {
-  if (!noteId || !state.editorPanes) return null;
-  try {
-    for (const pid of Object.keys(state.editorPanes)) {
-      try {
-        if (state.editorPanes[pid] && state.editorPanes[pid].noteId === noteId) return pid;
-      } catch (e) { }
-    }
-  } catch (e) { }
-  return null;
-};
-
 const setActiveEditorPane = (pane) => {
-  try { console.log('setActiveEditorPane called', { pane, prev: state.activeEditorPane }); } catch (e) {}
   // Allow any existing editor instance (left/right or dynamic panes)
   if (!pane || !editorInstances[pane]) return;
 
@@ -4607,7 +4351,6 @@ const setActiveEditorPane = (pane) => {
     try {
       const inst = editorInstances[pane];
       if (inst && inst.el) inst.focus({ preventScroll: true });
-      try { console.log('setActiveEditorPane: pane already active, focused editor', { pane }); } catch (e) {}
     } catch (e) {
       try { editorInstances.left?.focus?.({ preventScroll: true }); } catch (e2) {}
     }
@@ -4625,45 +4368,7 @@ const setActiveEditorPane = (pane) => {
 
   // Re-render preview for the newly active pane
   const paneNoteId = getPaneNoteId(pane);
-  try { console.log('setActiveEditorPane: paneNoteId resolved', { pane, paneNoteId }); } catch (e) {}
   const paneNote = paneNoteId ? state.notes.get(paneNoteId) : null;
-
-  // Update the editor content for the pane's note.
-  // Handle known editable/previewable types explicitly to avoid briefly
-  // showing placeholder display strings (e.g. "[LATEX FILE: ...]") when
-  // switching focus between panes.
-  if (paneNote) {
-    try {
-      const inst = editorInstances[pane];
-      if (inst && inst.el) {
-        if (paneNote.type === 'code') {
-          // Code files: show raw content. Plain-text code (.txt) will be
-          // treated as editable elsewhere.
-          inst.el.value = paneNote.content ?? '';
-        } else if (paneNote.type === 'notebook') {
-          // Notebook: show a JSON representation
-          try {
-            inst.el.value = JSON.stringify(paneNote.notebook ?? paneNote.content ?? {}, null, 2);
-          } catch (e) {
-            inst.el.value = String(paneNote.notebook ?? paneNote.content ?? '');
-          }
-        } else if (paneNote.type === 'markdown' || paneNote.type === 'latex') {
-          // Markdown and LaTeX are editable and should show their raw content
-          // (LaTeX was previously treated as a non-editable type which caused
-          // the bracketed placeholder to appear briefly when focusing the pane).
-          inst.el.value = paneNote.content ?? '';
-        } else {
-          // Unknown or truly non-editable file types: show a simple placeholder
-          // so the user understands the pane is not an editor for this file.
-          const displayValue = `[${String(paneNote.type).toUpperCase()} FILE: ${paneNote.title || paneNote.absolutePath || 'Untitled'}]`;
-          inst.el.value = displayValue;
-        }
-      }
-    } catch (e) {}
-  }
-
-  // Update file metadata UI (uses storageKeys.showFileNameOnly to decide what to show)
-  try { updateFileMetadataUI(paneNote ?? null, { allowActiveFallback: true }); } catch (e) { /* ignore */ }
 
   // If the pane's note is markdown or latex, switch the live preview to it.
   // For other types (e.g., PDF), do not change the live preview — keep showing the
@@ -4673,43 +4378,19 @@ const setActiveEditorPane = (pane) => {
     if (paneNote.type === 'markdown') {
       state.lastActiveMarkdownNoteId = paneNoteId;
     }
-    // Track that this note can be shown in the global preview
-    state.lastRenderableNoteId = paneNoteId;
     renderActiveNote();
   } else {
-    // Prefer the last renderable note (markdown/latex/bib/notebook/code) for
-    // the global preview. This ensures that if the most recent editor with
-    // a renderable file is a LaTeX file, it will be shown instead of an
-    // older markdown file.
-    const preferredRenderableId = state.lastRenderableNoteId || state.lastActiveMarkdownNoteId || state.activeNoteId;
-    const preferredNote = preferredRenderableId ? state.notes.get(preferredRenderableId) : null;
-    if (preferredNote && (preferredNote.type === 'markdown' || preferredNote.type === 'latex' || preferredNote.type === 'bib' || preferredNote.type === 'notebook' || preferredNote.type === 'code')) {
-      // Render the preferred renderable note. Use the lighter path for
-      // markdown to avoid re-evaluating the full active-note selection.
-      state.activeNoteId = preferredRenderableId;
-      state.lastRenderableNoteId = preferredRenderableId;
-      if (preferredNote.type === 'markdown') {
-        renderMarkdownPreview(preferredNote.content ?? '', preferredNote.id);
-      } else if (preferredNote.type === 'latex') {
-        // Render LaTeX directly so the global preview updates even if the
-        // note isn't currently mapped to an active pane.
-        renderLatexPreview(preferredNote.content ?? '', preferredNote.id);
-      } else {
-        // Delegate other renderable types (bib/notebook/code) to the
-        // canonical renderer which knows how to handle them.
-        renderActiveNote();
-      }
+    // Keep existing active markdown note for the live preview
+    const activeMdId = state.lastActiveMarkdownNoteId || state.activeNoteId;
+    const activeMdNote = activeMdId ? state.notes.get(activeMdId) : null;
+    if (activeMdNote && activeMdNote.type === 'markdown') {
+      // Render the remembered markdown preview (do not change activeNoteId to PDFs)
+      state.activeNoteId = activeMdId;
+      renderMarkdownPreview(activeMdNote.content ?? '', activeMdNote.id);
     } else if (paneNote) {
-      // If there's no markdown to show, we may render the pane note globally.
-      // But avoid doing so for common non-markdown viewers to keep them pane-local.
-      if (paneNote.type === 'markdown' || paneNote.type === 'latex') {
-        state.activeNoteId = paneNoteId ?? null;
-        renderActiveNote();
-      } else {
-        // Clear the global preview to avoid duplicate global image/pdf viewers.
-        state.activeNoteId = null;
-        renderActiveNote();
-      }
+      // If there's no remembered markdown note, fall back to existing behavior
+      state.activeNoteId = paneNoteId ?? null;
+      renderActiveNote();
     } else {
       renderActiveNote();
     }
@@ -4723,9 +4404,6 @@ const setActiveEditorPane = (pane) => {
 const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => {
   // Debug prints removed
   if (!noteId || !state.notes.has(noteId)) return null;
-  // Ensure any math overlay is turned off when switching files so it doesn't
-  // accidentally hide caret or mask the editor content (helps with .txt files).
-  try { if (window.disableMathOverlay) window.disableMathOverlay(); } catch (e) {}
   // If requested pane doesn't exist, default to 'left'
   if (!pane || !editorInstances[pane]) pane = 'left';
 
@@ -4733,11 +4411,7 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
   state.editorPanes[pane].noteId = noteId;
 
   const note = state.notes.get(noteId);
-  try { console.log('openNoteInPane called', { noteId, pane, noteType: note?.type }); } catch (e) {}
-  // Debug: write an entry so we can trace pane opens when console is not available
-  try { if (window.api && typeof window.api.writeDebugLog === 'function') window.api.writeDebugLog({ event: 'openNoteInPane', noteId, pane, noteType: note?.type, timestamp: Date.now() }); } catch (e) { }
-  // Update file metadata UI so user preference (filename-only) is respected
-  try { updateFileMetadataUI(note ?? null, { allowActiveFallback: true }); } catch (e) { /* ignore */ }
+  document.title = note?.absolutePath || 'NoteTakingApp';
 
   // Ensure tab exists
   let existingTab = state.tabs.find(t => t.noteId === noteId);
@@ -4757,127 +4431,44 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
       // and the textarea is visible/populated. If it's a non-markdown file (PDF, image,
       // video, etc.) we do not populate the textarea and may render a specialized
       // viewer instead.
-      if (note.type === 'markdown' || note.type === 'code') {
+      if (note.type === 'markdown') {
         // Remove any per-pane PDF viewer that would otherwise block the textarea
         try { clearPaneViewer(pane); } catch (e) {}
         inst.el.hidden = false;
         inst.el.disabled = false;
         inst.el.value = note.content ?? '';
       } else {
-        // For non-markdown files, still show useful content in editor but keep it read-only
-        try { clearPaneViewer(pane); } catch (e) {}
-        inst.el.hidden = false;
         inst.el.disabled = true;
-        // Determine a friendly representation depending on type
-        let displayValue = '';
-        if (note.type === 'notebook') {
-          try {
-            displayValue = JSON.stringify(note.notebook ?? note.content ?? {}, null, 2);
-          } catch (e) { displayValue = String(note.notebook ?? note.content ?? ''); }
-        } else if (note.type === 'image') {
-          displayValue = `Image: ${note.absolutePath ?? note.title ?? ''}`;
-        } else if (note.type === 'html') {
-          displayValue = note.content ?? '';
-        } else if (note.type === 'code') {
-          displayValue = note.content ?? '';
-        } else {
-          displayValue = note.content ?? '';
-        }
-        inst.el.value = displayValue;
+        inst.el.value = '';
       }
     }
   } catch (e) { /* ignore */ }
 
   // If caller wants the pane to become active, update active pane/tab and preview
   if (options && options.activate !== false) {
-    // Only change the global active preview for markdown/latex notes.
-    // For pane-local media (image/pdf/video/html) keep the last active
-    // markdown note as the global preview so we avoid duplicate global viewers.
-    try {
+    // Maintain legacy activeNoteId for compatibility with other code paths.
+    // However, do NOT set the global active note to a PDF. The live preview
+    // should continue to show the last markdown note the user was viewing.
+    if (note.type === 'markdown' || note.type === 'latex') {
+      state.activeNoteId = noteId;
       if (note.type === 'markdown') {
-        state.activeNoteId = noteId;
         state.lastActiveMarkdownNoteId = noteId;
-        state.lastRenderableNoteId = noteId;
-      } else if (note.type === 'latex') {
-        state.activeNoteId = noteId;
-        state.lastRenderableNoteId = noteId;
-      } else {
-        // preserve previously active markdown preview (may be null)
-        state.activeNoteId = state.lastActiveMarkdownNoteId || null;
       }
-    } catch (e) {}
-
-    // Ensure any existing pane-local viewer is cleared so the new file fully replaces it
-    try { clearPaneViewer(pane); } catch (e) {}
-
-    try { console.log('openNoteInPane activating pane/tab', { pane, tabId: existingTab?.id }); } catch (e) {}
+    }
+    // Activate pane and tab
     setActiveEditorPane(pane);
     setActiveTab(existingTab.id);
     renderWorkspaceTree();
-    // Render file into the pane (PDF/image/video get pane-local viewers)
     if (note.type === 'pdf') {
+      // Render the PDF inside the target pane.
       void renderPdfInPane(note, pane);
-    } else if (note.type === 'image') {
-      try { console.log('openNoteInPane: rendering image inside pane', { noteId: note.id, pane }); } catch (e) {}
-      void renderImageInPane(note, pane);
-    } else if (note.type === 'video') {
-      try { console.log('openNoteInPane: rendering video inside pane', { noteId: note.id, pane }); } catch (e) {}
-      try { void renderVideoInPane(note, pane); } catch (e) { /* ignore */ }
-    } else if (note.type === 'markdown' || note.type === 'latex') {
-      // For markdown and latex, update the main preview area.
+      // Do NOT change the global preview (keep last markdown preview visible).
+    } else {
+      // For markdown and other non-PDF types, update the main preview area.
       renderActiveNote();
     }
-    // Ensure pane textarea is visible/populated for non-markdown notes so the
-    // newly opened file clearly replaces any pane-local viewer.
-    try {
-      const inst = editorInstances[pane];
-      if (inst && inst.el) {
-        // For markdown openings we should ensure any pane viewer is removed.
-        // For pane-local viewers (image/pdf/video/html) do NOT clear here —
-        // clearing would remove the viewer we just appended above.
-        try {
-          if (note.type === 'markdown') {
-            try { clearPaneViewer(pane); } catch (e) {}
-          }
-        } catch (e) {}
-  // Only hide the textarea for media types that use a pane-local viewer.
-  const mediaTypes = new Set(['image', 'pdf', 'video', 'html']);
-  inst.el.hidden = mediaTypes.has(note.type);
-  // Keep textarea read-only for non-markdown (notebook) but allow editing
-  // for markdown, latex, and plain text code files (.txt). Other code
-  // files remain read-only in the pane.
-  if (note.type === 'markdown' || note.type === 'latex') {
-    inst.el.disabled = false;
-  } else if (note.type === 'code' && note.language === 'text') {
-    // Plain .txt files are treated as editable text
-    inst.el.disabled = false;
-  } else {
-    inst.el.disabled = true;
-  }
-        if (note.type === 'notebook' || note.type === 'code') {
-          try { inst.el.value = note.content ?? JSON.stringify(note.notebook ?? {}, null, 2); } catch (e) { inst.el.value = note.content ?? ''; }
-          // If this is a plain-text code file (.txt), make sure any inline styles
-          // applied by the math overlay are cleared so the caret is visible and
-          // the textarea can accept input.
-          try {
-            if (note.type === 'code' && note.language === 'text') {
-              inst.el.style.color = inst.el.__prevColor || '';
-              inst.el.style.caretColor = '';
-              inst.el.focus({ preventScroll: true });
-            }
-          } catch (e) { /* ignore */ }
-        } else if (note.type === 'image') {
-          // leave image pane viewer in place; textarea stays disabled but show path
-          inst.el.value = `Image: ${note.absolutePath ?? note.title ?? ''}`;
-        } else {
-          inst.el.value = note.content ?? '';
-        }
-      }
-    } catch (e) { }
-
     updateEditorPaneVisuals();
     setStatus(`File opened in ${pane} editor.`, true);
-    try { if (window.api && typeof window.api.writeDebugLog === 'function') window.api.writeDebugLog({ event: 'openNoteInPane:activated', noteId, pane, noteType: note?.type, timestamp: Date.now() }); } catch (e) { }
   } else {
     // Non-activating open: update UI lists/badges without changing preview/active pane
     renderWorkspaceTree();
@@ -5103,19 +4694,6 @@ const renderCitationsInPreview = async (markdown, noteId) => {
         if (e) bibEntries.push({ key: k, text: `${e.author ? e.author : ''}${e.year ? ` (${e.year})` : ''} — ${e.title ?? ''}` });
       }
       if (bibEntries.length) {
-        // Remove existing bibliography if present
-        const existingBib = previewEl.querySelector('.bibliography-list');
-        if (existingBib) {
-          const prevH4 = existingBib.previousElementSibling;
-          if (prevH4 && prevH4.tagName === 'H4' && prevH4.textContent === 'References') {
-            const prevHr = prevH4.previousElementSibling;
-            if (prevHr && prevHr.tagName === 'HR') {
-              prevHr.remove();
-            }
-            prevH4.remove();
-          }
-          existingBib.remove();
-        }
         const hr = document.createElement('hr');
         const h = document.createElement('h4'); h.textContent = 'References';
         const ul = document.createElement('ul'); ul.className = 'bibliography-list';
@@ -5185,6 +4763,7 @@ const getPreviewHtmlForExport = async () => {
       // a small shim: create a preview-like element, populate it, call the
       // function, then extract its innerHTML.
       if (typeof renderCitationsInPreview === 'function') {
+        console.log('Export: Starting citation processing');
         const shim = document.createElement('div');
         shim.innerHTML = container.innerHTML;
         const prev = elements.preview;
@@ -5192,14 +4771,16 @@ const getPreviewHtmlForExport = async () => {
           elements.preview = shim;
           // Pass the original markdown if available so bibliography detection works
           const md = elements.exportPreviewText?.value || '';
-          // renderCitationsInPreview may be async; await it to ensure processing completes
+          // Await the processing so export HTML contains rendered citations and bibliography
           const maybe = renderCitationsInPreview(md, state.activeNoteId);
           if (maybe && typeof maybe.then === 'function') {
-            await maybe;
+            console.log('Export: Awaiting citation rendering');
+            try { await maybe; } catch (e) { console.log('Export: Citation rendering error', e); }
           }
-        } catch (e) { /* ignore */ }
+          console.log('Export: Citation processing complete');
+        } catch (e) { console.log('Export: Citation processing failed', e); }
         // restore and copy processed HTML back into container
-        try { container.innerHTML = shim.innerHTML; } catch (e) { /* ignore */ }
+        try { container.innerHTML = shim.innerHTML; } catch (e) { console.log('Export: Failed to copy processed HTML', e); }
         elements.preview = prev;
       }
     } catch (e) { /* ignore */ }
@@ -5245,8 +4826,8 @@ const resolveCurrentThemePreference = () => {
 
 const exportActivePreviewAsPdf = async () => {
   const note = getActiveNote();
-  if (!note || (note.type !== 'markdown' && note.type !== 'latex')) {
-    setStatus('Only Markdown and LaTeX notes can be exported as PDF.', false);
+  if (!note || note.type !== 'markdown') {
+    setStatus('Only Markdown notes can be exported as PDF.', false);
     return false;
   }
 
@@ -5314,8 +4895,8 @@ const exportActivePreviewAsPdf = async () => {
 
 const exportActivePreviewAsHtml = async () => {
   const note = getActiveNote();
-  if (!note || (note.type !== 'markdown' && note.type !== 'latex')) {
-    setStatus('Only Markdown and LaTeX notes can be exported as HTML.', false);
+  if (!note || note.type !== 'markdown') {
+    setStatus('Only Markdown notes can be exported as HTML.', false);
     return false;
   }
 
@@ -5385,8 +4966,8 @@ const exportActivePreviewAsHtml = async () => {
 // Image export functions
 const exportActivePreviewAsImage = async (format) => {
   const note = getActiveNote();
-  if (!note || (note.type !== 'markdown' && note.type !== 'latex')) {
-    setStatus(`Only Markdown and LaTeX notes can be exported as ${format.toUpperCase()}.`, false);
+  if (!note || note.type !== 'markdown') {
+    setStatus(`Only Markdown notes can be exported as ${format.toUpperCase()}.`, false);
     return false;
   }
 
@@ -5470,26 +5051,22 @@ const renderLatexPreview = (latexContent, noteId) => {
     elements.preview.innerHTML = processedHtml;
   // Debug prints removed
     
-    // Process any math expressions with KaTeX. Ensure KaTeX is loaded lazily
-    // before attempting to auto-render. If KaTeX fails to load, skip math rendering.
+    // Process any math expressions with KaTeX
     if (typeof renderMathInElement === 'function') {
-      ensureKaTeX().then(() => {
-        try {
-          renderMathInElement(elements.preview, {
-            delimiters: [
-              {left: '$$', right: '$$', display: true},
-              {left: '$', right: '$', display: false},
-              {left: '\\[', right: '\\]', display: true},
-              {left: '\\(', right: '\\)', display: false}
-            ],
-            throwOnError: false
-          });
-        } catch (e) { /* ignore render errors */ }
-      }).catch(() => { /* ignore katex load errors */ });
+  // Debug prints removed
+      renderMathInElement(elements.preview, {
+        delimiters: [
+          {left: '$$', right: '$$', display: true},
+          {left: '$', right: '$', display: false},
+          {left: '\\[', right: '\\]', display: true},
+          {left: '\\(', right: '\\)', display: false}
+        ],
+        throwOnError: false
+      });
+  // Debug prints removed
+    } else {
+  // Debug prints removed
     }
-
-    // Render citations in the LaTeX preview
-    renderCitationsInPreview(latexContent, noteId);
 
     // Add basic styling for LaTeX content
     elements.preview.classList.add('latex-preview');
@@ -5771,9 +5348,6 @@ const renderPdfPreview = async (note) => {
   if (!note || note.type !== 'pdf' || !elements.pdfViewer) {
     return;
   }
-  // If this PDF is already open in a pane-local viewer, avoid rendering
-  // it again in the global preview to prevent duplicate viewers.
-  if (getPaneForNote(note.id)) return;
 
   const cacheKey = getPdfCacheKey(note);
 
@@ -5844,15 +5418,10 @@ const renderImagePreview = async (note) => {
   if (!note || note.type !== 'image' || !elements.imageViewer) {
     return;
   }
-  // Skip global image preview if the note is already shown inside an editor pane
-  if (getPaneForNote(note.id)) return;
 
   const caption = note.title ?? note.absolutePath ?? 'Image';
   state.imagePreviewToken = Symbol('imagePreview');
   const requestToken = state.imagePreviewToken;
-
-  // Reset viewer state
-  elements.imageViewer?.classList.remove('visible');
 
   if (elements.imageViewerCaption) {
     elements.imageViewerCaption.textContent = caption;
@@ -5884,17 +5453,13 @@ const renderImagePreview = async (note) => {
       notePath: note.absolutePath ?? null,
       folderPath: note.folderPath ?? state.currentFolder ?? null
     };
-    try { if (window.api && typeof window.api.writeDebugLog === 'function') window.api.writeDebugLog({ event: 'renderImagePreview:resolveResource:payload', payload }); } catch (e) { }
     const result = await window.api.resolveResource(payload);
-    try { if (window.api && typeof window.api.writeDebugLog === 'function') window.api.writeDebugLog({ event: 'renderImagePreview:resolveResource:result', noteId: note.id, result: { ok: Boolean(result && result.value), valueType: typeof (result && result.value) } }); } catch (e) { }
     if (state.imagePreviewToken !== requestToken) {
       return;
     }
 
     const value = result?.value ?? null;
-  try { console.log('renderImagePreview: resolved resource', { noteId: note.id, hasValue: Boolean(value), rawSrc }); } catch (e) {}
     if (value && elements.imageViewerImg) {
-      try { if (window.api && typeof window.api.writeDebugLog === 'function') window.api.writeDebugLog({ event: 'renderImagePreview:setSrc', noteId: note.id, srcPreview: String(value).slice(0,200) }); } catch (e) { }
       const cacheKey = `${note.id}::${rawSrc}`;
       imageResourceCache.set(cacheKey, value);
       elements.imageViewerImg.src = value;
@@ -5903,12 +5468,10 @@ const renderImagePreview = async (note) => {
       if (elements.imageViewerError) {
         elements.imageViewerError.hidden = true;
       }
-      elements.imageViewer?.classList.add('visible');
       setStatus('Image ready.', true);
     } else if (elements.imageViewerError) {
       elements.imageViewerError.textContent = 'Unable to load this image.';
       elements.imageViewerError.hidden = false;
-      elements.imageViewer?.classList.remove('visible');
       setStatus('Unable to load image preview.', false);
     }
   } catch (error) {
@@ -5919,7 +5482,6 @@ const renderImagePreview = async (note) => {
     if (elements.imageViewerError) {
       elements.imageViewerError.textContent = 'Unable to load this image.';
       elements.imageViewerError.hidden = false;
-      elements.imageViewer?.classList.remove('visible');
     }
     setStatus('Unable to load image preview.', false);
   }
@@ -6150,15 +5712,10 @@ const updateFileMetadataUI = (note, options = {}) => {
     
     if (elements.filePath) {
       try {
-        const showNameOnly = localStorage.getItem(storageKeys.showFileNameOnly) === 'true';
-        if (showNameOnly) {
-          elements.filePath.innerHTML = `<span class="filename">${filename}</span>`;
-        } else {
-          elements.filePath.innerHTML = directory ? 
-            `${directory}/<span class="filename">${filename}</span>` : 
-            `<span class="filename">${filename}</span>`;
-        }
-      } catch (e) { }
+        elements.filePath.innerHTML = directory ? 
+          `${directory}/<span class="filename">${filename}</span>` : 
+          `<span class="filename">${filename}</span>`;
+  } catch (e) { }
     }
   } else {
     elements.filePath.textContent = 'Stored inside the application library.';
@@ -6186,17 +5743,6 @@ const updateEditorPaneVisuals = () => {
   // Debug prints removed
     rightPane.classList.toggle('active', state.activeEditorPane === 'right');
   }
-
-  // Dynamic panes (created at runtime) also need their active state updated.
-  try {
-    const dynamicPanes = Array.from(document.querySelectorAll('.editor-pane--dynamic'));
-    dynamicPanes.forEach((el) => {
-      try {
-        const pid = el.getAttribute('data-pane-id') || null;
-        el.classList.toggle('active', pid && state.activeEditorPane === pid);
-      } catch (e) { /* ignore per-pane errors */ }
-    });
-  } catch (e) { /* ignore */ }
 };
 
 const updateActionAvailability = (note) => {
@@ -6210,18 +5756,18 @@ const updateActionAvailability = (note) => {
   }
 
   if (elements.exportPreviewButton) {
-    const canExport = Boolean(note && (note.type === 'markdown' || note.type === 'latex'));
+    const canExport = Boolean(note && note.type === 'markdown');
     elements.exportPreviewButton.disabled = !canExport;
   }
 
   if (elements.exportPreviewHtmlButton) {
-    const canExport = Boolean(note && (note.type === 'markdown' || note.type === 'latex'));
+    const canExport = Boolean(note && note.type === 'markdown');
     elements.exportPreviewHtmlButton.disabled = !canExport;
   }
 
   // Update export dropdown
   if (elements.exportDropdownButton) {
-    const canExport = Boolean(note && (note.type === 'markdown' || note.type === 'latex'));
+    const canExport = Boolean(note && note.type === 'markdown');
     elements.exportDropdownButton.disabled = !canExport;
     if (!canExport) {
       closeExportDropdown(); // Close dropdown if export becomes unavailable
@@ -6821,8 +6367,6 @@ const openNoteById = (noteId, silent = false, blockId = null, pane = null) => {
 };
 
 const renderActiveNote = () => {
-  // Debug: record renderActiveNote invocation and current active/editor pane
-  try { if (window.api && typeof window.api.writeDebugLog === 'function') window.api.writeDebugLog({ event: 'renderActiveNote:start', activeNoteId: state.activeNoteId, activeEditorPane: state.activeEditorPane, timestamp: Date.now() }); } catch (e) { }
   // Prefer the global active note if set, but fall back to the note
   // assigned to the currently active editor pane. This avoids a scenario
   // where a manual "render" triggered from a pane clears that pane
@@ -6833,38 +6377,6 @@ const renderActiveNote = () => {
     const paneNoteId = getPaneNoteId(state.activeEditorPane) || null;
     if (paneNoteId) note = state.notes.get(paneNoteId) ?? null;
   }
-  // Prefer showing a renderable note (markdown/latex/bib/notebook/code).
-  // If the currently resolved note is not renderable, fall back to the
-  // last recorded renderable note so the global preview shows the most
-  // recent editor that could be rendered.
-  const renderableTypes = new Set(['markdown', 'latex', 'bib', 'notebook', 'code']);
-  try {
-    if (!note || !renderableTypes.has(note.type)) {
-      const fallbackId = state.lastRenderableNoteId || state.lastActiveMarkdownNoteId || null;
-      if (fallbackId && state.notes.has(fallbackId)) {
-        const fb = state.notes.get(fallbackId);
-        if (fb && renderableTypes.has(fb.type)) {
-          note = fb;
-          // reflect selection in activeNoteId so downstream logic knows what's rendered
-          state.activeNoteId = fb.id;
-        }
-      }
-    }
-
-    // Only avoid global rendering for non-renderable notes that are already
-    // shown inside another pane. Renderable notes should be allowed to be
-    // displayed in the global preview even if they're still mapped to a pane.
-    const mappedPane = note ? getPaneForNote(note.id) : null;
-    if (note && mappedPane && mappedPane !== state.activeEditorPane && !renderableTypes.has(note.type)) {
-      // Clear any global viewers to avoid duplicates and return early
-      try {
-        if (elements.imageViewer) { elements.imageViewer.classList.remove('visible'); elements.imageViewerImg?.removeAttribute('src'); }
-      } catch (e) {}
-      try { if (elements.pdfViewer) { elements.pdfViewer.classList.remove('visible'); elements.pdfViewer.removeAttribute('src'); } } catch (e) {}
-      try { if (elements.codeViewer) { elements.codeViewer.classList.remove('visible'); elements.codeViewer.removeAttribute('data-language'); } } catch (e) {}
-      return;
-    }
-  } catch (e) { /* ignore mapping/fallback errors */ }
   updateFileMetadataUI(note);
   updateActionAvailability(note);
   closeWikiSuggestions();
@@ -6943,10 +6455,8 @@ const renderActiveNote = () => {
         try {
           const mappedNoteId = state.editorPanes?.[pid]?.noteId;
           const mappedNote = mappedNoteId ? state.notes.get(mappedNoteId) : null;
-          // Only clear viewers for panes that no longer have any mapped note.
-          // This avoids removing intentionally displayed pane-local viewers
-          // (images, PDFs, videos, etc.) when the active preview changes.
-          if (!mappedNote) {
+          // Only clear the pane viewer if the mapped note is not a PDF
+          if (!mappedNote || mappedNote.type !== 'pdf') {
             try { clearPaneViewer(pid); } catch (e) {}
           }
         } catch (e) { /* ignore per-pane errors */ }
@@ -7063,19 +6573,15 @@ const renderActiveNote = () => {
         try {
           const mappedNoteId = state.editorPanes?.[k]?.noteId;
           const mappedNote = mappedNoteId ? state.notes.get(mappedNoteId) : null;
-          if (mappedNote && (mappedNote.type === 'markdown' || mappedNote.type === 'latex' || mappedNote.type === 'code')) {
-            // For code files, always enable and show the editor
-            if (inst && inst.el) {
-              inst.el.disabled = false;
-              inst.el.hidden = false;
-              inst.el.style.display = '';
-              // content is set elsewhere when the note is opened; do not overwrite
-            }
-          } else if (mappedNote && (mappedNote.type !== 'markdown' && mappedNote.type !== 'latex' && mappedNote.type !== 'code')) {
-            // non-editable pane types (images/pdf/video/html/pptx): show content in read-only textarea
+          if (mappedNote && (mappedNote.type === 'markdown' || mappedNote.type === 'latex')) {
+            // keep markdown/latex editors enabled only for markdown/latex-mapped panes
+            inst.el.disabled = false;
+            // Do not overwrite content here; content should already be set when the note was opened
+          } else if (mappedNote && (mappedNote.type !== 'markdown' && mappedNote.type !== 'latex')) {
+            // non-markdown pane: disable textarea (visual/editor not used)
             if (inst && inst.el) {
               inst.el.disabled = true;
-              inst.el.value = mappedNote.content ?? '';
+              inst.el.value = '';
             }
           } else {
             // no mapped note for this pane: keep textarea disabled and empty
@@ -7088,18 +6594,18 @@ const renderActiveNote = () => {
       }
     } catch (e) { /* ignore full loop errors */ }
 
-    if (note.type === 'image' || note.type === 'video' || note.type === 'html' || note.type === 'pdf' || note.type === 'pptx') {
-      // These media/file types are displayed in pane-local viewers. To avoid
-      // duplicate global viewers and the UI 'taking over', we keep the global
-      // preview minimal and instruct users to open the file in an editor pane.
-      elements.workspaceContent?.classList.add(note.type === 'image' ? 'image-mode' : note.type === 'video' ? 'video-mode' : note.type === 'html' ? 'html-mode' : note.type === 'pdf' ? 'pdf-mode' : 'pptx-mode');
-      const message = note.type === 'pptx'
-        ? 'PPTX files are not supported for preview. Open in an editor pane.'
-        : 'This file type is previewed inside the editor pane. Open the file in a pane to view it.';
-      renderCodePreview(message, null);
-    } else if (note.type === 'code') {
-      elements.workspaceContent?.classList.add('code-mode');
-      renderCodePreview(note.content ?? '', note.language);
+    if (note.type === 'image') {
+      elements.workspaceContent?.classList.add('image-mode');
+      void renderImagePreview(note);
+    } else if (note.type === 'video') {
+      elements.workspaceContent?.classList.add('video-mode');
+      void renderVideoPreview(note);
+    } else if (note.type === 'html') {
+      elements.workspaceContent?.classList.add('html-mode');
+      void renderHtmlPreview(note);
+    } else if (note.type === 'pdf') {
+      elements.workspaceContent?.classList.add('pdf-mode');
+      renderPdfPreview(note);
     } else if (note.type === 'code') {
       elements.workspaceContent?.classList.add('code-mode');
       renderCodePreview(note.content ?? '', note.language);
@@ -7258,18 +6764,6 @@ function safeAdoptWorkspace(payload, preferredActiveId = null) {
         elements.workspacePath.textContent = String(payload.folderPath).split(/[\\\/]/).filter(Boolean).pop() || String(payload.folderPath);
         elements.workspacePath.title = String(payload.folderPath);
       }
-      // Development helper: auto-open the first notebook/html/json note to validate preview rendering
-      try {
-        if (process && process.env && process.env.NODE_ENV === 'development' && !state.__devAutoOpened) {
-          state.__devAutoOpened = true;
-          const firstPreviewable = Array.from(state.notes.values()).find(n => ['notebook', 'html', 'code', 'image'].includes(n.type));
-          if (firstPreviewable) {
-            console.log('DEV: auto-opening first previewable note for debug', { id: firstPreviewable.id, type: firstPreviewable.type, title: firstPreviewable.title });
-            // Prefer opening in left pane and activate so preview updates
-            try { openNoteInPane(firstPreviewable.id, 'left', { activate: true }); } catch (e) { console.error('DEV: auto-open failed', e); }
-          }
-        }
-      } catch (e) { /* ignore dev helper errors */ }
     } catch (e) {
     }
   }
@@ -7417,7 +6911,7 @@ const handleLatexAutoCompletion = (textarea, inputType) => {
   return false;
 };
 
-const updateMathPreview = async (textarea) => {
+const updateMathPreview = (textarea) => {
   // Accept either a DOM textarea element, an Editor instance, or undefined.
   try {
     // If an Editor instance was passed, use its underlying element
@@ -7507,71 +7001,63 @@ const updateMathPreview = async (textarea) => {
   const latexDisplayMatches = [...contentToRender.matchAll(latexDisplayMathRegex)];
   try { } catch (e) {}
       
-      if (inlineMatches.length > 0 || blockMatches.length > 0 || latexInlineMatches.length > 0 || latexDisplayMatches.length > 0) {
-        // Content contains math expressions - render them using KaTeX (awaited)
+  if (inlineMatches.length > 0 || blockMatches.length > 0 || latexInlineMatches.length > 0 || latexDisplayMatches.length > 0) {
+        // Content contains math expressions - render them
         let renderedContent = contentToRender;
-
-        // Ensure KaTeX is available, but don't fail if it isn't
-        try {
-          await ensureKaTeX();
-        } catch (e) { /* ignore load failure and fall back to raw content */ }
-
-        const renderOne = async (math, opts = { throwOnError: false, displayMode: false }) => {
+        
+        // Replace LaTeX display math first (to avoid conflicts)
+        renderedContent = renderedContent.replace(latexDisplayMathRegex, (match, mathContent) => {
           try {
-            if (window.katex && typeof window.katex.renderToString === 'function') {
-              return window.katex.renderToString(math, opts);
-            }
-          } catch (e) { /* ignore */ }
-          return null;
-        };
-
-        // Replace display math first
-        try {
-          const displayMatches = [...contentToRender.matchAll(latexDisplayMathRegex)];
-          for (const m of displayMatches) {
-            const full = m[0];
-            const body = m[1];
-            const out = await renderOne(body.trim(), { throwOnError: false, displayMode: true });
-            renderedContent = renderedContent.replace(full, out || full);
+            const rendered = window.katex.renderToString(mathContent.trim(), { 
+              throwOnError: false, 
+              displayMode: true 
+            });
+            return rendered;
+          } catch (error) {
+            return match; // Return original on error
           }
-
-          // Replace block $$...$$
-          const blockMatches2 = [...contentToRender.matchAll(blockMathRegex)];
-          for (const m of blockMatches2) {
-            const full = m[0];
-            const body = m[1];
-            const out = await renderOne(body.trim(), { throwOnError: false, displayMode: true });
-            renderedContent = renderedContent.replace(full, out || full);
+        });
+        
+        // Replace LaTeX inline math
+        renderedContent = renderedContent.replace(latexInlineMathRegex, (match, mathContent) => {
+          try {
+            const rendered = window.katex.renderToString(mathContent.trim(), { 
+              throwOnError: false, 
+              displayMode: false 
+            });
+            return rendered;
+          } catch (error) {
+            return match; // Return original on error
           }
-
-          // Replace LaTeX inline \(...\) and \[...\]
-          const latexInline = [...contentToRender.matchAll(latexInlineMathRegex)];
-          for (const m of latexInline) {
-            const full = m[0];
-            const body = m[1];
-            const out = await renderOne(body.trim(), { throwOnError: false, displayMode: false });
-            renderedContent = renderedContent.replace(full, out || full);
+        });
+        
+        // Replace block math
+        renderedContent = renderedContent.replace(blockMathRegex, (match, mathContent) => {
+          try {
+            const rendered = window.katex.renderToString(mathContent.trim(), { 
+              throwOnError: false, 
+              displayMode: true 
+            });
+            return rendered;
+          } catch (error) {
+            return match; // Return original on error
           }
-
-          // Replace simple $...$ inline math
-          const inlineDollarMatches = [...contentToRender.matchAll(inlineMathRegex)];
-          for (const m of inlineDollarMatches) {
-            const full = m[0];
-            const body = m[1];
-            const out = await renderOne(body.trim(), { throwOnError: false, displayMode: false });
-            renderedContent = renderedContent.replace(full, out || full);
+        });
+        
+        // Then replace inline math
+        renderedContent = renderedContent.replace(inlineMathRegex, (match, mathContent) => {
+          try {
+            const rendered = window.katex.renderToString(mathContent.trim(), { 
+              throwOnError: false, 
+              displayMode: false 
+            });
+            return rendered;
+          } catch (error) {
+            return match; // Return original on error
           }
-        } catch (e) {
-          // If anything goes wrong, fall back to raw content
-          renderedContent = contentToRender;
-        }
-
-        // Write content, position popup and show it
-        if (elements.mathPreviewPopupContent) {
-          try { elements.mathPreviewPopupContent.innerHTML = renderedContent; } catch (e) { elements.mathPreviewPopupContent.textContent = renderedContent; }
-        }
-        try { positionMathPreviewPopup(textarea, mathStartIndex); } catch (e) {}
-        try { elements.mathPreviewPopup.classList.add('visible'); elements.mathPreviewPopup.hidden = false; } catch (e) {}
+        });
+        
+  if (elements.mathPreviewPopupContent) { try { elements.mathPreviewPopupContent.innerHTML = renderedContent; } catch (e) {  } }
       } else if (/^#{1,6}\s/.test(mathContent)) {
         // Markdown header: # Title, ## Title, ### Title, etc.
         const headerMatch = mathContent.match(/^(#{1,6})\s+(.*)$/);
@@ -7598,23 +7084,7 @@ const updateMathPreview = async (textarea) => {
         if (wikiMatch) {
           const filename = wikiMatch[1];
           let workspacePath = elements.workspacePath?.title || '';
-
-          // Fallback: try to derive workspacePath from state.currentFolder or first note's path
-          if (!workspacePath) {
-            if (state.currentFolder) workspacePath = state.currentFolder;
-            else {
-              // try to infer from any note with absolutePath
-              for (const n of state.notes.values()) {
-                if (n && n.absolutePath) {
-                  const parts = n.absolutePath.split(/[/\\]/);
-                  parts.pop();
-                  workspacePath = parts.join('/');
-                  break;
-                }
-              }
-            }
-          }
-
+          
           // If workspace path contains src/renderer, use the directory before it as workspace
           const rendererIndex = workspacePath.indexOf('/src/renderer');
           if (rendererIndex !== -1) {
@@ -7662,9 +7132,6 @@ const updateMathPreview = async (textarea) => {
                   img.addEventListener('error', () => { loader.innerHTML = '<div style="font-size:24px">🖼️</div><div>Image not found</div>'; });
                   elements.mathPreviewPopupContent.appendChild(loader);
                   elements.mathPreviewPopupContent.appendChild(img);
-                  // Position and show popup
-                  try { positionMathPreviewPopup(textarea, mathStartIndex); } catch (e) {}
-                  try { elements.mathPreviewPopup.classList.add('visible'); elements.mathPreviewPopup.hidden = false; } catch (e) {}
                 } catch (e) {  }
               }
             } else if (/\.(mp4|webm|ogg|avi|mov|wmv|flv|m4v)$/i.test(filename)) {
@@ -7701,9 +7168,6 @@ const updateMathPreview = async (textarea) => {
                   v.addEventListener('error', () => { loader.innerHTML = '<div style="font-size:24px">🎥</div><div>Video not found</div>'; });
                   elements.mathPreviewPopupContent.appendChild(loader);
                   elements.mathPreviewPopupContent.appendChild(v);
-                  // Position and show popup
-                  try { positionMathPreviewPopup(textarea, mathStartIndex); } catch (e) {}
-                  try { elements.mathPreviewPopup.classList.add('visible'); elements.mathPreviewPopup.hidden = false; } catch (e) {}
                 } catch (e) {  }
               }
             } else if (/\.(pdf)$/i.test(filename)) {
@@ -9676,25 +9140,15 @@ const handleHashtagPanelResizeStart = (event) => {
 };
 
 const handleHashtagPanelResizeMove = (event) => {
-  if (!state.resizingHashtagPanel) {
+  if (!state.resizingHashtagPanel || !state.initialMouseY || !state.initialHashtagHeight) {
     return;
   }
-
-  try {
-    // Compute height based on the container bottom and pointer Y to avoid drift
-    const hashtagContainer = document.querySelector('.hashtag-container');
-    if (!hashtagContainer) return;
-    const rect = hashtagContainer.getBoundingClientRect();
-    // bottom is fixed (anchored to bottom of sidebar) so height is bottom - pointerY
-    const newHeight = Math.round(rect.bottom - event.clientY);
-    setHashtagPanelHeight(newHeight);
-  } catch (e) {
-    // Fallback: previous delta-based approach
-    if (!state.initialMouseY || !state.initialHashtagHeight) return;
-    const deltaY = state.initialMouseY - event.clientY;
-    const fallbackHeight = state.initialHashtagHeight + deltaY;
-    setHashtagPanelHeight(fallbackHeight);
-  }
+  
+  // Calculate the movement delta
+  const deltaY = state.initialMouseY - event.clientY; // Negative when moving down, positive when moving up
+  const newHeight = state.initialHashtagHeight + deltaY;
+  
+  setHashtagPanelHeight(newHeight);
 };
 
 const handleHashtagPanelResizeEnd = (event) => {
@@ -9715,70 +9169,6 @@ const handleHashtagPanelResizeEnd = (event) => {
   state.initialMouseY = null;
   state.initialHashtagHeight = null;
   document.body.style.cursor = '';
-  try {
-    // Persist the chosen height so it can be restored later
-    writeStorage('NTA.hashtagPanelHeight', String(state.hashtagPanelHeight));
-    // Also clear minimized flag when user resizes manually
-    removeStorage('NTA.hashtagPanelMinimized');
-  } catch (e) {}
-};
-
-const minimizeHashtagPanel = () => {
-  try {
-    const container = document.querySelector('.hashtag-container');
-    if (!container) return;
-    // store previous height so restore returns to it
-    const current = container.offsetHeight || state.hashtagPanelHeight || 300;
-    state.hashtagPrevHeight = current;
-
-    // Animate to minimized height (32px)
-    const minimizedHeight = 32;
-    // Ensure explicit height to trigger CSS transition
-    container.style.height = `${current}px`;
-    // Force reflow
-    // eslint-disable-next-line no-unused-expressions
-    container.offsetHeight;
-    container.classList.add('hashtag-minimized');
-    container.style.height = `${minimizedHeight}px`;
-
-    writeStorage('NTA.hashtagPanelMinimized', 'true');
-    writeStorage('NTA.hashtagPanelPrevHeight', String(state.hashtagPrevHeight));
-
-    // Update toggle button icon/aria
-    const toggleBtn = document.getElementById('toggle-hashtag-minimize');
-    if (toggleBtn) {
-      toggleBtn.textContent = '▴';
-      toggleBtn.setAttribute('aria-pressed', 'true');
-    }
-  } catch (e) {}
-};
-
-const restoreHashtagPanel = () => {
-  try {
-    const container = document.querySelector('.hashtag-container');
-    if (!container) return;
-    // Animate from current to previous height
-    const prev = readStorage('NTA.hashtagPanelPrevHeight');
-    const target = prev ? parseInt(prev, 10) : state.hashtagPanelHeight || 300;
-    const current = container.offsetHeight || 32;
-    container.style.height = `${current}px`;
-    // Force reflow
-    // eslint-disable-next-line no-unused-expressions
-    container.offsetHeight;
-    container.classList.remove('hashtag-minimized');
-    // Set to target to use the height transition
-    container.style.height = `${target}px`;
-    // Persist the restored height
-    setHashtagPanelHeight(target);
-    removeStorage('NTA.hashtagPanelMinimized');
-
-    // Update toggle button icon/aria
-    const toggleBtn = document.getElementById('toggle-hashtag-minimize');
-    if (toggleBtn) {
-      toggleBtn.textContent = '▾';
-      toggleBtn.setAttribute('aria-pressed', 'false');
-    }
-  } catch (e) {}
 };
 
 const handleOpenFolder = async () => {
@@ -9830,13 +9220,8 @@ const closeWikiSuggestions = () => {
   state.wikiSuggest.end = 0;
   state.wikiSuggest.query = '';
   state.wikiSuggest.embed = false;
-  // Ensure position object exists before setting coordinates
-  if (!state.wikiSuggest.position || typeof state.wikiSuggest.position !== 'object') {
-    state.wikiSuggest.position = { top: 24, left: 24 };
-  } else {
-    state.wikiSuggest.position.top = 24;
-    state.wikiSuggest.position.left = 24;
-  }
+  state.wikiSuggest.position.top = 24;
+  state.wikiSuggest.position.left = 24;
   state.wikiSuggest.suppress = false;
 
   const suggestionsElement = elements.wikiSuggestions;
@@ -9991,12 +9376,8 @@ const computeWikiSuggestionPosition = (textarea, caret) => {
     anchorTop = 8;
   }
 
-  if (!state.wikiSuggest.position || typeof state.wikiSuggest.position !== 'object') {
-    state.wikiSuggest.position = { top: anchorTop, left: anchorLeft };
-  } else {
-    state.wikiSuggest.position.top = anchorTop;
-    state.wikiSuggest.position.left = anchorLeft;
-  }
+  state.wikiSuggest.position.top = anchorTop;
+  state.wikiSuggest.position.left = anchorLeft;
 };
 
 const computeHashtagSuggestionPosition = (textarea, caret) => {
@@ -10039,38 +9420,20 @@ const renderWikiSuggestions = () => {
   }
   
   // Debug prints removed
-  // Ensure position object exists
-  if (!state.wikiSuggest.position || typeof state.wikiSuggest.position !== 'object') {
-    state.wikiSuggest.position = { top: 24, left: 24 };
-  }
   container.hidden = false;
   container.setAttribute('data-open', 'true');
-  try {
-    container.style.top = `${state.wikiSuggest.position.top}px`;
-    container.style.left = `${state.wikiSuggest.position.left}px`;
-  } catch (e) { /* ignore styling errors in test envs */ }
-
-  const getNotePreview = (noteId) => {
-    const note = state.notes.get(noteId);
-    if (!note) return '';
-    if (note.type === 'markdown') {
-      return note.title || 'Markdown note';
-    } else {
-      return `${note.title || 'Untitled'} (${note.type})`;
-    }
-  };
+  container.style.top = `${state.wikiSuggest.position.top}px`;
+  container.style.left = `${state.wikiSuggest.position.left}px`;
 
   const itemsHtml = state.wikiSuggest.items
     .map((item, index) => {
       const active = index === state.wikiSuggest.selectedIndex;
       const meta = item.meta ? `<div class="wiki-suggest__meta">${escapeHtml(item.meta)}</div>` : '';
-      const preview = item.kind === 'note' ? `<div class="wiki-suggest__preview">${getNotePreview(item.noteId)}</div>` : '';
       return `<div class="wiki-suggest__item" id="wiki-suggest-item-${index}" role="option" data-index="${index}" data-active="${
         active ? 'true' : 'false'
       }">
         <div class="wiki-suggest__title">${escapeHtml(item.display)}</div>
         ${meta}
-        ${preview}
       </div>`;
     })
     .join('');
@@ -10891,53 +10254,19 @@ const applyWikiSuggestion = (index) => {
 
   const start = state.wikiSuggest.start;
   const end = state.wikiSuggest.end;
-  // For double-bang trigger (!![[) we show a transient inline "peek" popup
-  // near the caret and do NOT modify the textarea contents. For other
-  // triggers, preserve existing insertion behavior.
-  if (state.wikiSuggest.embed === 'inline') {
-    try {
-      // Compute the full start index including the opener ("!![[" is 4 chars)
-      const openLength = 4;
-      const fullStart = Math.max(0, start - openLength);
-      const note = suggestion.noteId ? state.notes.get(suggestion.noteId) : null;
-      if (note && elements.mathPreviewPopup && elements.mathPreviewPopupContent) {
-        // Render the referenced note to sanitized HTML and display in the popup
-        const { html } = renderMarkdownToHtml(note.content ?? '', { noteId: note.id }, { collectSourceMap: false });
-        try {
-          elements.mathPreviewPopupContent.innerHTML = html || '';
-        } catch (e) {
-          elements.mathPreviewPopupContent.textContent = note.title ?? '';
-        }
-        // Position the popup at the opener start so it appears near the typed marker
-        try {
-          positionMathPreviewPopup(_ta_wiki, fullStart);
-        } catch (e) {}
-        elements.mathPreviewPopup.classList.add('visible');
-        elements.mathPreviewPopup.hidden = false;
-      }
-    } catch (e) {
-      // swallow errors and fall back to closing suggestions
-    }
-    state.wikiSuggest.suppress = true;
-    closeWikiSuggestions();
-    return true;
-  }
-
-  // Default behavior: insert the suggestion target into the textarea
   const before = _ta_wiki.value.slice(0, start);
   const after = _ta_wiki.value.slice(end);
   const replacement = suggestion.target;
 
   const nextValue = `${before}${replacement}${after}`;
-
   try {
     _edt_wiki.setValue(nextValue);
     const caret = before.length + replacement.length;
-    try { if (_edt_wiki && typeof _edt_wiki.setSelectionRange === 'function') _edt_wiki.setSelectionRange(caret, caret); else _ta_wiki.setSelectionRange(caret, caret); } catch (e) {}
+  try { if (_edt_wiki && typeof _edt_wiki.setSelectionRange === 'function') _edt_wiki.setSelectionRange(caret, caret); else _ta_wiki.setSelectionRange(caret, caret); } catch (e) {}
   } catch (e) {
     if (_ta_wiki) {
       _ta_wiki.value = nextValue;
-      try { if (_edt_wiki && typeof _edt_wiki.setSelectionRange === 'function') _edt_wiki.setSelectionRange(before.length + replacement.length, before.length + replacement.length); else _ta_wiki.setSelectionRange(before.length + replacement.length, before.length + replacement.length); } catch (err) {}
+  try { if (_edt_wiki && typeof _edt_wiki.setSelectionRange === 'function') _edt_wiki.setSelectionRange(before.length + replacement.length, before.length + replacement.length); else _ta_wiki.setSelectionRange(before.length + replacement.length, before.length + replacement.length); } catch (err) {}
     }
   }
 
@@ -12161,7 +11490,7 @@ const handleExportImageClick = async (format, event) => {
 };
 
 const handleGlobalShortcuts = (event) => {
-  if (!event.metaKey && !event.ctrlKey) {
+  if (!event.metaKey) {
     return;
   }
 
@@ -12273,6 +11602,7 @@ const handleGlobalShortcuts = (event) => {
     generateTableOfContents();
   } else if (key === 'i') {
     // Cmd/Ctrl+I should open inline chat — move chat mapping here and prevent stats opening
+    console.log('Global shortcut: Cmd/Ctrl+I detected, opening chat');
     event.preventDefault();
     toggleInlineChat();
   } else if (key === 'f') {
@@ -12530,8 +11860,7 @@ const createMathExtensions = () => {
 
   const renderMath = (content, displayMode) => {
     try {
-      const out = renderLatexSync(content, { throwOnError: false, displayMode });
-      return out || content;
+      return window.katex.renderToString(content, { throwOnError: false, displayMode });
     } catch (error) {
       return content;
     }
@@ -12714,38 +12043,8 @@ const renderInlineEmbed = (token, targetInfo, context) => {
     </video>`;
   }
 
-  // For other types, handle inline embed specially: when the token is an
-  // inline embed (!![[...]]), we render the referenced note's HTML inline
-  // inside the preview so the preview shows the referenced content as if
-  // it were written in-place (useful for equations and small snippets).
-  // Images and videos are handled above; for markdown content we'll render
-  // the note's markdown to HTML and insert it directly.
-  try {
-    const renderContext = context ?? { depth: 0, visited: new Set() };
-    const depth = (renderContext.depth ?? 0) + 1;
-    const visited = new Set(renderContext.visited ?? []);
-    // Prevent infinite recursion
-    if (visited.has(noteId) || depth > maxWikiEmbedDepth) {
-      // Fallback to a link noting the circular reference
-      return `<span class="wikilink wikilink--missing" data-wiki-target="${escapeHtml(token.target)}">${escapeHtml(token.target)}</span>`;
-    }
-    visited.add(noteId);
-
-    // Render the referenced note's markdown to sanitized HTML and return it.
-    const { html: inlinedHtml } = renderMarkdownToHtml(note.content ?? '', { noteId: note.id, depth, visited }, { collectSourceMap: false });
-    // Wrap in a span to allow styling and to mark it as an inlined wikilink
-    return `<span class="wikilink-inline-embedded" data-note-id="${noteId}" data-wiki-target="${escapeHtml(token.target)}">${inlinedHtml}</span>`;
-  } catch (e) {
-    // On error, fall back to a simple link
-    return renderWikiLinkSpan({
-      noteId: noteId,
-      targetAttr: escapeHtml(token.target),
-      display: escapeHtml(note.title || token.target),
-      extraClass: 'wikilink--inline-peek',
-      blockId: null,
-      blockMissing: false
-    });
-  }
+  // For other types, fall back to regular embed
+  return renderWikiEmbed(token, targetInfo, context);
 };
 
 const renderWikiEmbed = (token, targetInfo, context) => {
@@ -13664,15 +12963,6 @@ const deleteNote = async (noteId) => {
 };
 
 const initialize = () => {
-  // Refresh key element references (tests may create DOM after module load)
-  try {
-    elements.filePath = document.getElementById('file-path') || elements.filePath;
-    elements.fileName = document.getElementById('file-name') || elements.fileName;
-    elements.mathPreviewPopup = document.getElementById('math-preview-popup') || elements.mathPreviewPopup;
-    elements.mathPreviewPopupContent = document.querySelector('#math-preview-popup .math-preview-popup__content') || elements.mathPreviewPopupContent;
-    elements.preview = document.getElementById('markdown-preview') || elements.preview;
-    elements.wikiSuggestions = document.getElementById('wikilink-suggestions') || elements.wikiSuggestions;
-  } catch (e) { /* ignore */ }
   configureMarked();
   applyEditorRatio();
   renderWorkspaceTree();
@@ -13769,106 +13059,7 @@ const initialize = () => {
         elements.mathPreviewPopup.hidden = true;
       }
     });
-
-  // Ensure show-filename-only checkbox is wired (tests may rely on this)
-  try {
-    const showFilenameOnlyCheckbox = document.getElementById('show-filename-only');
-    if (showFilenameOnlyCheckbox) {
-      try {
-        const enabled = localStorage.getItem(storageKeys.showFileNameOnly) === 'true';
-        showFilenameOnlyCheckbox.checked = enabled;
-      } catch (e) {}
-      try {
-        showFilenameOnlyCheckbox.addEventListener('change', (evt) => {
-          try {
-            const val = evt.target.checked ? 'true' : 'false';
-            localStorage.setItem(storageKeys.showFileNameOnly, val);
-            try { updateFileMetadataUI(state.notes.get(state.activeNoteId) ?? null, { allowActiveFallback: true }); } catch (e) {}
-          } catch (e) {}
-        });
-      } catch (e) {}
-    }
-  } catch (e) {}
-
-  // Ensure clicking the file-path copies the full path to clipboard (tests rely on this)
-  try {
-    const filePathEl = document.getElementById('file-path');
-    if (filePathEl) {
-      filePathEl.addEventListener('click', (ev) => {
-        try {
-          const pathToCopy = (filePathEl && filePathEl.title) ? filePathEl.title : (filePathEl && filePathEl.textContent) || '';
-          if (!pathToCopy) return;
-          const write = typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function';
-          if (write) {
-            navigator.clipboard.writeText(pathToCopy).catch(() => {
-              try { if (window.api && typeof window.api.invoke === 'function') window.api.invoke('clipboard:write', pathToCopy); } catch (e) {}
-            });
-          } else {
-            try { if (window.api && typeof window.api.invoke === 'function') window.api.invoke('clipboard:write', pathToCopy); } catch (e) {}
-          }
-        } catch (e) {}
-      });
-    }
-  } catch (e) {}
   }
-  
-  // Function to update math preview popup for 3-line math blocks
-  const updateMathPreview = (editor) => {
-    if (!editor || !elements.mathPreviewPopup || !elements.mathPreviewPopupContent) return;
-    
-    const value = editor.value;
-    const cursor = editor.selectionStart;
-    
-    // Check if cursor is within a 3-line math block: $$ \n equation \n $$
-    const lines = value.split('\n');
-    let blockStart = -1;
-    let equation = '';
-    
-    for (let i = 0; i < lines.length - 2; i++) {
-      if (lines[i].trim() === '$$' && lines[i + 2].trim() === '$$') {
-        const eq = lines[i + 1].trim();
-        if (eq && eq !== '$$') {
-          // Find the start and end positions of this block
-          let startPos = 0;
-          for (let j = 0; j < i; j++) {
-            startPos += lines[j].length + 1; // +1 for \n
-          }
-          const endPos = startPos + lines[i].length + 1 + lines[i + 1].length + 1 + lines[i + 2].length;
-          
-          if (cursor >= startPos && cursor <= endPos) {
-            equation = eq;
-            blockStart = startPos;
-            break;
-          }
-        }
-      }
-    }
-    
-    if (equation && window.katex) {
-      try {
-        elements.mathPreviewPopupContent.innerHTML = '';
-        const html = window.katex.renderToString(equation, { displayMode: true, throwOnError: false });
-        elements.mathPreviewPopupContent.innerHTML = html;
-        
-        // Position the popup near the block
-        const rect = editor.getBoundingClientRect();
-        // Position above the block
-        const blockLineIndex = value.substring(0, blockStart).split('\n').length - 1;
-        const approxTop = rect.top + (blockLineIndex * 20); // rough estimate
-        elements.mathPreviewPopup.style.left = `${rect.left + 10}px`;
-        elements.mathPreviewPopup.style.top = `${approxTop - 120}px`;
-        elements.mathPreviewPopup.classList.add('visible');
-        elements.mathPreviewPopup.hidden = false;
-        return;
-      } catch (e) {
-        // ignore
-      }
-    }
-    
-    // Hide popup if not in a 3-line block
-    elements.mathPreviewPopup.classList.remove('visible');
-    elements.mathPreviewPopup.hidden = true;
-  };
   
   // Handle math preview popup on selection changes
   document.addEventListener('selectionchange', () => {
@@ -13893,160 +13084,6 @@ const initialize = () => {
   editorInstances.left.addEventListener('dragleave', handleEditorDragLeave, { passive: false });
   editorInstances.left.addEventListener('drop', handleEditor1Drop);
 
-  // Hover preview for wiki-links in the editor textarea
-  try {
-    const getCharIndexAtMouse = (textarea, clientX, clientY) => {
-      try {
-        const rect = textarea.getBoundingClientRect();
-        const x = clientX - rect.left;
-        const y = clientY - rect.top;
-
-        // Create mirror div
-        const mirror = document.createElement('div');
-        mirror.style.position = 'absolute';
-        mirror.style.visibility = 'hidden';
-        mirror.style.whiteSpace = 'pre-wrap';
-        mirror.style.wordWrap = 'break-word';
-        mirror.style.fontSize = window.getComputedStyle(textarea).fontSize;
-        mirror.style.fontFamily = window.getComputedStyle(textarea).fontFamily;
-        mirror.style.lineHeight = window.getComputedStyle(textarea).lineHeight;
-        mirror.style.letterSpacing = window.getComputedStyle(textarea).letterSpacing;
-        mirror.style.padding = window.getComputedStyle(textarea).padding;
-        mirror.style.width = `${rect.width}px`;
-        mirror.style.height = `${rect.height}px`;
-        mirror.style.overflow = 'hidden';
-
-        const text = textarea.value;
-        let low = 0;
-        let high = text.length;
-        let bestIndex = -1;
-
-        while (low <= high) {
-          const mid = Math.floor((low + high) / 2);
-          mirror.textContent = text.substring(0, mid);
-          document.body.appendChild(mirror);
-          const mirrorRect = mirror.getBoundingClientRect();
-          document.body.removeChild(mirror);
-
-          if (mirrorRect.bottom < y + rect.top) {
-            low = mid + 1;
-          } else if (mirrorRect.top > y + rect.top) {
-            high = mid - 1;
-          } else {
-            // Check horizontal
-            mirror.textContent = text.substring(0, mid + 1);
-            document.body.appendChild(mirror);
-            const nextRect = mirror.getBoundingClientRect();
-            document.body.removeChild(mirror);
-
-            if (x < nextRect.left - rect.left) {
-              bestIndex = mid;
-              break;
-            } else {
-              low = mid + 1;
-            }
-          }
-        }
-
-        return bestIndex >= 0 ? bestIndex : text.length;
-      } catch (e) {
-        return -1;
-      }
-    };
-
-    const showWikiLinkPreview = (textarea, index, event) => {
-      const text = textarea.value;
-      // Find the wiki-link containing this index
-      const wikiLinkRegex = /\[\[([^\]]+)\]\]/g;
-      let match;
-      while ((match = wikiLinkRegex.exec(text)) !== null) {
-        const start = match.index;
-        const end = match.index + match[0].length;
-        if (index >= start && index < end) {
-          const target = match[1];
-          const parsed = parseWikiTarget(target, { noteId: state.activeNoteId });
-          if (parsed && parsed.noteId) {
-            const note = state.notes.get(parsed.noteId);
-            if (note) {
-              // Show preview
-              if (!elements.mathPreviewPopup || !elements.mathPreviewPopupContent) return;
-              elements.mathPreviewPopupContent.innerHTML = '';
-              if (note.type === 'image') {
-                const img = document.createElement('img');
-                img.src = note.absolutePath || note.storedPath || '';
-                img.alt = note.title || '';
-                img.style.maxWidth = '200px';
-                img.style.maxHeight = '200px';
-                img.style.objectFit = 'contain';
-                elements.mathPreviewPopupContent.appendChild(img);
-              } else if (note.type === 'video') {
-                const v = document.createElement('video');
-                v.controls = true;
-                v.preload = 'metadata';
-                v.style.maxWidth = '200px';
-                v.style.maxHeight = '200px';
-                const src = document.createElement('source');
-                src.src = note.absolutePath || note.storedPath || '';
-                v.appendChild(src);
-                elements.mathPreviewPopupContent.appendChild(v);
-              } else {
-                // Render a short HTML snippet from the note's markdown or show title/type for other types
-                if (note.type === 'markdown') {
-                  elements.mathPreviewPopupContent.textContent = note.title || 'Markdown note';
-                } else {
-                  elements.mathPreviewPopupContent.textContent = `${note.title || 'Untitled'} (${note.type})`;
-                }
-              }
-              // Position near mouse
-              const popupX = event.clientX + 10;
-              const popupY = event.clientY + 10;
-              elements.mathPreviewPopup.style.left = `${popupX}px`;
-              elements.mathPreviewPopup.style.top = `${popupY}px`;
-              elements.mathPreviewPopup.classList.add('visible');
-              elements.mathPreviewPopup.hidden = false;
-              return;
-            }
-          }
-          break;
-        }
-      }
-    };
-
-    const hideWikiLinkPreview = () => {
-      if (elements.mathPreviewPopup) {
-        elements.mathPreviewPopup.classList.remove('visible');
-        elements.mathPreviewPopup.hidden = true;
-      }
-    };
-
-    editorInstances.left.addEventListener('mouseover', (event) => {
-      const textarea = editorInstances.left.el;
-      if (!textarea) return;
-      const index = getCharIndexAtMouse(textarea, event.clientX, event.clientY);
-      if (index >= 0) {
-        showWikiLinkPreview(textarea, index, event);
-      }
-    });
-
-    editorInstances.left.addEventListener('mouseout', () => {
-      hideWikiLinkPreview();
-    });
-
-    // For right editor if exists
-    if (editorInstances.right && editorInstances.right.el) {
-      editorInstances.right.addEventListener('mouseover', (event) => {
-        const textarea = editorInstances.right.el;
-        const index = getCharIndexAtMouse(textarea, event.clientX, event.clientY);
-        if (index >= 0) {
-          showWikiLinkPreview(textarea, index, event);
-        }
-      });
-      editorInstances.right.addEventListener('mouseout', () => {
-        hideWikiLinkPreview();
-      });
-    }
-  } catch (e) { /* non-fatal */ }
-
   // Also add drop listeners to the editor pane itself
   const editorPane = document.querySelector('.editor-pane');
   if (editorPane) {
@@ -14055,141 +13092,6 @@ const initialize = () => {
     editorPane.addEventListener('dragleave', handleEditorDragLeave, { passive: false });
     editorPane.addEventListener('drop', handleEditor1Drop);
   }
-
-  // Hover preview for wiki-links inside the rendered preview area.
-  // Use event delegation so dynamic content is handled.
-  try {
-    const previewRoot = elements.preview || document.getElementById('markdown-preview');
-    if (previewRoot) {
-      // Track whether a preview is currently shown for hover
-      let hoverPreviewTarget = null;
-
-      const showHoverPreviewFor = async (target, event) => {
-        if (!target || !elements.mathPreviewPopup || !elements.mathPreviewPopupContent) return;
-        hoverPreviewTarget = target;
-        // Update last mouse position from the event immediately
-        try {
-          if (event && typeof event.clientX === 'number' && typeof event.clientY === 'number') {
-            state.lastMousePosition = { x: event.clientX, y: event.clientY };
-          }
-        } catch (e) {}
-
-        // If the target is an inlined embed (wikilink-inline-embedded), simply clone its content
-        if (target.classList && target.classList.contains('wikilink-inline-embedded')) {
-          try {
-            elements.mathPreviewPopupContent.innerHTML = '';
-            const clone = target.cloneNode(true);
-            // Remove interactive attributes that could break the popup
-            clone.removeAttribute('data-source-note-id');
-            elements.mathPreviewPopupContent.appendChild(clone);
-          } catch (e) {
-            try { elements.mathPreviewPopupContent.textContent = target.textContent || ''; } catch (e2) {}
-          }
-
-          // Position near mouse pointer (prefer event coords)
-          try {
-            const popupX = (event && event.clientX) ? (event.clientX + 12) : (state.lastMousePosition?.x + 12 || 12);
-            const popupY = (event && event.clientY) ? (event.clientY + 12) : (state.lastMousePosition?.y + 12 || 12);
-            elements.mathPreviewPopup.style.left = `${popupX}px`;
-            elements.mathPreviewPopup.style.top = `${popupY}px`;
-            elements.mathPreviewPopup.classList.add('visible');
-            elements.mathPreviewPopup.hidden = false;
-          } catch (e) {}
-          return;
-        }
-
-        // Otherwise resolve the wiki target and render a small preview (title + snippet or image)
-        try {
-          const wikiTarget = target.dataset?.wikiTarget ?? target.getAttribute('data-wiki-target') ?? target.textContent;
-          const parsed = parseWikiTarget(wikiTarget, { noteId: state.activeNoteId });
-          if (!parsed || !parsed.noteId) {
-            elements.mathPreviewPopupContent.textContent = target.textContent || '';
-          } else {
-            const note = state.notes.get(parsed.noteId);
-            if (!note) {
-              elements.mathPreviewPopupContent.textContent = target.textContent || '';
-            } else if (note.type === 'image') {
-              // create an image preview
-              elements.mathPreviewPopupContent.innerHTML = '';
-              const img = document.createElement('img');
-              img.src = note.absolutePath || note.storedPath || '';
-              img.alt = note.title || '';
-              img.style.maxWidth = '320px';
-              img.style.maxHeight = '240px';
-              img.style.objectFit = 'contain';
-              img.addEventListener('error', () => { elements.mathPreviewPopupContent.textContent = note.title || 'Image preview'; });
-              elements.mathPreviewPopupContent.appendChild(img);
-            } else if (note.type === 'video') {
-              elements.mathPreviewPopupContent.innerHTML = '';
-              const v = document.createElement('video');
-              v.controls = true;
-              v.preload = 'metadata';
-              v.style.maxWidth = '320px';
-              v.style.maxHeight = '240px';
-              const src = document.createElement('source');
-              src.src = note.absolutePath || note.storedPath || '';
-              v.appendChild(src);
-              elements.mathPreviewPopupContent.appendChild(v);
-            } else {
-              // Render a short HTML snippet from the note's markdown or show title/type for other types
-              if (note.type === 'markdown') {
-                elements.mathPreviewPopupContent.textContent = note.title || 'Markdown note';
-              } else {
-                elements.mathPreviewPopupContent.textContent = `${note.title || 'Untitled'} (${note.type})`;
-              }
-            }
-          }
-
-          // Position popup near cursor
-          const popupX = (event && typeof event.clientX === 'number') ? (event.clientX + 12) : (state.lastMousePosition?.x + 12 || 12);
-          const popupY = (event && typeof event.clientY === 'number') ? (event.clientY + 12) : (state.lastMousePosition?.y + 12 || 12);
-          elements.mathPreviewPopup.style.left = `${popupX}px`;
-          elements.mathPreviewPopup.style.top = `${popupY}px`;
-          elements.mathPreviewPopup.classList.add('visible');
-          elements.mathPreviewPopup.hidden = false;
-        } catch (e) {
-          try { elements.mathPreviewPopupContent.textContent = target.textContent || ''; } catch (e2) {}
-        }
-      };
-
-      const hideHoverPreview = (target) => {
-        try {
-          if (hoverPreviewTarget && (!target || hoverPreviewTarget === target)) {
-            hoverPreviewTarget = null;
-            elements.mathPreviewPopup.classList.remove('visible');
-            elements.mathPreviewPopup.hidden = true;
-          }
-        } catch (e) {}
-      };
-
-      // Delegate mouseenter/mouseleave and mousemove for positioning
-      previewRoot.addEventListener('mousemove', (ev) => {
-        try { state.lastMousePosition = { x: ev.clientX, y: ev.clientY }; } catch (e) {}
-      }, { passive: true });
-
-      previewRoot.addEventListener('mouseover', (ev) => {
-        try {
-          const target = ev.target.closest && ev.target.closest('.wikilink, .wikilink-inline-embedded, .wikilink-inline-embedded img');
-          if (!target) return;
-          showHoverPreviewFor(target, ev);
-        } catch (e) {}
-      });
-
-      previewRoot.addEventListener('mouseout', (ev) => {
-        try {
-          // If leaving to a child of the same wikilink, do nothing
-          const related = ev.relatedTarget;
-          const leaveFrom = ev.target.closest && ev.target.closest('.wikilink, .wikilink-inline-embedded');
-          if (leaveFrom && related && leaveFrom.contains && leaveFrom.contains(related)) return;
-          hideHoverPreview(leaveFrom);
-        } catch (e) {}
-      });
-
-      // Hide popup on scroll/resize to avoid stale positioning
-      window.addEventListener('scroll', () => { try { elements.mathPreviewPopup.classList.remove('visible'); elements.mathPreviewPopup.hidden = true; } catch (e) {} }, true);
-      window.addEventListener('resize', () => { try { elements.mathPreviewPopup.classList.remove('visible'); elements.mathPreviewPopup.hidden = true; } catch (e) {} });
-    }
-  } catch (e) { /* non-fatal */ }
 
   // second editor removed
 
@@ -16485,27 +15387,6 @@ const initialize = () => {
   }
   elements.fileName?.addEventListener('dblclick', handleFileNameDoubleClick);
   elements.fileName?.addEventListener('keydown', handleFileNameKeyDown);
-  // Clicking the file path copies it to clipboard
-  try {
-    elements.filePath?.addEventListener('click', (ev) => {
-      try {
-        const pathToCopy = (elements.filePath && elements.filePath.title) ? elements.filePath.title : (elements.filePath && elements.filePath.textContent) || '';
-        if (!pathToCopy) return;
-        // Prefer navigator.clipboard when available
-        const write = typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function';
-        if (write) {
-          navigator.clipboard.writeText(pathToCopy).then(() => {
-            try { if (elements.statusText) { elements.statusText.textContent = 'Copied path to clipboard'; setTimeout(() => { if (elements.statusText) elements.statusText.textContent = ''; }, 1200); } } catch (e) {}
-          }).catch(() => {
-            // fallback to IPC if provided
-            try { if (window.api && typeof window.api.invoke === 'function') window.api.invoke('clipboard:write', pathToCopy); } catch (e) {}
-          });
-        } else {
-          try { if (window.api && typeof window.api.invoke === 'function') window.api.invoke('clipboard:write', pathToCopy); if (elements.statusText) { elements.statusText.textContent = 'Copied path to clipboard'; setTimeout(() => { if (elements.statusText) elements.statusText.textContent = ''; }, 1200); } } catch (e) {}
-        }
-      } catch (e) { }
-    });
-  } catch (e) { }
   elements.renameFileForm?.addEventListener('submit', handleRenameFileFormSubmit);
   elements.renameFileInput?.addEventListener('keydown', handleRenameInputKeydown);
   elements.renameFileInput?.addEventListener('blur', handleRenameInputBlur);
@@ -16718,7 +15599,8 @@ const initialize = () => {
   window.addEventListener('pointerdown', handleCodePopoverOutsidePointerDown);
   window.addEventListener('keydown', handleCodePopoverKeydown, true);
 
-  window.addEventListener('keydown', handleGlobalShortcuts);
+  // Attach global shortcuts with capture so they run before editor-level handlers
+  document.addEventListener('keydown', handleGlobalShortcuts, true);
 
   // Inline chat event listeners
   elements.inlineChatSend?.addEventListener('click', handleChatSend);
@@ -16758,21 +15640,6 @@ const initialize = () => {
     elements.hashtagResizeHandle.addEventListener('pointerup', handleHashtagPanelResizeEnd);
     elements.hashtagResizeHandle.addEventListener('pointercancel', handleHashtagPanelResizeEnd);
     elements.hashtagResizeHandle.addEventListener('dblclick', () => setHashtagPanelHeight(200));
-  }
-
-  // Toggle minimize/restore for hashtag panel
-  if (elements.toggleHashtagMinimize) {
-    elements.toggleHashtagMinimize.addEventListener('click', (evt) => {
-      evt.preventDefault();
-      const container = document.querySelector('.hashtag-container');
-      if (!container) return;
-      const minimized = container.classList.contains('hashtag-minimized');
-      if (minimized) {
-        restoreHashtagPanel();
-      } else {
-        minimizeHashtagPanel();
-      }
-    });
   }
 
   // Tab event listeners
@@ -17041,39 +15908,6 @@ window.addEventListener('load', async () => {
   }
   // Initialize common settings controls (autosave, spellcheck, softwrap, default export)
   try { if (typeof initCommonSettingsControls === 'function') initCommonSettingsControls(); } catch (e) {  }
-  // Re-apply editor styles shortly after load to mitigate any startup ordering
-  // issues where the right editor may not receive the injected styles on initial render.
-  try {
-    setTimeout(() => { try { if (typeof applyEditorStyles === 'function') applyEditorStyles(); } catch (e) {} }, 100);
-    setTimeout(() => { try { if (typeof applyEditorStyles === 'function') applyEditorStyles(); } catch (e) {} }, 1000);
-  } catch (e) {}
-  // Restore persisted hashtag panel height/minimize state
-  try {
-    const persistedH = readStorage('NTA.hashtagPanelHeight');
-    if (persistedH) {
-      const v = parseInt(persistedH, 10);
-      if (!Number.isNaN(v)) setHashtagPanelHeight(v);
-    }
-    const minimized = readStorage('NTA.hashtagPanelMinimized') === 'true';
-    if (minimized) {
-      const container = document.querySelector('.hashtag-container');
-      if (container) {
-        container.classList.add('hashtag-minimized');
-      }
-      const toggleBtn = document.getElementById('toggle-hashtag-minimize');
-      if (toggleBtn) {
-        toggleBtn.textContent = '▴';
-        toggleBtn.setAttribute('aria-pressed', 'true');
-      }
-    }
-    else {
-      const toggleBtn = document.getElementById('toggle-hashtag-minimize');
-      if (toggleBtn) {
-        toggleBtn.textContent = '▾';
-        toggleBtn.setAttribute('aria-pressed', 'false');
-      }
-    }
-  } catch (e) {}
 });
 
 // Settings modal functions
@@ -17442,23 +16276,6 @@ function loadComponentSettings(component) {
     const showPath = localStorage.getItem('titlebar-show-path') !== 'false';
     const showPathCheckbox = document.getElementById('titlebar-show-path');
     if (showPathCheckbox) showPathCheckbox.checked = showPath;
-  }
-
-  // Load global "show filename only" setting into the settings checkbox
-  const showFilenameOnlyCheckbox = document.getElementById('show-filename-only');
-  if (showFilenameOnlyCheckbox) {
-    try {
-      const enabled = localStorage.getItem(storageKeys.showFileNameOnly) === 'true';
-      showFilenameOnlyCheckbox.checked = enabled;
-      showFilenameOnlyCheckbox.addEventListener('change', (evt) => {
-        try {
-          const val = evt.target.checked ? 'true' : 'false';
-          localStorage.setItem(storageKeys.showFileNameOnly, val);
-          // Refresh visible file metadata for the active pane/note
-          try { updateFileMetadataUI(state.notes.get(state.activeNoteId) ?? null, { allowActiveFallback: true }); } catch (e) {}
-        } catch (e) { }
-      });
-    } catch (e) { }
   }
 }
 
@@ -18160,8 +16977,6 @@ function applyFontFamily(fontFamily) {
   fontFamilyStyle.textContent = `
     body,
     #note-editor,
-    #note-editor-right,
-    .editor-pane textarea,
     #markdown-preview,
     .tree-node__name,
     .explorer__title,
@@ -18172,15 +16987,6 @@ function applyFontFamily(fontFamily) {
       font-family: ${fontStack} !important;
     }
   `;
-
-  // Also update shared editor config so all Editor instances inherit this
-  try {
-    const sharedFontStack = getFontStackForName(fontFamily);
-    Editor.sharedConfig = Editor.sharedConfig || {};
-    Editor.sharedConfig.fontFamily = sharedFontStack;
-    // Reapply to all existing editor instances
-    Object.values(editorInstances).forEach(inst => { try { if (inst && typeof inst.applySharedSettings === 'function') inst.applySharedSettings(); } catch (e) {} });
-  } catch (e) {}
 }
 
 // Return the CSS font-stack for a given fontFamily value (matches applyFontFamily logic)
@@ -18390,15 +17196,6 @@ function applyFontSize(fontSize) {
       font-size: ${baseSize}px !important;
     }
   `;
-
-  // Also update shared editor config so Editor instances use the computed editor size
-  try {
-    const baseSize = parseInt(fontSize);
-    const editorSize = Math.max(12, baseSize + 1);
-    Editor.sharedConfig = Editor.sharedConfig || {};
-    Editor.sharedConfig.fontSize = editorSize;
-    Object.values(editorInstances).forEach(inst => { try { if (inst && typeof inst.applySharedSettings === 'function') inst.applySharedSettings(); } catch (e) {} });
-  } catch (e) {}
 }
 
 function resetFontSize() {
@@ -19088,9 +17885,7 @@ function applyEditorStyles() {
   
   editorStyle.textContent = `
     #note-editor,
-    #note-editor-right,
-    .editor-pane textarea,
-    textarea[id^="note-editor-"] {
+    #note-editor textarea {
       background-color: ${bgColor} !important;
       font-family: ${fontStack} !important;
       font-size: ${fontSize}px !important;
@@ -20179,28 +18974,7 @@ const addImageHoverPreviews = () => {
   });
 };
 
-// Export initialize() for programmatic use (tests / embedding) and only
-// auto-run initialization when loaded in a browser-like environment (no
-// CommonJS exports). This avoids side-effects at require-time in Node/jsdom.
-try {
-  if (typeof module !== 'undefined' && module && module.exports) {
-    // CommonJS environment (Node/tests): export initialize for callers to run.
-    module.exports = module.exports || {};
-    module.exports.initialize = typeof initialize === 'function' ? initialize : null;
-  } else {
-    // Browser environment: run initialize when DOM is ready.
-    if (typeof document !== 'undefined') {
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initialize);
-      } else {
-        initialize();
-      }
-    }
-  }
-} catch (e) {
-  // Fallback: if we can access document, try to initialize; otherwise, do nothing.
-  try { if (typeof document !== 'undefined') initialize(); } catch (ee) { /* ignore */ }
-}
+initialize();
 
 // Table of Contents and Statistics functions
 const generateTableOfContents = () => {
@@ -20840,41 +19614,6 @@ function initializeAccessibility() {
   if (elements.resetKeybindingsBtn) {
     elements.resetKeybindingsBtn.addEventListener('click', resetKeybindings);
   }
-
-  // Keybinding input handling
-  let recordingKeys = false;
-  if (elements.keybindingKeysInput) {
-    elements.keybindingKeysInput.addEventListener('focus', () => {
-      recordingKeys = true;
-      elements.keybindingKeysInput.value = 'Press keys...';
-    });
-    elements.keybindingKeysInput.addEventListener('blur', () => {
-      recordingKeys = false;
-    });
-    elements.keybindingKeysInput.addEventListener('keydown', (e) => {
-      if (recordingKeys) {
-        e.preventDefault();
-        const combo = getKeyCombo(e);
-        elements.keybindingKeysInput.value = combo;
-        elements.keybindingKeysInput.blur();
-        recordingKeys = false;
-      }
-    });
-  }
-
-  if (elements.addKeybindingBtn) {
-    elements.addKeybindingBtn.addEventListener('click', () => {
-      const action = elements.keybindingActionSelect?.value;
-      const keys = elements.keybindingKeysInput?.value;
-      if (action && keys && keys !== 'Press keys...') {
-        addKeybinding(action, keys);
-        elements.keybindingActionSelect.value = '';
-        elements.keybindingKeysInput.value = '';
-      } else {
-        alert('Please select an action and record a key combination.');
-      }
-    });
-  }
   
   // Add global keydown listener for keybindings
   document.addEventListener('keydown', handleKeybinding);
@@ -20917,25 +19656,10 @@ function loadKeybindings() {
 function renderKeybindingsList() {
   if (!elements.keybindingsList) return;
   elements.keybindingsList.innerHTML = '';
-  (_keybindings || []).forEach((k, index) => {
+  (_keybindings || []).forEach(k => {
     const div = document.createElement('div');
     div.className = 'keybinding-item';
-    
-    const label = document.createElement('span');
-    label.className = 'keybinding-label';
-    label.textContent = `${k.action || 'unknown'} — ${k.keys || ''}`;
-    
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'settings-button--secondary';
-    removeBtn.textContent = 'Remove';
-    removeBtn.onclick = () => {
-      _keybindings.splice(index, 1);
-      saveKeybindings();
-      renderKeybindingsList();
-    };
-    
-    div.appendChild(label);
-    div.appendChild(removeBtn);
+    div.textContent = `${k.action || 'unknown'} — ${k.keys || ''}`;
     elements.keybindingsList.appendChild(div);
   });
 }
@@ -20946,35 +19670,7 @@ function resetKeybindings() {
   renderKeybindingsList();
 }
 
-function addKeybinding(action, keys) {
-  if (!action || !keys) return;
-  // Check if already exists
-  if (_keybindings.some(kb => kb.keys === keys)) {
-    alert('This key combination is already assigned.');
-    return;
-  }
-  _keybindings.push({ action, keys });
-  saveKeybindings();
-  renderKeybindingsList();
-}
-
-function saveKeybindings() {
-  try {
-    localStorage.setItem('NTA.keybindings', JSON.stringify(_keybindings));
-  } catch (e) {}
-}
-
 function handleKeybinding(e) {
-  // Check custom keybindings first
-  const keyCombo = getKeyCombo(e);
-  for (const kb of _keybindings || []) {
-    if (kb.keys === keyCombo) {
-      e.preventDefault();
-      executeKeybindingAction(kb.action, e);
-      return;
-    }
-  }
-
   // Minimal: intercept Ctrl/Cmd+Shift+P as example
   // Toggle: Cmd/Ctrl+Shift+P (example)
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
@@ -21074,27 +19770,6 @@ function initializeExportHandlers() {
     }
   });
 }
-
-// Expose selected internals for unit testing in Node/jsdom environments.
-try {
-  if (typeof module !== 'undefined' && module && module.exports) {
-    module.exports.__test__ = module.exports.__test__ || {};
-    // Export the visual updater and state so tests can exercise DOM updates.
-    module.exports.__test__.updateEditorPaneVisuals = typeof updateEditorPaneVisuals === 'function' ? updateEditorPaneVisuals : null;
-    module.exports.__test__.state = typeof state !== 'undefined' ? state : null;
-    // Export initialize so tests can explicitly initialize the app when needed.
-    module.exports.__test__.initialize = typeof initialize === 'function' ? initialize : null;
-    // Export a few runtime helpers so tests can simulate pane interactions
-    module.exports.__test__.openNoteInPane = typeof openNoteInPane === 'function' ? openNoteInPane : null;
-    module.exports.__test__.setActiveEditorPane = typeof setActiveEditorPane === 'function' ? setActiveEditorPane : null;
-    module.exports.__test__.renderActiveNote = typeof renderActiveNote === 'function' ? renderActiveNote : null;
-    module.exports.__test__.renderMarkdownPreview = typeof renderMarkdownPreview === 'function' ? renderMarkdownPreview : null;
-    module.exports.__test__.renderLatexPreview = typeof renderLatexPreview === 'function' ? renderLatexPreview : null;
-    module.exports.__test__.openNoteById = typeof openNoteById === 'function' ? openNoteById : null;
-    module.exports.__test__.updateFileMetadataUI = typeof updateFileMetadataUI === 'function' ? updateFileMetadataUI : null;
-  module.exports.__test__.applyWikiSuggestion = typeof applyWikiSuggestion === 'function' ? applyWikiSuggestion : null;
-  }
-} catch (e) { /* ignore in browsers */ }
 
 // Initialize export handlers when DOM is ready
 if (document.readyState === 'loading') {

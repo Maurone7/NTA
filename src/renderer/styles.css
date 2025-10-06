@@ -35,12 +35,32 @@ body[data-high-contrast="true"] {
   --danger: #ff0000;
 }
 
+/* Skip link for accessibility */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 6px;
+  background: var(--accent);
+  color: white;
+  padding: 8px;
+  text-decoration: none;
+  border-radius: 4px;
+  z-index: 10000;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.skip-link:focus {
+  top: 6px;
+}
+
 /* Custom Title Bar */
 .title-bar {
   display: none; /* Hidden by default, shown only on macOS */
   height: var(--title-bar-height);
   background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
+  /* remove visual separator between title bar and workspace toolbar */
+  border-bottom: none;
   -webkit-app-region: drag;
   position: relative;
   z-index: 1000;
@@ -148,6 +168,12 @@ body.platform-linux {
 .tab-bar__new-tab .icon {
   font-size: 16px;
   line-height: 1;
+}
+
+/* Remove any leftover tab bar UI (markup removed from HTML but keep safe) */
+.tab-bar,
+.tab-bar__new-tab {
+  display: none !important;
 }
 
 /* Individual Tabs */
@@ -377,6 +403,12 @@ body[data-high-contrast="true"] {
   transform: translateY(-5px);
   transition: opacity 0.15s ease, transform 0.15s ease;
 }
+.citation-modal__list { max-height: 40vh; overflow: auto; padding: 8px; display:flex; flex-direction:column; gap:6px; }
+.citation-item { padding:8px; border-radius:6px; background:var(--bg); border:1px solid var(--border); cursor:pointer; display:flex; flex-direction:column; }
+.citation-item .cite-key { font-family: monospace; font-size:12px; color:var(--fg-soft); }
+.citation-item .cite-title { font-weight:600; color:var(--fg); margin-top:4px; }
+.citation-item .cite-meta { font-size:12px; color:var(--fg-soft); margin-top:4px; }
+.citation-search { width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; margin-bottom:8px; }
 
 .math-preview-popup.visible {
   opacity: 1;
@@ -470,13 +502,13 @@ body {
 .editor-math-overlay .katex, .editor-math-overlay .katex-display { color: inherit; margin: 0; }
 .editor-math-overlay .editor-math-block {
   display: block;
-  text-align: center;
-  margin: 1em 0;
+  text-align: left;
+  margin: 0.5em 0 1em 0;
 }
 .editor-math-block { 
   display: block; 
-  text-align: center;
-  margin: 1em 0; 
+  text-align: left;
+  margin: 1em 0 2em 0;
   background: transparent; 
 }
 
@@ -518,7 +550,21 @@ body {
 }
 .editor-table { display: block; background: rgba(0,0,0,0.02); padding: 6px; border-radius: 6px; }
 
-.editor-math-inline { display: inline-block; vertical-align: middle; }
+.editor-math-inline { display: inline-block; vertical-align: 6px; line-height: 1; text-align: left; margin: 0 25px; }
+
+.mirror-text {
+  display: inline;
+  color: var(--fg);
+  font-family: var(--font-family);
+  font-size: 15px;
+  line-height: 1;
+  white-space: pre-wrap;
+  position: relative;
+  z-index: 3;
+  vertical-align: 6px;
+  text-align: left;
+  margin: 0 2px 0 8px;
+}
 
 .editor-wikilink { 
   display: inline-block; 
@@ -661,8 +707,9 @@ textarea {
   justify-content: space-between; /* Space between title and actions */
   gap: 4px;
   padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
+  /* remove visible header bar */
+  border-bottom: none;
+  background: transparent;
 }
 
 .explorer__actions {
@@ -791,10 +838,18 @@ button[data-tooltip]:hover::after {
 
 /* Hashtag container - anchored to bottom */
 .hashtag-container {
-  margin-top: 0;
+  /* Anchor the hashtag container to the bottom of the sidebar */
+  margin-top: auto;
   display: flex;
   flex-direction: column;
-  min-height: 120px;
+  min-height: 40px;
+  /* allow explicit height control when minimized/restored */
+  height: var(--hashtag-panel-height, 300px);
+  /* ensure it visually sits at the bottom and doesn't push other content */
+  order: 99;
+  /* Smooth height transition for minimize/restore */
+  transition: height 220ms ease, max-height 220ms ease;
+  overflow: hidden;
 }
 
 /* Hashtag resize handle */
@@ -816,6 +871,32 @@ button[data-tooltip]:hover::after {
   background: transparent;
 }
 
+/* Minimized hashtag panel */
+.hashtag-container.hashtag-minimized {
+  /* When minimized, occupy only a single header line (compact) */
+  height: 32px !important;
+  min-height: 32px !important;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  overflow: visible;
+}
+
+.hashtag-container.hashtag-minimized .hashtag-list,
+.hashtag-container.hashtag-minimized .hashtag-detail {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Hide the resize handle when minimized to avoid accidental drags */
+.hashtag-container.hashtag-minimized .hashtag-resize-handle {
+  display: none !important;
+}
+
+.explorer__section-header .explorer__section-actions { display:flex; gap:6px; align-items:center; }
+
 .explorer__empty {
   flex: 1;
   border-radius: 0;
@@ -829,11 +910,85 @@ button[data-tooltip]:hover::after {
   padding: 40px 20px;
 }
 
+.empty-state {
+  max-width: 280px;
+}
+
+.empty-state__icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+}
+
+.empty-state__title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--fg);
+  margin-bottom: 8px;
+}
+
+.empty-state__description {
+  font-size: 13px;
+  line-height: 1.4;
+  margin-bottom: 16px;
+}
+
+.empty-state__tips {
+  text-align: left;
+}
+
+.empty-state__tips .tip {
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+  color: var(--fg-soft);
+}
+
+.empty-state__tips .tip:last-child {
+  margin-bottom: 0;
+}
+
+.empty-state__tips kbd {
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.empty-state__tips code {
+  background: var(--bg-muted);
+  border-radius: 3px;
+  padding: 1px 3px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
 #hashtag-panel .explorer__empty {
   min-height: 120px;
   padding: 18px;
   font-size: 12px;
   border-radius: 0;
+}
+
+#hashtag-panel .empty-state {
+  max-width: none;
+}
+
+#hashtag-panel .empty-state__icon {
+  font-size: 24px;
+}
+
+#hashtag-panel .empty-state__title {
+  font-size: 14px;
+}
+
+#hashtag-panel .empty-state__description {
+  font-size: 12px;
+}
+
+#hashtag-panel .empty-state__tips .tip {
+  font-size: 11px;
 }
 
 #hashtag-panel {
@@ -1266,6 +1421,8 @@ button[data-tooltip]:hover::after {
   align-items: center;
   justify-content: space-between;
   padding: 8px 24px;
+  /* remove top border so it sits flush under the custom title bar */
+  border-top: none;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   gap: 16px;
@@ -1397,6 +1554,7 @@ button[data-tooltip]:hover::after {
   border: none;
   color: var(--fg-soft);
 }
+
 #toggle-split-button[aria-pressed="true"] {
   background: var(--bg-muted);
   color: var(--fg);
@@ -1834,6 +1992,14 @@ button.small {
   display: none;
 }
 
+.workspace__content.latex-mode .preview-pane {
+  flex: 1 1 auto;
+}
+
+.workspace__content.latex-mode #markdown-preview {
+  display: none;
+}
+
 
 
 .editor-pane {
@@ -1941,6 +2107,20 @@ button.small {
   min-height: 0;
 }
 
+/* Minimal visual for showing a faux gutter and padding when line numbers enabled */
+.editor-show-line-numbers {
+  padding-left: 56px !important; /* leave space for pseudo-gutter */
+  background-image: linear-gradient(transparent, transparent);
+  background-repeat: no-repeat;
+  background-position: 12px 0;
+}
+
+/* Ensure tab size is applied - modern browsers respect tab-size or -moz-tab-size */
+.editor-pane textarea, #note-editor-right, textarea[id^="note-editor-"] {
+  tab-size: 4; /* default; updated dynamically by inline style when user changes */
+  -moz-tab-size: 4;
+}
+
 /* Mirror scrollbar styles for right editor */
 #note-editor-right::-webkit-scrollbar { width: 4px; }
 #note-editor-right::-webkit-scrollbar-track { background: transparent; }
@@ -1980,9 +2160,42 @@ button.small {
   justify-content: center;
 }
 
+
+.editor-pane.active,
 .editor-pane--left.active,
-.editor-pane--right.active {
-  box-shadow: 0 0 0 2px rgba(76,110,245,0.06) inset;
+.editor-pane--right.active,
+.editor-pane--dynamic.active {
+  /* No blue outline; use a subtle brightness increase for active editor panes
+     Apply to all pane variants (left/right/dynamic/generic) so the visual
+     treatment is consistent regardless of how the pane was created. */
+  box-shadow: none !important;
+  filter: brightness(1.03);
+  transition: filter 160ms ease, background-color 160ms ease;
+}
+
+/* Slightly dim inactive editor panes so the active one stands out. */
+.editor-pane:not(.active) {
+  filter: brightness(0.98);
+  transition: filter 160ms ease;
+}
+
+/* In dark theme, make inactive editors slightly gray/washed so the active
+   editor reads clearly. We apply a small grayscale + stronger dimming. */
+body[data-theme="dark"] .editor-pane:not(.active) {
+  filter: grayscale(0.22) brightness(0.92);
+}
+
+/* Ensure no browser/OS focus ring or leftover box-shadow appears on editor panes
+   or any focusable child elements (textareas, inputs) inside them. This
+   overrides lingering rules that used the accent color for focus styling. */
+.editor-pane,
+.editor-pane *:focus,
+.editor-pane textarea:focus,
+#note-editor-right:focus,
+.editor-pane--right:focus,
+.editor-pane--right *:focus {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 .editor-pane--left.active .editor-pane__badge,
@@ -2203,6 +2416,10 @@ button.small {
   padding: 24px;
 }
 
+.image-viewer.visible {
+  display: flex;
+}
+
 .image-viewer img {
   max-width: 100%;
   height: auto;
@@ -2318,7 +2535,6 @@ button.small {
 .workspace__content.html-mode #code-viewer {
   display: none;
 }
-
 .workspace__content.code-mode #code-viewer {
   display: block;
 }
@@ -2545,10 +2761,15 @@ button.small {
   padding: 6px 24px;
   font-size: 12px;
   color: var(--fg-soft);
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: space-between;
   min-height: 24px;
+}
+
+/* Force hashtag list visible */
+#hashtag-list, .hashtag-list {
+  display: flex !important;
 }
 
 .status-bar__settings {
@@ -2656,7 +2877,12 @@ button.small {
   display: flex;
   background: var(--bg-elevated);
   margin: 0;
-  padding: 0 24px;
+  padding: 0 8px;
+  overflow-x: auto; /* enable horizontal scrolling when items overflow */
+  -webkit-overflow-scrolling: touch; /* smooth momentum scrolling on touch devices */
+  scrollbar-width: thin;
+  touch-action: pan-x; /* allow horizontal swipe gestures */
+  white-space: nowrap; /* keep items in a single row so they can scroll */
 }
 
 .settings-nav__item {
@@ -2669,6 +2895,7 @@ button.small {
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
+  flex: 0 0 auto; /* prevent items from shrinking so they can scroll horizontally */
 }
 
 .settings-nav__item:hover {
@@ -2678,6 +2905,113 @@ button.small {
 .settings-nav__item.active {
   color: var(--accent);
 }
+
+/* subtle scroll hint: gradient overlay at right edge when nav overflows */
+.settings-nav {
+  position: relative;
+}
+.settings-nav::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  pointer-events: none;
+  background: linear-gradient(to right, rgba(0,0,0,0), var(--bg-elevated));
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.settings-nav[data-overflow="true"]::after { opacity: 1; }
+
+/* workspace toolbar and icon button polish */
+.workspace__toolbar { align-items: center; }
+.workspace__actions .icon-button {
+  background: transparent;
+  border: none;
+  padding: 6px 8px;
+  margin-left: 6px;
+  border-radius: 8px;
+  transition: background 140ms ease, transform 120ms ease;
+}
+.workspace__actions .icon-button:hover {
+  background: var(--bg-muted);
+  transform: translateY(-1px);
+}
+.workspace__actions .icon-button:focus {
+  outline: 2px solid var(--accent-weak);
+  outline-offset: 2px;
+}
+
+/* Export dropdown menu subtle elevation */
+.export-dropdown__menu {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+/* Hashtag pill styling for better readability */
+.hashtag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.hashtag-pill:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,0.06); }
+.hashtag-pill--active { background: linear-gradient(90deg, var(--accent), var(--accent-dim)); color: white; border-color: transparent; }
+.hashtag-pill__count { background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 6px; font-size: 12px; }
+
+/* Hashtag detail items as cards */
+.hashtag-detail__item {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.hashtag-detail__item:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+
+/* Status bar polish */
+.status-bar { background: var(--bg-elevated); border-top: 1px solid var(--border); padding: 8px 12px; display:flex; align-items:center; gap:8px; }
+.status-bar span { color: var(--fg-soft); font-size: 13px; }
+.status-bar__settings { margin-left: 8px; border-radius: 6px; padding: 6px; transition: background 120ms ease; }
+.status-bar__settings:hover { background: var(--bg-muted); }
+
+/* Autosave indicator and manual save button */
+.status-bar__autosave {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-soft);
+}
+.status-bar__autosave .autosave-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+}
+.status-bar__autosave .autosave-dot.active { background: var(--accent); box-shadow: 0 0 6px rgba(76,110,245,0.25); }
+.status-bar__autosave button.save-now {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-soft);
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.status-bar__autosave button.save-now:hover { background: var(--bg-muted); color: var(--fg); }
+
+/* small global radii and button smoothing */
+button, .settings-button, input[type='range'] { border-radius: 6px; }
 
 /* Settings Tabs Container */
 .settings-tabs-container {
@@ -3574,6 +3908,41 @@ body[data-theme="dark"] {
 }
 
 /* Keybinding Styles */
+.keybinding-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.keybindings-list {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+}
+
+.keybinding-input-group {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.keybinding-select {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.keybinding-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-weak);
+}
+
 .keybinding-item {
   display: flex;
   justify-content: space-between;
@@ -3610,13 +3979,206 @@ body[data-theme="dark"] {
 }
 
 /* High contrast adjustments for keybindings */
+body[data-high-contrast="true"] .keybinding-select,
 body[data-high-contrast="true"] .keybinding-input {
   border-color: var(--border-strong);
   background: var(--bg);
 }
 
+body[data-high-contrast="true"] .keybinding-select:focus,
 body[data-high-contrast="true"] .keybinding-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-weak);
 }
 
+/* LaTeX Preview Styles */
+.latex-preview {
+  font-family: "Computer Modern", "Latin Modern Roman", serif;
+  line-height: 1.6;
+}
+
+.latex-preview h2 {
+  margin-top: 2em;
+  margin-bottom: 1em;
+  font-size: 1.5em;
+  font-weight: bold;
+}
+
+.latex-preview h3 {
+  margin-top: 1.5em;
+  margin-bottom: 0.8em;
+  font-size: 1.3em;
+  font-weight: bold;
+}
+
+.latex-preview h4 {
+  margin-top: 1.2em;
+  margin-bottom: 0.6em;
+  font-size: 1.1em;
+  font-weight: bold;
+}
+
+.latex-preview ul, .latex-preview ol {
+  margin: 1em 0;
+  padding-left: 2em;
+}
+
+.latex-preview li {
+  margin: 0.5em 0;
+}
+
+.latex-preview .katex {
+  font-size: 1.1em;
+}
+
+.latex-preview .katex-display {
+  margin: 1em 0;
+  text-align: center;
+}
+
+/* Table of Contents Modal */
+.toc-content {
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: var(--font-family);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.toc-content ul {
+  margin: 0;
+  padding-left: 1.5em;
+}
+
+.toc-content li {
+  margin: 0.25em 0;
+}
+
+.toc-content a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.toc-content a:hover {
+  text-decoration: underline;
+}
+
+/* Statistics Modal */
+.stats-modal .modal__content {
+  width: 480px;
+  max-width: calc(100% - 20px);
+}
+
+.stats-content {
+  font-family: var(--font-family);
+  width: 100%;
+}
+
+.stats-modal .modal__body {
+  padding: 6px;
+  width: 100%;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.375rem;
+  margin-top: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0.5rem 0.25rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-height: 60px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.stat-label {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--fg-soft);
+  margin-bottom: 0.25rem;
+  line-height: 1.2;
+}
+
+.stat-value {
+  font-size: 1.1em;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+/* Templates Modal */
+.templates-modal .modal__content {
+  width: 400px;
+  max-width: calc(100% - 20px);
+}
+
+.templates-content {
+  font-family: var(--font-family);
+  width: 100%;
+}
+
+.templates-modal .modal__body {
+  padding: 6px;
+  width: 100%;
+}
+
+.templates-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.375rem;
+  margin-top: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.template-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem 0.25rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  min-height: 70px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.template-item:hover {
+  background: var(--bg);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.template-icon {
+  font-size: 1.3rem;
+  margin-bottom: 0.2rem;
+}
+
+.template-name {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 0.1rem;
+  line-height: 1.2;
+}
+
+.template-description {
+  font-size: 0.65em;
+  color: var(--fg-soft);
+  line-height: 1.2;
+}

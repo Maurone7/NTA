@@ -12,6 +12,8 @@
     <link rel="stylesheet" href="../../node_modules/katex/dist/katex.min.css" />
   </head>
   <body>
+    <!-- Skip to main content link for accessibility -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
     <!-- Custom Title Bar for macOS -->
     <div id="title-bar" class="title-bar">
       <div class="title-bar__content">
@@ -41,15 +43,7 @@
       </div>
     </div>
 
-    <!-- Tab Bar -->
-    <div id="tab-bar" class="tab-bar">
-      <div class="tab-bar__tabs" id="tab-bar-tabs">
-        <!-- Tabs will be dynamically added here -->
-      </div>
-      <button id="new-tab-button" class="tab-bar__new-tab" title="New Tab (Cmd+T)" aria-label="Open new tab">
-        <span class="icon">+</span>
-      </button>
-    </div>
+    <!-- Tab Bar (removed) -->
 
     <div class="app-shell">
       <aside class="explorer" aria-label="Workspace explorer">
@@ -65,34 +59,44 @@
             >
               <span class="icon">📁</span>
             </button>
-            <button
-              id="create-file-button"
-              class="icon-button small"
-              data-tooltip="New File (⌘N)"
-            >
-              <span class="icon">➕</span>
-            </button>
           </div>
         </div>
         <div id="workspace-tree" class="explorer__tree" role="tree" aria-label="Workspace files"></div>
         <div id="workspace-empty" class="explorer__empty">
-          Open a folder to browse Markdown and PDF files.
+          <div class="empty-state">
+            <div class="empty-state__icon">📁</div>
+            <div class="empty-state__title">No folder open</div>
+            <div class="empty-state__description">
+              Open a folder to start taking notes with Markdown and PDF support.
+            </div>
+            <div class="empty-state__tips">
+              <div class="tip">💡 <strong>Tip:</strong> Use <kbd>⌘O</kbd> to quickly open a folder</div>
+              <div class="tip">📝 Create notes with <code>[[Wiki Links]]</code> and <code>#hashtags</code></div>
+            </div>
+          </div>
         </div>
         <div class="hashtag-container">
           <div id="hashtag-resize-handle" class="hashtag-resize-handle" title="Drag to resize hashtag panel"></div>
           <section id="hashtag-panel" class="explorer__section" aria-label="Hashtag index">
             <header class="explorer__section-header">
               <div class="explorer__section-title">Hashtags</div>
-              <button id="clear-hashtag-filter" class="ghost small" type="button" hidden>Clear</button>
+              <div class="explorer__section-actions">
+                <button id="toggle-hashtag-minimize" class="ghost small" type="button" title="Minimize/Restore hashtags">▾</button>
+                <button id="clear-hashtag-filter" class="ghost small" type="button" hidden>Clear</button>
+              </div>
             </header>
-            <div id="hashtag-empty" class="explorer__empty" hidden>No hashtags yet.</div>
+            <div id="hashtag-empty" class="explorer__empty" hidden>
+              <div class="empty-state">
+                <div class="empty-state__title">No hashtags yet, add an hastags with #</div>
+              </div>
+            </div>
             <div id="hashtag-list" class="hashtag-list" role="list"></div>
             <div id="hashtag-detail" class="hashtag-detail" hidden aria-live="polite"></div>
           </section>
         </div>
       </aside>
       <div class="sidebar-resize-handle" title="Drag to resize sidebar"></div>
-      <main class="workspace">
+      <main class="workspace" id="main-content">
         <div class="workspace__toolbar">
           <div class="workspace__filemeta">
             <div class="workspace__filename-wrapper">
@@ -114,14 +118,14 @@
             <input
               id="editor-search-input"
               type="text"
-              placeholder="Search in note…"
+              placeholder="Search in note… (⌘F)"
               aria-label="Search in current note"
               autocomplete="off"
             />
             <div class="workspace__search-controls">
-              <button type="button" id="editor-search-prev" aria-label="Previous match">↑</button>
-              <button type="button" id="editor-search-next" aria-label="Next match">↓</button>
-              <button type="button" id="editor-search-close" aria-label="Close search">✕</button>
+              <button type="button" id="editor-search-prev" aria-label="Previous match (↑)" title="Previous match (↑)">↑</button>
+              <button type="button" id="editor-search-next" aria-label="Next match (↓)" title="Next match (↓)">↓</button>
+              <button type="button" id="editor-search-close" aria-label="Close search (Esc)" title="Close search (Esc)">✕</button>
             </div>
             <div id="editor-search-count" class="workspace__search-count" aria-live="polite">0 / 0</div>
           </div>
@@ -135,6 +139,17 @@
               aria-pressed="false"
             >
               <span class="icon" aria-hidden="true">◀</span>
+            </button>
+            <!-- Add pane / split toggle button -->
+            <button
+              id="toggle-split-button"
+              type="button"
+              class="ghost icon-button"
+              title="Add pane / Toggle split (⌥⌘P)"
+              aria-label="Add pane / Toggle split"
+              aria-pressed="false"
+            >
+              <span class="icon" aria-hidden="true">+</span>
             </button>
             <!-- Dual editor removed -->
             <button
@@ -151,17 +166,44 @@
               id="toggle-math-wysiwyg-button"
               type="button"
               class="ghost icon-button"
-              title="Toggle Math WYSIWYG"
+              title="Toggle Math WYSIWYG (⌘L)"
               aria-label="Toggle Math WYSIWYG"
               aria-pressed="false"
             >
               <span class="icon" aria-hidden="true">∑</span>
             </button>
+            <button
+              id="generate-toc-button"
+              type="button"
+              class="ghost icon-button"
+              title="Generate Table of Contents (⌘T)"
+              aria-label="Generate Table of Contents"
+            >
+              <span class="icon" aria-hidden="true">📑</span>
+            </button>
+            <button
+              id="show-stats-button"
+              type="button"
+              class="ghost icon-button"
+              title="Show Note Statistics (⌘I)"
+              aria-label="Show Note Statistics"
+            >
+              <span class="icon" aria-hidden="true">📊</span>
+            </button>
+            <button
+              id="show-templates-button"
+              type="button"
+              class="ghost icon-button"
+              title="Note Templates (⌘⇧T)"
+              aria-label="Note Templates"
+            >
+              <span class="icon" aria-hidden="true">📝</span>
+            </button>
             <div class="export-dropdown">
               <button
                 id="export-dropdown-button"
                 class="ghost export-dropdown__button"
-                title="Export current note"
+                title="Export current note (⌘E)"
                 aria-haspopup="true"
                 aria-expanded="false"
               >
@@ -203,22 +245,12 @@
                 </button>
               </div>
             </div>
-            <!-- Create new editor pane -->
-            <button
-              id="toggle-split-button"
-              type="button"
-              class="ghost icon-button"
-              title="Create new editor pane"
-              aria-label="Create new editor pane"
-              aria-pressed="false"
-            >
-              <span class="icon" aria-hidden="true">＋</span>
-            </button>
+            <!-- toggle-split-button removed -->
           </div>
         </div>
         <div class="workspace__content">
           <section class="editor-pane editor-pane--left" aria-label="Markdown editor (left)">
-            <div class="editor-pane__badge" data-pane="left">Left</div>
+            <div class="editor-pane__badge" data-pane="left"></div>
             <div
               id="editor-search-highlights"
               class="editor-search-highlights"
@@ -293,7 +325,7 @@
           <div class="editors__divider" aria-hidden="true"></div>
           <!-- Add right editor pane for side-by-side editing -->
           <section class="editor-pane editor-pane--right" aria-label="Markdown editor (right)">
-            <div class="editor-pane__badge" data-pane="right">Right</div>
+            <div class="editor-pane__badge" data-pane="right"></div>
             <div class="editor-pane__actions">
               <button id="close-right-editor" class="icon-button small" type="button" title="Close right editor" aria-label="Close right editor">✕</button>
             </div>
@@ -373,15 +405,148 @@
               </div>
             </div>
           </div>
+
+          <!-- Table of Contents Modal -->
+          <div id="toc-modal" class="modal" hidden aria-hidden="true" style="display:none;">
+            <div class="modal__content">
+              <div class="modal__header">
+                <h4>Table of Contents</h4>
+                <button id="toc-close" class="icon-button small" aria-label="Close" onclick="(function(){const m=document.getElementById('toc-modal'); if(m){m.hidden=true; m.style.display='none'; m.setAttribute('aria-hidden','true');}})()">✕</button>
+              </div>
+              <div class="modal__body">
+                <div id="toc-content" class="toc-content">
+                  <!-- Table of contents will be generated here -->
+                </div>
+              </div>
+              <div class="modal__footer">
+                <button id="toc-insert" class="primary small">Insert at Cursor</button>
+                <button id="toc-copy" class="ghost small">Copy to Clipboard</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Statistics Modal -->
+          <div id="stats-modal" class="modal" hidden aria-hidden="true" style="display:none;">
+            <div class="modal__content">
+              <div class="modal__header">
+                <h4>Note Statistics</h4>
+                <button id="stats-close" class="icon-button small" aria-label="Close" onclick="(function(){const m=document.getElementById('stats-modal'); if(m){m.hidden=true; m.style.display='none'; m.setAttribute('aria-hidden','true');}})()">✕</button>
+              </div>
+              <div class="modal__body">
+                <div id="stats-content" class="stats-content">
+                  <div class="stats-grid">
+                    <div class="stat-item">
+                      <div class="stat-label">Words</div>
+                      <div class="stat-value" id="stat-words">0</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Characters</div>
+                      <div class="stat-value" id="stat-chars">0</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Characters (no spaces)</div>
+                      <div class="stat-value" id="stat-chars-no-spaces">0</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Lines</div>
+                      <div class="stat-value" id="stat-lines">0</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Paragraphs</div>
+                      <div class="stat-value" id="stat-paragraphs">0</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Headings</div>
+                      <div class="stat-value" id="stat-headings">0</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Links</div>
+                      <div class="stat-value" id="stat-links">0</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Images</div>
+                      <div class="stat-value" id="stat-images">0</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Code Blocks</div>
+                      <div class="stat-value" id="stat-code-blocks">0</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Math Expressions</div>
+                      <div class="stat-value" id="stat-math">0</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Reading Time</div>
+                      <div class="stat-value" id="stat-reading-time">0 min</div>
+                    </div>
+                    <div class="stat-item">
+                      <div class="stat-label">Hashtags</div>
+                      <div class="stat-value" id="stat-hashtags">0</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Templates Modal -->
+          <div id="templates-modal" class="modal" hidden aria-hidden="true" style="display:none;">
+            <div class="modal__content">
+              <div class="modal__header">
+                <h4>Note Templates</h4>
+                <button id="templates-close" class="icon-button small" aria-label="Close" onclick="(function(){const m=document.getElementById('templates-modal'); if(m){m.hidden=true; m.style.display='none'; m.setAttribute('aria-hidden','true');}})()">✕</button>
+              </div>
+              <div class="modal__body">
+                <div id="templates-content" class="templates-content">
+                  <div class="templates-grid">
+                    <div class="template-item" data-template="meeting">
+                      <div class="template-icon">👥</div>
+                      <div class="template-name">Meeting Notes</div>
+                      <div class="template-description">Structured notes for meetings</div>
+                    </div>
+                    <div class="template-item" data-template="project">
+                      <div class="template-icon">📋</div>
+                      <div class="template-name">Project Plan</div>
+                      <div class="template-description">Project planning and tracking</div>
+                    </div>
+                    <div class="template-item" data-template="research">
+                      <div class="template-icon">🔬</div>
+                      <div class="template-name">Research Notes</div>
+                      <div class="template-description">Academic or technical research</div>
+                    </div>
+                    <div class="template-item" data-template="journal">
+                      <div class="template-icon">📔</div>
+                      <div class="template-name">Daily Journal</div>
+                      <div class="template-description">Personal daily reflections</div>
+                    </div>
+                    <div class="template-item" data-template="todo">
+                      <div class="template-icon">✅</div>
+                      <div class="template-name">Task List</div>
+                      <div class="template-description">Organized todo list</div>
+                    </div>
+                    <div class="template-item" data-template="blank">
+                      <div class="template-icon">📄</div>
+                      <div class="template-name">Blank Note</div>
+                      <div class="template-description">Start with a clean slate</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <footer class="status-bar">
-          <span id="status-text">Ready.</span>
+          <span id="status-text" aria-live="polite">Ready.</span>
+          <div class="status-bar__autosave" aria-live="polite">
+            <div class="autosave-dot" id="autosave-dot" title="Autosave status"></div>
+            <div id="autosave-text">Autosave off</div>
+            <button class="save-now" id="save-now-button" title="Save Now">Save now</button>
+          </div>
           <button id="settings-button" class="status-bar__settings" title="Settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
-          </button>
           </button>
         </footer>
       </main>
@@ -390,6 +555,7 @@
     <script src="../../node_modules/marked/marked.min.js"></script>
     <script src="../../node_modules/dompurify/dist/purify.min.js"></script>
     <script src="../../node_modules/katex/dist/katex.min.js"></script>
+    <script src="../../node_modules/katex/dist/contrib/auto-render.min.js"></script>
     <script type="module" src="./app.js"></script>
 
     <div id="workspace-context-menu" class="context-menu" role="menu" hidden>
@@ -416,8 +582,8 @@
           <button class="settings-nav__item" data-tab="accessibility">Accessibility</button>
           <button class="settings-nav__item" data-tab="layout">Layout</button>
           <button class="settings-nav__item" data-tab="export">Export</button>
-          <button class="settings-nav__item" data-tab="advanced">Advanced</button>
           <button class="settings-nav__item" data-tab="application">Application</button>
+          <button class="settings-nav__item" data-tab="advanced">Advanced</button>
         </div>
         
         <!-- Settings Content -->
@@ -471,6 +637,42 @@
                     <button id="reset-font-size" class="settings-button--secondary">Reset</button>
                   </div>
                 </div>
+                <!-- Common extra settings -->
+                <div class="settings-item">
+                  <label class="settings-item__label">Autosave</label>
+                  <div class="toggle-group">
+                    <input type="checkbox" id="autosave-toggle" class="settings-toggle">
+                    <label for="autosave-toggle" class="toggle-label">Enable autosave</label>
+                  </div>
+                </div>
+                <div class="settings-item">
+                  <label class="settings-item__label">Autosave Interval</label>
+                  <div class="slider-group">
+                    <input type="range" id="autosave-interval" class="settings-slider" min="5" max="300" value="30" step="5">
+                    <span id="autosave-interval-value" class="slider-value">30s</span>
+                  </div>
+                </div>
+                <div class="settings-item">
+                  <label class="settings-item__label">Editor Spellcheck</label>
+                  <div class="toggle-group">
+                    <input type="checkbox" id="spellcheck-toggle" class="settings-toggle" checked>
+                    <label for="spellcheck-toggle" class="toggle-label">Enable spellcheck in editor</label>
+                  </div>
+                </div>
+                <div class="settings-item">
+                  <label class="settings-item__label">Soft Wrap</label>
+                  <div class="toggle-group">
+                    <input type="checkbox" id="softwrap-toggle" class="settings-toggle" checked>
+                    <label for="softwrap-toggle" class="toggle-label">Wrap long lines in editor</label>
+                  </div>
+                </div>
+                <div class="settings-item">
+                  <label class="settings-item__label">File Path Display</label>
+                  <div class="toggle-group">
+                    <input type="checkbox" id="show-filename-only" class="settings-toggle">
+                    <label for="show-filename-only" class="toggle-label">Show filename only (hide directory path)</label>
+                  </div>
+                </div>
                 
               </div>
             </div>
@@ -489,8 +691,24 @@
                 <div class="settings-section">
                   <h4 class="settings-section__title">Keyboard Shortcuts</h4>
                   <div class="settings-item">
-                    <label class="settings-item__label">Customize Keybindings</label>
+                    <label class="settings-item__label">Add Custom Keybinding</label>
                     <div class="keybinding-controls">
+                      <div class="keybinding-input-group">
+                        <select id="keybinding-action-select" class="keybinding-select">
+                          <option value="">Select Action</option>
+                          <option value="export-pdf">Export PDF</option>
+                          <option value="export-html">Export HTML</option>
+                          <option value="settings">Open Settings</option>
+                          <option value="bold">Bold Text</option>
+                          <option value="italic">Italic Text</option>
+                          <option value="code">Code Block</option>
+                          <option value="link">Insert Link</option>
+                          <option value="insert-latex">Insert LaTeX Block</option>
+                          <option value="open-citation">Open Citation Picker</option>
+                        </select>
+                        <input type="text" id="keybinding-keys-input" class="keybinding-input" placeholder="Press keys (e.g., Ctrl+S)" readonly>
+                        <button id="add-keybinding-btn" class="settings-button--primary">Add</button>
+                      </div>
                       <div id="keybindings-list" class="keybindings-list">
                         <!-- Keybindings will be populated dynamically -->
                       </div>
@@ -519,12 +737,28 @@
                     <button id="reset-border-thickness" class="settings-button--secondary">Reset</button>
                   </div>
                 </div>
+                <div class="settings-item">
+                  <label class="settings-item__label">Show Line Numbers</label>
+                  <div class="toggle-group">
+                    <input type="checkbox" id="show-line-numbers" class="settings-toggle">
+                    <label for="show-line-numbers" class="toggle-label">Show line numbers in editor</label>
+                  </div>
+                </div>
               </div>
             </div>
             
             <!-- Export Tab -->
             <div class="settings-tab" id="export-tab">
               <div class="settings-section">
+                <div class="settings-item">
+                  <label class="settings-item__label">Default Export Format</label>
+                  <select id="default-export-format-select" class="settings-select">
+                    <option value="pdf">PDF</option>
+                    <option value="html">HTML</option>
+                    <option value="docx">DOCX</option>
+                    <option value="epub">EPUB</option>
+                  </select>
+                </div>
                 <div class="settings-item">
                   <label class="settings-item__label">Export Settings</label>
                   <div class="export-controls">
@@ -670,6 +904,77 @@
                   </select>
                 </div>
                 
+                <!-- New Settings -->
+                <div class="settings-item">
+                  <label class="settings-item__label">Auto-save Interval</label>
+                  <div class="slider-group">
+                    <input type="range" id="autosave-interval-slider" class="settings-slider" min="5" max="300" value="30" step="5">
+                    <span id="autosave-interval-value" class="slider-value">30s</span>
+                    <button id="reset-autosave-interval" class="settings-button--secondary">Reset</button>
+                  </div>
+                </div>
+                
+                <div class="settings-item">
+                  <label class="settings-item__label">Word Wrap</label>
+                  <div class="toggle-group">
+                    <input type="checkbox" id="word-wrap-toggle" class="settings-toggle">
+                    <label for="word-wrap-toggle" class="toggle-label">Enable word wrapping in editor</label>
+                  </div>
+                </div>
+                
+                <div class="settings-item">
+                  <label class="settings-item__label">Default File Extension</label>
+                  <select id="default-file-extension-select" class="settings-select">
+                    <option value=".md">.md (Markdown)</option>
+                    <option value=".txt">.txt (Plain Text)</option>
+                    <option value=".markdown">.markdown</option>
+                  </select>
+                </div>
+                
+                <div class="settings-item">
+                  <label class="settings-item__label">Show Hidden Files</label>
+                  <div class="toggle-group">
+                    <input type="checkbox" id="show-hidden-files-toggle" class="settings-toggle">
+                    <label for="show-hidden-files-toggle" class="toggle-label">Show hidden files in workspace tree</label>
+                  </div>
+                </div>
+                
+                <div class="settings-item">
+                  <label class="settings-item__label">Maximum Recent Files</label>
+                  <div class="slider-group">
+                    <input type="range" id="max-recent-files-slider" class="settings-slider" min="5" max="50" value="20" step="5">
+                    <span id="max-recent-files-value" class="slider-value">20</span>
+                    <button id="reset-max-recent-files" class="settings-button--secondary">Reset</button>
+                  </div>
+                </div>
+                
+                <div class="settings-item">
+                  <label class="settings-item__label">Maximum Image File Size</label>
+                  <div class="slider-group">
+                    <input type="range" id="max-image-size-slider" class="settings-slider" min="1" max="50" value="10" step="1">
+                    <span id="max-image-size-value" class="slider-value">10MB</span>
+                    <button id="reset-max-image-size" class="settings-button--secondary">Reset</button>
+                  </div>
+                </div>
+                
+                <div class="settings-item">
+                  <label class="settings-item__label">Maximum Video File Size</label>
+                  <div class="slider-group">
+                    <input type="range" id="max-video-size-slider" class="settings-slider" min="10" max="500" value="100" step="10">
+                    <span id="max-video-size-value" class="slider-value">100MB</span>
+                    <button id="reset-max-video-size" class="settings-button--secondary">Reset</button>
+                  </div>
+                </div>
+                
+                <div class="settings-item">
+                  <label class="settings-item__label">Maximum Script File Size</label>
+                  <div class="slider-group">
+                    <input type="range" id="max-script-size-slider" class="settings-slider" min="1" max="20" value="5" step="1">
+                    <span id="max-script-size-value" class="slider-value">5MB</span>
+                    <button id="reset-max-script-size" class="settings-button--secondary">Reset</button>
+                  </div>
+                </div>
+                
                 <!-- Super Advanced Toggle -->
                 <div class="settings-item">
                   <label class="settings-item__label">Super Advanced Settings</label>
@@ -710,6 +1015,14 @@
                       <input type="range" id="status-bar-size-slider" class="settings-slider" min="20" max="40" value="28" step="2">
                       <span id="status-bar-size-value" class="slider-value">28px</span>
                       <button id="reset-status-bar-size" class="settings-button--secondary">Reset</button>
+                    </div>
+                  </div>
+                  <div class="settings-item">
+                    <label class="settings-item__label">Editor Tab Size</label>
+                    <div class="slider-group">
+                      <input type="range" id="editor-tab-size-slider" class="settings-slider" min="2" max="8" value="4" step="1">
+                      <span id="editor-tab-size-value" class="slider-value">4</span>
+                      <button id="reset-editor-tab-size" class="settings-button--secondary">Reset</button>
                     </div>
                   </div>
                   <div class="settings-item">
