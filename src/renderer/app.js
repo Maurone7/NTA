@@ -17055,14 +17055,7 @@ updateDismissButton.addEventListener('click', () => {
 
 // Check for updates on app startup (only once)
 window.addEventListener('load', async () => {
-  try {
-    if (window.api && typeof window.api.checkForUpdates === 'function') {
-      await window.api.checkForUpdates();
-    } else if (window.api && typeof window.api.invoke === 'function') {
-      await window.api.invoke('app:checkForUpdates');
-    }
-  } catch (error) {
-  }
+  // Automatic update check is handled by main process
   // Initialize common settings controls (autosave, spellcheck, softwrap, default export)
   try { if (typeof initCommonSettingsControls === 'function') initCommonSettingsControls(); } catch (e) {  }
   // Re-apply editor styles shortly after load to mitigate any startup ordering
