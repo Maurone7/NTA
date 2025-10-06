@@ -1,6 +1,6 @@
 {
   "name": "note-taking-app",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Cross-platform Markdown note taking app with PDF viewing support",
   "main": "src/main.js",
   "homepage": "https://github.com/Maurone7/NTA",
