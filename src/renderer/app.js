@@ -16998,6 +16998,30 @@ window.api.on('update-downloaded', (info) => {
   updateMessage.textContent = `Version ${info.version} has been downloaded and is ready to install.`;
 });
 
+window.api.on('update-not-available', (info) => {
+  console.info('update-not-available', info);
+  // Optionally notify the user in the UI
+  try {
+    updateMessage.textContent = 'No updates available.';
+    updateNotification.hidden = false;
+    setTimeout(() => { updateNotification.hidden = true; }, 3000);
+  } catch (e) { }
+});
+
+window.api.on('update-error', (err) => {
+  console.error('update-error', err);
+  // Surface in UI so user gets a clear indication
+  try {
+    updateMessage.textContent = `Update check failed: ${String(err)}`;
+    updateNotification.hidden = false;
+    // Also ensure the check button resets if present
+    if (elements.checkUpdatesButton) {
+      elements.checkUpdatesButton.disabled = false;
+      elements.checkUpdatesButton.textContent = 'Check Failed';
+    }
+  } catch (e) { }
+});
+
 // Handle update actions
 updateDownloadButton.addEventListener('click', async () => {
   updateDownloadButton.disabled = true;

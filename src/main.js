@@ -333,6 +333,7 @@ const setupAutoUpdater = () => {
     owner: 'Maurone7',
     repo: 'NTA'
   });
+  try { console.log('autoUpdater configured for GitHub: owner=Maurone7 repo=NTA'); } catch (e) {}
 
   // Auto-updater events
   autoUpdater.on('checking-for-update', () => {
@@ -346,9 +347,19 @@ const setupAutoUpdater = () => {
   });
 
   autoUpdater.on('update-not-available', (info) => {
+    // Notify renderer that no update was found
+    if (mainWindow) {
+      try { mainWindow.webContents.send('update-not-available', info); } catch (e) { }
+    }
   });
 
   autoUpdater.on('error', (err) => {
+    // Log the error in the main process so it appears in terminal logs
+    try { console.error('autoUpdater error:', err); } catch (e) {}
+    // Forward error to renderer for better debugging visibility
+    if (mainWindow) {
+      try { mainWindow.webContents.send('update-error', String(err)); } catch (e) { }
+    }
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
@@ -372,6 +383,7 @@ const setupAutoUpdater = () => {
   // Check for updates on app start (after 3 seconds delay)
   setTimeout(() => {
     autoUpdater.checkForUpdatesAndNotify();
+    try { console.log('Scheduled automatic checkForUpdatesAndNotify()'); } catch (e) {}
   }, 3000);
 
   // Check for updates every 4 hours
@@ -432,11 +444,85 @@ const bootstrap = async () => {
 
   // Update handlers
   ipcMain.handle('app:checkForUpdates', async () => {
-    try {
-      return await autoUpdater.checkForUpdatesAndNotify();
-    } catch (error) {
-      return { error: error.message };
-    }
+    try { console.log('IPC app:checkForUpdates invoked'); } catch (e) {}
+    // Provide a structured response and ensure errors are forwarded to renderer
+    return await new Promise((resolve) => {
+      let settled = false;
+
+      const cleanup = () => {
+        try {
+          autoUpdater.removeListener('update-available', onAvailable);
+          autoUpdater.removeListener('update-not-available', onNotAvailable);
+          autoUpdater.removeListener('error', onError);
+        } catch (e) {}
+      };
+
+      const onAvailable = (info) => {
+        if (settled) return;
+        settled = true;
+        if (mainWindow) {
+          try { mainWindow.webContents.send('update-available', info); } catch (e) {}
+        }
+        cleanup();
+        resolve({ status: 'update-available', info });
+      };
+
+      const onNotAvailable = (info) => {
+        if (settled) return;
+        settled = true;
+        if (mainWindow) {
+          try { mainWindow.webContents.send('update-not-available', info); } catch (e) {}
+        }
+        cleanup();
+        resolve({ status: 'update-not-available', info });
+      };
+
+      const onError = (err) => {
+        if (settled) return;
+        settled = true;
+        try { console.error('autoUpdater error (during manual check):', err); } catch (e) {}
+        if (mainWindow) {
+          try { mainWindow.webContents.send('update-error', String(err)); } catch (e) {}
+        }
+        cleanup();
+        resolve({ status: 'error', error: String(err) });
+      };
+
+      autoUpdater.once('update-available', onAvailable);
+      autoUpdater.once('update-not-available', onNotAvailable);
+      autoUpdater.once('error', onError);
+
+      try {
+        autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          try { console.error('autoUpdater check failed:', err); } catch (e) {}
+          if (mainWindow) {
+            try { mainWindow.webContents.send('update-error', String(err)); } catch (e) {}
+          }
+          resolve({ status: 'error', error: String(err) });
+        });
+      } catch (err) {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          try { console.error('autoUpdater check exception:', err); } catch (e) {}
+          if (mainWindow) {
+            try { mainWindow.webContents.send('update-error', String(err)); } catch (e) {}
+          }
+          resolve({ status: 'error', error: String(err) });
+        }
+      }
+
+      // Safety timeout
+      setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve({ status: 'timeout' });
+      }, 15000);
+    });
   });
 
   ipcMain.handle('app:quitAndInstall', async () => {
@@ -445,6 +531,57 @@ const bootstrap = async () => {
 
   ipcMain.handle('app:getVersion', async () => {
     return app.getVersion();
+  });
+
+  // Dev-only manual update checker: fetch latest release from GitHub and compare versions.
+  ipcMain.handle('app:devCheckForUpdates', async () => {
+    try {
+      const https = require('https');
+      const options = {
+        hostname: 'api.github.com',
+        path: `/repos/Maurone7/NTA/releases/latest`,
+        method: 'GET',
+        headers: { 'User-Agent': 'NTA-dev-checker' }
+      };
+
+      const body = await new Promise((resolve, reject) => {
+        const req = https.request(options, (res) => {
+          let chunks = '';
+          res.setEncoding('utf8');
+          res.on('data', (c) => chunks += c);
+          res.on('end', () => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              resolve(chunks);
+            } else {
+              reject(new Error(`GitHub API status ${res.statusCode}`));
+            }
+          });
+        });
+        req.on('error', reject);
+        req.end();
+      });
+
+      const json = JSON.parse(body);
+      const tag = json.tag_name || json.name || null;
+      const releaseVersion = tag ? String(tag).replace(/^v/, '') : null;
+      const current = app.getVersion();
+
+      const isNewer = (releaseVersion && current) ? (() => {
+        const sv = releaseVersion.split('.').map(n => parseInt(n,10)||0);
+        const cv = String(current).split('.').map(n => parseInt(n,10)||0);
+        for (let i=0;i<Math.max(sv.length,cv.length);i++){
+          const a = sv[i]||0, b = cv[i]||0;
+          if (a>b) return true;
+          if (a<b) return false;
+        }
+        return false;
+      })() : false;
+
+      return { status: isNewer ? 'update-available' : 'update-not-available', release: json, releaseVersion, current };
+    } catch (err) {
+      try { console.error('devCheckForUpdates error:', err); } catch (e) {}
+      return { status: 'error', error: String(err) };
+    }
   });
 
   ipcMain.handle('settings:getFileSizeLimits', async () => {

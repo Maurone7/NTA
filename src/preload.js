@@ -37,6 +37,8 @@ const api = {
   // Update methods
   checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
   quitAndInstall: () => ipcRenderer.invoke('app:quitAndInstall'),
+  // Dev-only check which queries GitHub directly (works in unpacked/dev mode)
+  devCheckForUpdates: () => ipcRenderer.invoke('app:devCheckForUpdates'),
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   
   // IPC listeners
@@ -49,7 +51,7 @@ const api = {
   
   // Update event listeners
   on: (channel, callback) => {
-    const validChannels = ['update-available', 'update-progress', 'update-downloaded', 'workspace:changed'];
+    const validChannels = ['update-available', 'update-progress', 'update-downloaded', 'update-not-available', 'update-error', 'workspace:changed'];
     if (validChannels.includes(channel)) {
       ipcRenderer.on(channel, (_event, data) => callback(data));
     }
