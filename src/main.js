@@ -343,7 +343,6 @@ const setupAutoUpdater = () => {
   // Auto-updater events
   autoUpdater.on('checking-for-update', () => {
   });
-
   autoUpdater.on('update-available', (info) => {
     // Notify user about available update
     if (mainWindow) {
@@ -358,6 +357,8 @@ const setupAutoUpdater = () => {
     }
   });
 
+  // To avoid repeatedly attempting the fallback we guard with this flag
+  let _fallbackTriggered = false;
   autoUpdater.on('error', (err) => {
     // Log the error in the main process so it appears in terminal logs
     try { console.error('autoUpdater error:', err); } catch (e) {}
@@ -365,6 +366,28 @@ const setupAutoUpdater = () => {
     if (mainWindow) {
       try { mainWindow.webContents.send('update-error', String(err)); } catch (e) { }
     }
+
+    // If this looks like a macOS code-signature validation failure, try the fallback updater once
+    try {
+      const msg = String(err && (err.message || err)).toLowerCase();
+      if (!_fallbackTriggered && /did not pass validation|code has no resources|code object is not signed|signature/i.test(msg)) {
+        _fallbackTriggered = true;
+        // notify renderer that fallback is starting
+        if (mainWindow) {
+          try { mainWindow.webContents.send('fallback-started'); } catch (e) {}
+        }
+        // call the fallback updater but don't await blocking the error handler
+        performFallbackUpdate().then((res) => {
+          if (mainWindow) {
+            try { mainWindow.webContents.send('fallback-result', res); } catch (e) {}
+          }
+        }).catch((e) => {
+          if (mainWindow) {
+            try { mainWindow.webContents.send('fallback-result', { ok: false, error: String(e) }); } catch (err) {}
+          }
+        });
+      }
+    } catch (e) {}
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
@@ -538,72 +561,76 @@ const bootstrap = async () => {
   // Downloads the latest release's zip for the current arch, extracts it to /tmp,
   // then spawns a detached shell script that waits for the app to quit and replaces
   // /Applications/NTA.app using `ditto`. This is intended for developer/internal use.
-  ipcMain.handle('app:downloadAndReplace', async () => {
+
+  async function performFallbackUpdate({ preferUserApplications = true } = {}) {
     const https = require('https');
     const os = require('os');
     const cp = require('child_process');
     const tmpdir = os.tmpdir();
     const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
 
-    try {
-      // Fetch latest YAML from GitHub releases (asset named latest-mac.yml)
-      const yamlText = await new Promise((resolve, reject) => {
-        const req = https.get('https://github.com/Maurone7/NTA/releases/latest/download/latest-mac.yml', { headers: { 'User-Agent': 'NTA-updater' } }, (res) => {
-          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 400)) {
-            reject(new Error('Failed to fetch latest-mac.yml: ' + res.statusCode));
-            return;
-          }
-          let s = '';
-          res.setEncoding('utf8');
-          res.on('data', (c) => s += c);
-          res.on('end', () => resolve(s));
-        });
-        req.on('error', reject);
+    // Helper to fetch text from URL
+    const fetchText = (u) => new Promise((resolve, reject) => {
+      const req = https.get(u, { headers: { 'User-Agent': 'NTA-updater' } }, (res) => {
+        if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 400)) {
+          reject(new Error('HTTP ' + res.statusCode + ' for ' + u));
+          return;
+        }
+        let s = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => s += c);
+        res.on('end', () => resolve(s));
       });
+      req.on('error', reject);
+    });
 
-      // Simple parser: look for a filename that contains the arch and ends with .zip
-      const lines = yamlText.split('\n');
-      let assetFile = null;
-      for (let i = 0; i < lines.length; i++) {
-        const l = lines[i].trim();
-        if (l.startsWith('- url:')) {
-          const fname = l.replace('- url:', '').trim();
-          if (fname.includes(arch) && fname.endsWith('.zip')) {
-            assetFile = fname;
-            break;
-          }
+    try {
+      const tryUrls = [
+        'https://github.com/Maurone7/NTA/releases/latest/download/latest-mac.yml',
+        'https://github.com/Maurone7/NoteTakingApp/releases/latest/download/latest-mac.yml'
+      ];
+      let yamlText = null;
+      let lastErr = null;
+      for (const u of tryUrls) {
+        try {
+          yamlText = await fetchText(u);
+          if (yamlText) break;
+        } catch (e) {
+          lastErr = e;
         }
       }
-      // fallback: pick first .zip if arch-specific not found
-      if (!assetFile) {
-        for (const l of lines) {
-          const ll = l.trim();
-          if (ll.startsWith('- url:') && ll.endsWith('.zip')) {
-            assetFile = ll.replace('- url:', '').trim();
-            break;
-          }
+      if (!yamlText) throw new Error('Failed to fetch latest-mac.yml: ' + (lastErr ? String(lastErr) : 'unknown'));
+
+      // Parse for zip asset
+      const lines = yamlText.split('\n');
+      let assetFile = null;
+      for (const l of lines) {
+        const ll = l.trim();
+        if (ll.startsWith('- url:') && ll.endsWith('.zip')) {
+          const fname = ll.replace('- url:', '').trim();
+          if (fname.includes(arch)) { assetFile = fname; break; }
+          if (!assetFile) assetFile = fname; // first found
         }
       }
       if (!assetFile) throw new Error('No zip asset found in latest-mac.yml');
 
-      // Prefer downloading from the release that matches the 'version' field in latest-mac.yml
-      // to avoid GitHub /latest redirects pointing at a different release.
-      let downloadUrl;
       const verMatch = yamlText.match(/^version:\s*(\S+)/m);
-      if (verMatch && verMatch[1]) {
-        const releaseTag = String(verMatch[1]).startsWith('v') ? verMatch[1] : `v${verMatch[1]}`;
+      const releaseTag = (verMatch && verMatch[1]) ? (String(verMatch[1]).startsWith('v') ? verMatch[1] : `v${verMatch[1]}`) : null;
+      let downloadUrl;
+      if (releaseTag) {
+        // Try the repo that matches the installed app first (NTA), then NoteTakingApp
         downloadUrl = `https://github.com/Maurone7/NTA/releases/download/${releaseTag}/${assetFile}`;
       } else {
         downloadUrl = `https://github.com/Maurone7/NTA/releases/latest/download/${assetFile}`;
       }
-      const outZip = path.join(tmpdir, assetFile);
 
-      // Download asset
+      const outZip = path.join(tmpdir, assetFile);
+      // Download
       await new Promise((resolve, reject) => {
         const file = fs.createWriteStream(outZip);
         const req = https.get(downloadUrl, { headers: { 'User-Agent': 'NTA-updater' } }, (res) => {
           if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 400)) {
-            reject(new Error('Failed to download asset: ' + res.statusCode));
+            reject(new Error('Failed to download asset: ' + res.statusCode + ' from ' + downloadUrl));
             return;
           }
           res.pipe(file);
@@ -612,7 +639,7 @@ const bootstrap = async () => {
         req.on('error', (err) => { try { fs.unlinkSync(outZip); } catch(e){}; reject(err); });
       });
 
-      // Extract zip to tmpdir/NTA-upd
+      // Extract
       const extractDir = path.join(tmpdir, 'NTA-upd');
       try { await fsp.rm(extractDir, { recursive: true, force: true }); } catch(e){}
       await fsp.mkdir(extractDir, { recursive: true });
@@ -621,26 +648,27 @@ const bootstrap = async () => {
       });
 
       const extractedApp = path.join(extractDir, 'NTA.app');
-      // Remove any _CodeSignature to avoid mixed-signature errors
       try { await fsp.rm(path.join(extractedApp, 'Contents', '_CodeSignature'), { recursive: true, force: true }); } catch(e){}
 
-      // Write a small shell script that will wait for the app to quit, replace the app and relaunch
-      const scriptPath = path.join(tmpdir, 'nta-replace.sh');
-      const script = `#!/bin/sh\n\n# wait a bit to allow the app to exit\nsleep 1\n\n# remove old app and copy new one (uses ditto to preserve metadata)\nrm -rf "/Applications/NTA.app"\n/usr/bin/ditto "${extractedApp}" "/Applications/NTA.app"\n\n# open replaced app\nopen -a "/Applications/NTA.app"\n`;
-      await fsp.writeFile(scriptPath, script, { mode: 0o755 });
+      // Choose target path
+      const targetApp = preferUserApplications ? path.join(process.env.HOME || '/', 'Applications', 'NTA.app') : '/Applications/NTA.app';
 
-      // Spawn detached script so main process can quit immediately
+      // Create replacement script
+      const scriptPath = path.join(tmpdir, 'nta-replace.sh');
+      const script = `#!/bin/sh\n\n# wait a bit to allow the app to exit\nsleep 1\n\n# remove old app and copy new one (uses ditto to preserve metadata)\nrm -rf "${targetApp}"\n/usr/bin/ditto "${extractedApp}" "${targetApp}"\n\n# open replaced app\nopen -a "${targetApp}"\n`;
+      await fsp.writeFile(scriptPath, script, { mode: 0o755 });
       const child = cp.spawn('sh', [scriptPath], { detached: true, stdio: 'ignore' });
       child.unref();
-
-      // Quit the app so the script can replace it
       try { app.quit(); } catch(e){}
-
-      return { ok: true, message: 'Started background replacement script' };
+      return { ok: true, message: 'Started background replacement script', target: targetApp };
     } catch (err) {
-      try { console.error('downloadAndReplace error:', err); } catch(e){}
+      try { console.error('performFallbackUpdate error:', err); } catch(e){}
       return { ok: false, error: String(err) };
     }
+  }
+
+  ipcMain.handle('app:downloadAndReplace', async (_event, opts) => {
+    return await performFallbackUpdate(opts || {});
   });
 
   ipcMain.handle('app:getVersion', async () => {
@@ -653,7 +681,7 @@ const bootstrap = async () => {
       const https = require('https');
       const options = {
         hostname: 'api.github.com',
-        path: `/repos/Maurone7/NTA/releases/latest`,
+        path: `/repos/Maurone7/NoteTakingApp/releases/latest`,
         method: 'GET',
         headers: { 'User-Agent': 'NTA-dev-checker' }
       };

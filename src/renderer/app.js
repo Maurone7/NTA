@@ -171,6 +171,7 @@ const elements = {
   borderThicknessValue: document.getElementById('border-thickness-value') || document.createElement('span'),
   resetBorderThicknessButton: document.getElementById('reset-border-thickness') || document.createElement('button'),
   checkUpdatesButton: document.getElementById('check-updates-btn') || document.createElement('button'),
+  fallbackUpdateButton: document.getElementById('fallback-update-btn') || document.createElement('button'),
   // New advanced settings
   autosaveIntervalSlider: document.getElementById('autosave-interval-slider') || document.createElement('input'),
   autosaveIntervalValue: document.getElementById('autosave-interval-value') || document.createElement('span'),
@@ -16642,7 +16643,33 @@ const initialize = () => {
   // Settings modal event listeners
   elements.settingsButton?.addEventListener('click', openSettingsModal);
   elements.settingsClose?.addEventListener('click', closeSettingsModal);
-  elements.checkUpdatesButton?.addEventListener('click', checkForUpdatesManually);
+  console.log('checkUpdatesButton element:', elements.checkUpdatesButton);
+  if (elements.checkUpdatesButton) {
+    console.log('Adding click listener to checkUpdatesButton');
+    elements.checkUpdatesButton.addEventListener('click', checkForUpdatesManually);
+  } else {
+    console.warn('checkUpdatesButton not found, cannot add click listener');
+  }
+  if (elements.fallbackUpdateButton) {
+    elements.fallbackUpdateButton.addEventListener('click', async () => {
+      try {
+        elements.fallbackUpdateButton.disabled = true;
+        elements.fallbackUpdateButton.textContent = 'Starting...';
+        const res = await window.api.downloadAndReplace();
+        console.log('downloadAndReplace result:', res);
+        if (res && res.ok) {
+          elements.fallbackUpdateButton.textContent = 'Replacing...';
+        } else {
+          elements.fallbackUpdateButton.textContent = 'Failed';
+          setTimeout(() => { elements.fallbackUpdateButton.disabled = false; elements.fallbackUpdateButton.textContent = 'Download & Install (Fallback)'; }, 3000);
+        }
+      } catch (err) {
+        console.error('fallback update error', err);
+        elements.fallbackUpdateButton.disabled = false;
+        elements.fallbackUpdateButton.textContent = 'Download & Install (Fallback)';
+      }
+    });
+  }
   elements.themeSelect?.addEventListener('change', handleThemeChange);
   elements.bgColorPicker?.addEventListener('change', handleBgColorChange);
   elements.resetBgColorButton?.addEventListener('click', resetBgColor);
@@ -19446,6 +19473,8 @@ function resetBorderThickness() {
 }
 
 async function checkForUpdatesManually() {
+  console.log('checkForUpdatesManually: Function called!');
+  console.log('checkForUpdatesManually: elements.checkUpdatesButton exists:', !!elements.checkUpdatesButton);
   if (elements.checkUpdatesButton) {
     const originalText = elements.checkUpdatesButton.textContent;
     elements.checkUpdatesButton.disabled = true;
@@ -19456,10 +19485,13 @@ async function checkForUpdatesManually() {
       let version = 'Unknown';
       if (window.api && typeof window.api.getVersion === 'function') {
         version = await window.api.getVersion();
+        console.log('checkForUpdatesManually: Got version via api.getVersion:', version);
       } else if (window.api && typeof window.api.invoke === 'function') {
         version = await window.api.invoke('app:getVersion');
+        console.log('checkForUpdatesManually: Got version via api.invoke:', version);
       }
-      if (String(version).includes('dev') || process.env.NODE_ENV === 'development') {
+      if (String(version).includes('dev')) {
+        console.log('checkForUpdatesManually: Detected dev mode, skipping');
         elements.checkUpdatesButton.textContent = 'Dev Mode - N/A';
         setTimeout(() => {
           elements.checkUpdatesButton.disabled = false;
@@ -19468,22 +19500,33 @@ async function checkForUpdatesManually() {
         return;
       }
       
+      console.log('checkForUpdatesManually: Calling update check API');
       if (window.api && typeof window.api.checkForUpdates === 'function') {
+        console.log('checkForUpdatesManually: Using window.api.checkForUpdates()');
         await window.api.checkForUpdates();
+        console.log('checkForUpdatesManually: window.api.checkForUpdates() completed successfully');
       } else if (window.api && typeof window.api.invoke === 'function') {
+        console.log('checkForUpdatesManually: Using window.api.invoke("app:checkForUpdates")');
         await window.api.invoke('app:checkForUpdates');
+        console.log('checkForUpdatesManually: window.api.invoke() completed successfully');
       }
+      console.log('checkForUpdatesManually: Update check completed, setting button to "Check Complete"');
       elements.checkUpdatesButton.textContent = 'Check Complete';
       setTimeout(() => {
         elements.checkUpdatesButton.disabled = false;
         elements.checkUpdatesButton.textContent = originalText;
       }, 2000);
     } catch (error) {
+      console.error('checkForUpdatesManually: Caught error:', error);
+      console.error('checkForUpdatesManually: Error message:', error.message);
+      console.error('checkForUpdatesManually: Error stack:', error.stack);
       
       // Check if it's a development mode error
       if (error.message && error.message.includes('not packed')) {
+        console.log('checkForUpdatesManually: Detected "not packed" error, setting to "Dev Mode Only"');
         elements.checkUpdatesButton.textContent = 'Dev Mode Only';
       } else {
+        console.log('checkForUpdatesManually: Setting button to "Check Failed"');
         elements.checkUpdatesButton.textContent = 'Check Failed';
       }
       
@@ -19492,6 +19535,8 @@ async function checkForUpdatesManually() {
         elements.checkUpdatesButton.textContent = originalText;
       }, 2000);
     }
+  } else {
+    console.warn('checkForUpdatesManually: checkUpdatesButton element not found');
   }
 }
 

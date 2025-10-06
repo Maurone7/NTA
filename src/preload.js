@@ -37,6 +37,8 @@ const api = {
   // Update methods
   checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
   quitAndInstall: () => ipcRenderer.invoke('app:quitAndInstall'),
+  // Fallback dev updater: download and replace the app bundle without ShipIt
+  downloadAndReplace: () => ipcRenderer.invoke('app:downloadAndReplace'),
   // Dev-only check which queries GitHub directly (works in unpacked/dev mode)
   devCheckForUpdates: () => ipcRenderer.invoke('app:devCheckForUpdates'),
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
