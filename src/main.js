@@ -327,12 +327,14 @@ const createMainWindow = () => {
 
 // Auto-updater configuration
 const setupAutoUpdater = () => {
-  // Configure auto-updater for GitHub releases
+    // Configure auto-updater for GitHub releases
   autoUpdater.setFeedURL({
     provider: 'github',
     owner: 'Maurone7',
     repo: 'NTA'
   });
+  // Allow updates even with invalid code signatures (for development/testing)
+  autoUpdater.forceDevUpdateConfig = true;
   try { console.log('autoUpdater configured for GitHub: owner=Maurone7 repo=NTA'); } catch (e) {}
 
   // Auto-updater events
