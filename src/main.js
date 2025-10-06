@@ -327,7 +327,10 @@ const createMainWindow = () => {
 
 // Auto-updater configuration
 const setupAutoUpdater = () => {
-    // Configure auto-updater for GitHub releases
+  // Disable ShipIt code signature validation for development
+  process.env.DISABLE_CODE_SIGNATURE_VALIDATION = '1';
+  
+  // Configure auto-updater for GitHub releases
   autoUpdater.setFeedURL({
     provider: 'github',
     owner: 'Maurone7',
@@ -529,6 +532,115 @@ const bootstrap = async () => {
 
   ipcMain.handle('app:quitAndInstall', async () => {
     autoUpdater.quitAndInstall();
+  });
+
+  // Fallback updater (no Apple Developer ID required)
+  // Downloads the latest release's zip for the current arch, extracts it to /tmp,
+  // then spawns a detached shell script that waits for the app to quit and replaces
+  // /Applications/NTA.app using `ditto`. This is intended for developer/internal use.
+  ipcMain.handle('app:downloadAndReplace', async () => {
+    const https = require('https');
+    const os = require('os');
+    const cp = require('child_process');
+    const tmpdir = os.tmpdir();
+    const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+
+    try {
+      // Fetch latest YAML from GitHub releases (asset named latest-mac.yml)
+      const yamlText = await new Promise((resolve, reject) => {
+        const req = https.get('https://github.com/Maurone7/NTA/releases/latest/download/latest-mac.yml', { headers: { 'User-Agent': 'NTA-updater' } }, (res) => {
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 400)) {
+            reject(new Error('Failed to fetch latest-mac.yml: ' + res.statusCode));
+            return;
+          }
+          let s = '';
+          res.setEncoding('utf8');
+          res.on('data', (c) => s += c);
+          res.on('end', () => resolve(s));
+        });
+        req.on('error', reject);
+      });
+
+      // Simple parser: look for a filename that contains the arch and ends with .zip
+      const lines = yamlText.split('\n');
+      let assetFile = null;
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i].trim();
+        if (l.startsWith('- url:')) {
+          const fname = l.replace('- url:', '').trim();
+          if (fname.includes(arch) && fname.endsWith('.zip')) {
+            assetFile = fname;
+            break;
+          }
+        }
+      }
+      // fallback: pick first .zip if arch-specific not found
+      if (!assetFile) {
+        for (const l of lines) {
+          const ll = l.trim();
+          if (ll.startsWith('- url:') && ll.endsWith('.zip')) {
+            assetFile = ll.replace('- url:', '').trim();
+            break;
+          }
+        }
+      }
+      if (!assetFile) throw new Error('No zip asset found in latest-mac.yml');
+
+      // Prefer downloading from the release that matches the 'version' field in latest-mac.yml
+      // to avoid GitHub /latest redirects pointing at a different release.
+      let downloadUrl;
+      const verMatch = yamlText.match(/^version:\s*(\S+)/m);
+      if (verMatch && verMatch[1]) {
+        const releaseTag = String(verMatch[1]).startsWith('v') ? verMatch[1] : `v${verMatch[1]}`;
+        downloadUrl = `https://github.com/Maurone7/NTA/releases/download/${releaseTag}/${assetFile}`;
+      } else {
+        downloadUrl = `https://github.com/Maurone7/NTA/releases/latest/download/${assetFile}`;
+      }
+      const outZip = path.join(tmpdir, assetFile);
+
+      // Download asset
+      await new Promise((resolve, reject) => {
+        const file = fs.createWriteStream(outZip);
+        const req = https.get(downloadUrl, { headers: { 'User-Agent': 'NTA-updater' } }, (res) => {
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 400)) {
+            reject(new Error('Failed to download asset: ' + res.statusCode));
+            return;
+          }
+          res.pipe(file);
+          file.on('finish', () => file.close(resolve));
+        });
+        req.on('error', (err) => { try { fs.unlinkSync(outZip); } catch(e){}; reject(err); });
+      });
+
+      // Extract zip to tmpdir/NTA-upd
+      const extractDir = path.join(tmpdir, 'NTA-upd');
+      try { await fsp.rm(extractDir, { recursive: true, force: true }); } catch(e){}
+      await fsp.mkdir(extractDir, { recursive: true });
+      await new Promise((resolve, reject) => {
+        cp.execFile('unzip', ['-q', outZip, '-d', extractDir], (err) => err ? reject(err) : resolve());
+      });
+
+      const extractedApp = path.join(extractDir, 'NTA.app');
+      // Remove any _CodeSignature to avoid mixed-signature errors
+      try { await fsp.rm(path.join(extractedApp, 'Contents', '_CodeSignature'), { recursive: true, force: true }); } catch(e){}
+
+      // Write a small shell script that will wait for the app to quit, replace the app and relaunch
+      const scriptPath = path.join(tmpdir, 'nta-replace.sh');
+      const script = `#!/bin/sh\n\n# wait a bit to allow the app to exit\nsleep 1\n\n# remove old app and copy new one (uses ditto to preserve metadata)\nrm -rf "/Applications/NTA.app"\n/usr/bin/ditto "${extractedApp}" "/Applications/NTA.app"\n\n# open replaced app\nopen -a "/Applications/NTA.app"\n`;
+      await fsp.writeFile(scriptPath, script, { mode: 0o755 });
+
+      // Spawn detached script so main process can quit immediately
+      const child = cp.spawn('sh', [scriptPath], { detached: true, stdio: 'ignore' });
+      child.unref();
+
+      // Quit the app so the script can replace it
+      try { app.quit(); } catch(e){}
+
+      return { ok: true, message: 'Started background replacement script' };
+    } catch (err) {
+      try { console.error('downloadAndReplace error:', err); } catch(e){}
+      return { ok: false, error: String(err) };
+    }
   });
 
   ipcMain.handle('app:getVersion', async () => {
