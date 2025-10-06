@@ -55,8 +55,7 @@
     "publish": {
       "provider": "github",
       "owner": "Maurone7",
-      "repo": "NTA",
-      "allowPrerelease": true
+      "repo": "NTA"
     },
     "mac": {
       "category": "public.app-category.productivity",
