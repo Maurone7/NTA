@@ -1,17 +1,36 @@
 # NTA
 
-# NoteTakingApp
+[![CI](https://github.com/Maurone7/NoteTakingApp/actions/workflows/ci.yml/badge.svg)](https://github.com/Maurone7/NoteTakingApp/actions/workflows/ci.yml)
 
 A beautiful, cross-platform note-taking app built with Electron. Available for **macOS**, **Windows**, and **Linux**.
 
+## 🍎 macOS Unsigned Builds: How to Open
+
+Installation guide
+
+1) GUI (recommended for non-technical users)
+
+   - In Finder, control‑click (or right‑click) the app icon and choose "Open".
+   - A dialog will appear saying the app is from an unidentified developer; click "Open" to run it anyway. macOS will remember this choice for that app copy.
+
+2) Terminal (one-line: remove quarantine attribute)
+
+   - This removes the quarantine flag for the downloaded app copy and allows it to run. Only run this if you trust the release source.
+
+```bash
+# after you expand the downloaded DMG/ZIP and have NTA.app in the current folder
+xattr -r -d com.apple.quarantine ./NTA.app
+open ./NTA.app
+```
+
 ## 🔄 Stay Updated
 
-NoteTakingApp checks for updates when you first open the app and notifies you when new versions are available. You can also manually check for updates anytime through the settings (gear icon in bottom status bar). Just click "Download" when prompted, and the app will update itself automatically.
+NTA checks for updates when you first open the app and notifies you when new versions are available. You can also manually check for updates anytime through the settings (gear icon in bottom status bar). Just click "Download" when prompted, and the app will update itself automatically.
 
 ## 📞 Support
 
-- **Issues or suggestions?** [Open an issue](https://github.com/Maurone7/NoteTakingApp/issues)
-- **Questions?** Check our [documentation](https://github.com/Maurone7/NoteTakingApp/wiki)
+- **Issues or suggestions?** [Open an issue](https://github.com/Maurone7/NTA/issues)
+- **Questions?** Check our [documentation](https://github.com/Maurone7/NTA/wiki)
 
 ## 📄 License
 
@@ -19,16 +38,14 @@ MIT
 
 ---
 
-[Download Latest Release](https://github.com/Maurone7/NoteTakingApp/releases/latest) live preview, view PDFs side-by-side, and organize your thoughts with wiki-style linking.
-
-<!-- ![NoteTakingApp Screenshot](https://via.placeholder.com/800x500/4c6ef5/ffffff?text=NoteTakingApp+Screenshot) -->
-
 ## ✨ Key Features
 
 - **📝 Markdown-first writing** with live preview and LaTeX math support
 - **📊 Smart content tools**: Auto-complete matrices, tables, and equations
 - **🔗 Wiki-style linking**: Connect notes with `[[Note Name]]` links
 - **📄 Integrated PDF viewer** for research and reference materials
+- **📓 Code file support** for Python, JavaScript, LaTeX, shell scripts, and more
+- **🖼️ Media support** for images, videos, and presentations
 - **🏷️ Hashtag organization** with automatic indexing
 - **🔍 Full-text search** across all your notes
 - **🎨 Comprehensive customization**: Themes, fonts, colors, and layout options
@@ -67,33 +84,27 @@ Click the **gear icon** in the bottom status bar to access comprehensive customi
 
 ## 🚀 Quick Start
 
-### Option 1: Download Ready-to-Use App (Recommended)
+### Download Ready-to-Use App
 
 **Just want to start taking notes?** Download the app for your platform:
 
 #### 🍎 For macOS:
-**Apple Silicon Macs (M1, M2, M3, M4):**
-**[⬇️ Download NoteTakingApp-1.2.0-arm64.dmg](https://github.com/Maurone7/NoteTakingApp/releases/latest/download/NoteTakingApp-1.2.0-arm64.dmg)**
-
-**Intel Macs:**
-**[⬇️ Download NoteTakingApp-1.2.0-x64.dmg](https://github.com/Maurone7/NoteTakingApp/releases/latest/download/NoteTakingApp-1.2.0-x64.dmg)**
+- **Apple Silicon Macs (M1, M2, M3, M4)**
+- **Intel Macs**
 
 #### 🪟 For Windows:
-**64-bit Windows:**
-**[⬇️ Download NoteTakingApp-1.2.0-x64.exe](https://github.com/Maurone7/NoteTakingApp/releases/latest/download/NoteTakingApp-1.2.0-x64.exe)**
-
-**32-bit Windows:**
-**[⬇️ Download NoteTakingApp-1.2.0-ia32.exe](https://github.com/Maurone7/NoteTakingApp/releases/latest/download/NoteTakingApp-1.2.0-ia32.exe)**
+- **64-bit Windows**
+- **32-bit Windows**
 
 #### 🐧 For Linux:
-**[⬇️ Download NoteTakingApp-1.2.0.AppImage](https://github.com/Maurone7/NoteTakingApp/releases/latest/download/NoteTakingApp-1.2.0.AppImage)**
+- **Linux AppImage**
 
 ### Platform-Specific Installation:
 
 #### 🍎 macOS Installation:
 1. **Download** the appropriate DMG file for your Mac (Apple Silicon or Intel)
 2. **Open** the downloaded DMG file
-3. **Drag** NoteTakingApp to your Applications folder
+3. **Drag** NTA to your Applications folder
 4. **Launch** from Applications or Spotlight
 
 #### 🪟 Windows Installation:
@@ -104,43 +115,10 @@ Click the **gear icon** in the bottom status bar to access comprehensive customi
 
 #### 🐧 Linux Installation:
 1. **Download** the AppImage file
-2. **Make executable**: `chmod +x NoteTakingApp-1.2.0.AppImage`
-3. **Run**: `./NoteTakingApp-1.2.0.AppImage`
+2. **Make executable**: `chmod +x NTA-[Version #].AppImage`
+3. **Run**: `./NTA-[Version #].AppImage`
 
 **That's it! No additional software needed on any platform.** ✨
-
-### Option 2: Build from Source (For Developers)
-
-<details>
-<summary>Click to expand developer setup instructions</summary>
-
-#### Prerequisites:
-- **Any platform**: macOS, Windows, or Linux
-- [Node.js](https://nodejs.org/) 18 or newer
-
-#### Setup:
-```bash
-git clone https://github.com/Maurone7/NoteTakingApp.git
-cd NoteTakingApp
-npm install
-npm run dev
-```
-
-#### Build standalone app:
-```bash
-# For your current platform
-npm run build
-
-# Platform-specific builds
-npm run build:mac      # macOS (DMG + ZIP)
-npm run build:win      # Windows (EXE + ZIP)
-npm run build:linux    # Linux (AppImage)
-
-# Build for all platforms (requires platform-specific dependencies)
-npm run build:all
-```
-
-</details>
 
 ## 💡 Getting Started
 
@@ -157,6 +135,8 @@ npm run build:all
 Check out my [[Research Notes]] and [[Project Ideas]].
 
 Embed content inline: ![[Important Quote]]
+
+Add content inline: !![[Table]]
 ```
 
 ### LaTeX Math Support
@@ -174,7 +154,7 @@ $$\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}$$
 
 ## 🔗 Wiki-Style Linking Explained
 
-NoteTakingApp supports two types of wiki-style links to connect your notes:
+NTA supports two types of wiki-style links to connect your notes:
 
 ### Regular Links: `[[Note Name]]`
 Creates a clickable link to another note:
@@ -198,6 +178,10 @@ Important reminder: ![[Daily Checklist]]
 - **Images too**: Use `![[diagram.png]]` to embed images
 
 **Pro tip**: Use `[[Note|Custom Text]]` to change how the link appears while keeping the same target.
+
+### Hidden Embded Links: `![[Note Name]]`
+Embeds the actual content of another note inline, but hide it's from another file
+
 ### PDF Viewing
 
 - **Enhanced PDF.js viewer**: Integrated PDF.js provides professional-grade PDF viewing with full text selection capabilities.
@@ -230,7 +214,7 @@ Important reminder: ![[Daily Checklist]]
 - **Rename link text on the fly** with alias syntax: `[[My Note|Custom title]]` keeps the link target intact while changing the label you see.
 - **Trigger the wiki-link autocomplete** by typing `[[`—use the arrow keys to pick a note or labelled block, then press Enter or Tab to insert it.
 - **Toggle PDF view** by importing a PDF from the toolbar; it appears as its own entry in the note list with full text selection, zoom controls, and professional navigation features powered by PDF.js.
-- **Open an existing folder** with Markdown/PDF files via the **Open Folder** button; Markdown files are editable and PDFs open inline.
+- **Open an existing folder** with Markdown, PDF, code, and media files via the **Open Folder** button; supported files are editable or viewable inline.
 - **Use the workspace explorer** on the left to drill into sub-folders and click files to open them instantly.
 - **Create wiki links** by wrapping note titles in double brackets (e.g. `[[Daily Log]]`); existing notes open immediately, missing ones prompt you to create them. Add an exclamation mark (`![[Daily Log]]`) to embed the note inside the current page or use `![[diagram.png]]` to display images inline.
 - **Insert code blocks** with the toolbar button or ⌘⇧C — a quick picker lets you choose a language and remembers the last one you used (hold ⌥ while pressing ⌘⇧C to reuse it instantly).
