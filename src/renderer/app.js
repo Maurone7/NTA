@@ -172,6 +172,10 @@ const elements = {
   resetBorderThicknessButton: document.getElementById('reset-border-thickness') || document.createElement('button'),
   checkUpdatesButton: document.getElementById('check-updates-btn') || document.createElement('button'),
   fallbackUpdateButton: document.getElementById('fallback-update-btn') || document.createElement('button'),
+  // Debug replacer panel elements (may not exist in production UI)
+  replacerStatus: document.getElementById('replacer-status') || document.createElement('div'),
+  replacerOpenBtn: document.getElementById('replacer-open-btn') || document.createElement('button'),
+  replacerKillBtn: document.getElementById('replacer-kill-btn') || document.createElement('button'),
   // New advanced settings
   autosaveIntervalSlider: document.getElementById('autosave-interval-slider') || document.createElement('input'),
   autosaveIntervalValue: document.getElementById('autosave-interval-value') || document.createElement('span'),
@@ -350,6 +354,55 @@ function resetAutocompleteDelay() {
     window.autocompleteDelay = parseInt(def, 10);
   } catch (e) { }
 }
+
+// Debug replacer UI wiring: uses preload APIs to read sentinel and control the replacer
+async function refreshReplacerStatus() {
+  try {
+    const statusEl = elements.replacerStatus;
+    const items = await window.api.listWorkspaceDebug();
+    let text = 'No replacer artifacts found';
+    if (items && items.ok && Array.isArray(items.items)) {
+      if (items.items.includes('nta-replace-result.json')) {
+        const res = await window.api.readWorkspaceDebugFile('nta-replace-result.json');
+        if (res && res.ok) {
+          try {
+            const obj = JSON.parse(res.content || '{}');
+            text = `Replacer result: ret=${obj.ret} open=${obj.open} target=${obj.target} ts=${obj.ts}`;
+          } catch (e) {
+            text = 'Replacer result: (invalid JSON)';
+          }
+        }
+      } else if (items.items.includes('nta-replace.log')) {
+        text = 'Replacer log present';
+      }
+    }
+    statusEl.textContent = text;
+  } catch (e) {
+    try { elements.replacerStatus.textContent = 'Error reading replacer status: ' + String(e); } catch (ee) {}
+  }
+}
+
+// Hook debug buttons (if present in DOM)
+try {
+  if (elements.replacerOpenBtn) {
+    elements.replacerOpenBtn.addEventListener('click', async () => {
+      const res = await window.api.openWorkspaceReplacedApp();
+      if (!res || !res.ok) alert('Open app failed: ' + (res && res.error));
+    });
+  }
+  if (elements.replacerKillBtn) {
+    elements.replacerKillBtn.addEventListener('click', async () => {
+      const res = await window.api.killWorkspaceReplacer();
+      if (!res || !res.ok) alert('Kill failed: ' + (res && res.error));
+      else alert('Sent kill to pid ' + res.pid);
+      // Refresh status after attempting kill
+      setTimeout(refreshReplacerStatus, 500);
+    });
+  }
+} catch (e) {}
+
+// Try initial refresh in case replacement artifacts exist
+try { setTimeout(refreshReplacerStatus, 500); } catch (e) {}
 
 function handleFileTreeSortChange(event) {
   try {
@@ -16652,16 +16705,93 @@ const initialize = () => {
   }
   if (elements.fallbackUpdateButton) {
     elements.fallbackUpdateButton.addEventListener('click', async () => {
+      // Prefer the new verified in-app updater when available
       try {
         elements.fallbackUpdateButton.disabled = true;
         elements.fallbackUpdateButton.textContent = 'Starting...';
-        const res = await window.api.downloadAndReplace();
-        console.log('downloadAndReplace result:', res);
-        if (res && res.ok) {
-          elements.fallbackUpdateButton.textContent = 'Replacing...';
+
+        // Helper to reset UI after a failure/success that doesn't quit the app
+        const resetButton = (text = 'Download & Install (Fallback)') => {
+          try {
+            elements.fallbackUpdateButton.disabled = false;
+            elements.fallbackUpdateButton.textContent = text;
+          } catch (e) {}
+        };
+
+        if (window.api && typeof window.api.customCheckAndUpdate === 'function') {
+          // Attach listeners for progress and result
+          const onStarted = () => {
+            try { elements.fallbackUpdateButton.textContent = 'Starting...'; } catch (e) {}
+          };
+          const onProgress = (p) => {
+            try {
+              if (p && typeof p.percent === 'number') {
+                elements.fallbackUpdateButton.textContent = `Downloading... ${Math.round(p.percent)}%`;
+              } else if (p && p.transferred != null) {
+                elements.fallbackUpdateButton.textContent = `Downloading... (${p.transferred}/${p.total || '??'})`;
+              } else {
+                elements.fallbackUpdateButton.textContent = 'Downloading...';
+              }
+            } catch (e) {}
+          };
+          const onResult = (res) => {
+            try {
+              if (res && res.ok) {
+                elements.fallbackUpdateButton.textContent = 'Downloaded';
+                elements.fallbackUpdateButton.disabled = false;
+                // Update will be shown via update-downloaded event
+              } else {
+                elements.fallbackUpdateButton.textContent = 'Failed';
+                setTimeout(() => resetButton(), 3000);
+              }
+            } finally {
+              // remove listeners (ipcRenderer.removeAllListeners via preload)
+              try { window.api.removeListener('custom-update-progress'); } catch (e) {}
+              try { window.api.removeListener('custom-update-started'); } catch (e) {}
+              try { window.api.removeListener('custom-update-result'); } catch (e) {}
+            }
+          };
+
+          // Subscribe
+          try { window.api.on('custom-update-started', onStarted); } catch (e) {}
+          try { window.api.on('custom-update-progress', onProgress); } catch (e) {}
+          try { window.api.on('custom-update-result', onResult); } catch (e) {}
+
+          // Invoke custom updater
+          try {
+            const res = await window.api.customCheckAndUpdate({ preferUserApplications: true });
+            // The result will usually be handled via the 'custom-update-result' event; handle fallback here too
+            if (res && res.ok) {
+              elements.fallbackUpdateButton.textContent = 'Replacing...';
+            } else if (res && res.error) {
+              elements.fallbackUpdateButton.textContent = 'Failed';
+              setTimeout(() => resetButton(), 3000);
+            }
+          } catch (err) {
+            console.error('custom updater error', err);
+            elements.fallbackUpdateButton.textContent = 'Failed';
+            setTimeout(() => resetButton(), 3000);
+            try { window.api.removeListener('custom-update-progress'); } catch (e) {}
+            try { window.api.removeListener('custom-update-started'); } catch (e) {}
+            try { window.api.removeListener('custom-update-result'); } catch (e) {}
+          }
+
         } else {
-          elements.fallbackUpdateButton.textContent = 'Failed';
-          setTimeout(() => { elements.fallbackUpdateButton.disabled = false; elements.fallbackUpdateButton.textContent = 'Download & Install (Fallback)'; }, 3000);
+          // Fallback: original downloadAndReplace flow
+          try {
+            const res = await window.api.downloadAndReplace();
+            console.log('downloadAndReplace result:', res);
+            if (res && res.ok) {
+              elements.fallbackUpdateButton.textContent = 'Replacing...';
+            } else {
+              elements.fallbackUpdateButton.textContent = 'Failed';
+              setTimeout(() => { elements.fallbackUpdateButton.disabled = false; elements.fallbackUpdateButton.textContent = 'Download & Install (Fallback)'; }, 3000);
+            }
+          } catch (err) {
+            console.error('fallback update error', err);
+            elements.fallbackUpdateButton.disabled = false;
+            elements.fallbackUpdateButton.textContent = 'Download & Install (Fallback)';
+          }
         }
       } catch (err) {
         console.error('fallback update error', err);
@@ -17004,10 +17134,29 @@ const updateProgressText = document.querySelector('.update-notification__progres
 const updateDownloadButton = document.getElementById('update-download-button');
 const updateInstallButton = document.getElementById('update-install-button');
 const updateDismissButton = document.getElementById('update-dismiss-button');
+let fallbackAvailable = false;
+let fallbackWatchdog = null;
+const startFallbackWatchdog = (timeoutMs = 30000) => {
+  try {
+    clearFallbackWatchdog();
+    fallbackWatchdog = setTimeout(() => {
+      try {
+        updateMessage.textContent = 'The installer appears to be stuck. You can retry the alternative update.';
+        updateDownloadButton.hidden = false;
+        updateDownloadButton.disabled = false;
+        updateDownloadButton.textContent = fallbackAvailable ? 'Try Alternative Update' : 'Download Update';
+      } catch (e) {}
+    }, timeoutMs);
+  } catch (e) {}
+};
+const clearFallbackWatchdog = () => { try { if (fallbackWatchdog) { clearTimeout(fallbackWatchdog); fallbackWatchdog = null; } } catch (e) {} };
 
 // Listen for update events from main process
 window.api.on('update-available', (info) => {
-  updateMessage.textContent = `Version ${info.version} is available for download.`;
+  updateMessage.textContent = `Version ${info.version} is available. Would you like to download it?`;
+  updateDownloadButton.hidden = false;
+  updateDownloadButton.disabled = false;
+  updateDownloadButton.textContent = 'Download Update';
   updateNotification.hidden = false;
 });
 
@@ -17022,7 +17171,7 @@ window.api.on('update-downloaded', (info) => {
   updateProgress.hidden = true;
   updateDownloadButton.hidden = true;
   updateInstallButton.hidden = false;
-  updateMessage.textContent = `Version ${info.version} has been downloaded and is ready to install.`;
+  updateMessage.textContent = `Version ${info.version} has been downloaded. Would you like to install it now?`;
 });
 
 window.api.on('update-not-available', (info) => {
@@ -17049,30 +17198,168 @@ window.api.on('update-error', (err) => {
   } catch (e) { }
 });
 
+window.api.on('fallback-started', () => {
+  console.log('fallback update started');
+  try {
+    updateMessage.textContent = 'Update check failed, trying alternative update method...';
+    updateNotification.hidden = false;
+    if (elements.checkUpdatesButton) {
+      elements.checkUpdatesButton.disabled = true;
+      elements.checkUpdatesButton.textContent = 'Updating...';
+    }
+  } catch (e) { }
+});
+
+window.api.on('fallback-available', () => {
+  try {
+    fallbackAvailable = true;
+    updateMessage.textContent = 'An alternative update method is available due to an error. Click "Download Update" to try it.';
+    updateDownloadButton.hidden = false;
+    updateDownloadButton.disabled = false;
+    updateDownloadButton.textContent = 'Try Alternative Update';
+    updateNotification.hidden = false;
+  } catch (e) { }
+});
+
+// Receive detailed fallback progress updates
+window.api.on('fallback-progress', (payload) => {
+  try {
+    // Ensure the update notification is visible
+    updateNotification.hidden = false;
+
+    if (!payload) return;
+    const stage = payload.stage || 'working';
+
+    if (stage === 'downloading') {
+      // Any active watchdog should be cleared while downloading
+      clearFallbackWatchdog();
+      updateProgress.hidden = false;
+      updateDownloadButton.hidden = true;
+      const percent = payload.percent != null ? payload.percent : 0;
+      updateProgressFill.style.width = (percent ? `${percent}%` : '10%');
+      updateProgressText.textContent = payload.total ? `Downloading... ${percent || 0}%` : `Downloading... ${Math.round((payload.transferred||0)/1024)} KB`;
+      updateMessage.textContent = payload.message || 'Downloading update...';
+    } else if (stage === 'downloaded') {
+      clearFallbackWatchdog();
+      updateProgressText.textContent = 'Download complete.';
+      updateProgressFill.style.width = '100%';
+      updateMessage.textContent = payload.message || 'Download complete.';
+    } else if (stage === 'extracting') {
+      // Keep watchdog cleared while extraction is active
+      clearFallbackWatchdog();
+      updateProgress.hidden = false;
+      updateDownloadButton.hidden = true;
+      updateProgressText.textContent = payload.message || 'Extracting update...';
+      // keep a small animated width to show activity when no percent is provided
+      const current = parseInt(updateProgressFill.style.width) || 0;
+      updateProgressFill.style.width = Math.min(95, current + 5) + '%';
+      updateMessage.textContent = payload.message || 'Extracting update...';
+    } else if (stage === 'extracted' || stage === 'ready') {
+      updateProgressFill.style.width = '100%';
+      updateProgressText.textContent = payload.message || 'Ready to install';
+      updateMessage.textContent = payload.message || 'Ready to install';
+      updateInstallButton.hidden = false;
+      // Start a watchdog: if we don't get a final result soon, offer retry
+      startFallbackWatchdog(30000);
+    } else if (stage === 'error') {
+      clearFallbackWatchdog();
+      updateMessage.textContent = payload.message || 'Update failed';
+      updateNotification.hidden = false;
+      updateDownloadButton.hidden = false;
+      updateDownloadButton.disabled = false;
+      updateDownloadButton.textContent = fallbackAvailable ? 'Try Alternative Update' : 'Download Update';
+    }
+  } catch (e) { }
+});
+
+window.api.on('fallback-result', (result) => {
+  console.log('fallback update result:', result);
+  // Clear any pending watchdog when we receive a result
+  try { clearFallbackWatchdog(); } catch (e) {}
+  try {
+    if (result && result.ok) {
+      // Check if this is development mode (update downloaded but not installed)
+      if (result.message && result.message.includes('Development mode')) {
+        updateMessage.textContent = 'Update downloaded successfully. (Development mode - app not replaced)';
+        updateNotification.hidden = false;
+        if (elements.checkUpdatesButton) {
+          elements.checkUpdatesButton.disabled = false;
+          elements.checkUpdatesButton.textContent = 'Check for Updates';
+        }
+      } else {
+        // Show the install button for manual restart
+        updateProgress.hidden = true;
+        updateDownloadButton.hidden = true;
+        updateInstallButton.hidden = false;
+        updateMessage.textContent = 'Update downloaded successfully. Click Install & Restart to complete the update.';
+        updateNotification.hidden = false;
+        console.log('fallback-result: success - showing install button for manual restart');
+      }
+    } else {
+      const errorMsg = result && result.error ? result.error : 'Unknown error';
+      updateMessage.textContent = `Alternative update failed: ${errorMsg}`;
+      updateNotification.hidden = false;
+      if (elements.checkUpdatesButton) {
+        elements.checkUpdatesButton.disabled = false;
+        elements.checkUpdatesButton.textContent = 'Try Again';
+      }
+    }
+  } catch (e) { }
+});
+
 // Handle update actions
 updateDownloadButton.addEventListener('click', async () => {
   updateDownloadButton.disabled = true;
   updateDownloadButton.textContent = 'Downloading...';
   try {
-    // Prefer direct method if available, fall back to invoke-style if present
-    if (window.api && typeof window.api.checkForUpdates === 'function') {
-      await window.api.checkForUpdates();
-    } else if (window.api && typeof window.api.invoke === 'function') {
-      await window.api.invoke('app:checkForUpdates');
+    if (fallbackAvailable) {
+      // Trigger the fallback updater (downloads and replaces the app)
+      if (window.api && typeof window.api.downloadAndReplace === 'function') {
+        const res = await window.api.downloadAndReplace();
+        // result will be sent via 'fallback-result' channel; we just show temporary status
+        updateMessage.textContent = 'Attempting alternative update...';
+      } else if (window.api && typeof window.api.invoke === 'function') {
+        window.api.invoke('app:downloadAndReplace');
+        updateMessage.textContent = 'Attempting alternative update...';
+      } else {
+        throw new Error('Fallback update API unavailable');
+      }
     } else {
-      throw new Error('Update API unavailable');
+      // Call the new downloadUpdate method for normal auto-updater download
+      if (window.api && typeof window.api.invoke === 'function') {
+        const result = await window.api.invoke('app:downloadUpdate');
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+      } else {
+        throw new Error('Update API unavailable');
+      }
     }
   } catch (error) {
     updateDownloadButton.disabled = false;
-    updateDownloadButton.textContent = 'Download';
+    updateDownloadButton.textContent = fallbackAvailable ? 'Try Alternative Update' : 'Download Update';
+    updateMessage.textContent = `Download failed: ${error.message}`;
   }
 });
 
 updateInstallButton.addEventListener('click', async () => {
-  if (window.api && typeof window.api.quitAndInstall === 'function') {
-    await window.api.quitAndInstall();
-  } else if (window.api && typeof window.api.invoke === 'function') {
-    await window.api.invoke('app:quitAndInstall');
+  console.log('Install & Restart button clicked');
+  try {
+    if (window.api && typeof window.api.quitAndInstall === 'function') {
+      console.log('Calling window.api.quitAndInstall()');
+      await window.api.quitAndInstall();
+      console.log('quitAndInstall call completed');
+    } else if (window.api && typeof window.api.invoke === 'function') {
+      console.log('Calling window.api.invoke(app:quitAndInstall)');
+      await window.api.invoke('app:quitAndInstall');
+      console.log('invoke call completed');
+    } else {
+      console.error('No quitAndInstall API available');
+      updateMessage.textContent = 'Install failed: API not available';
+    }
+  } catch (e) {
+    console.error('Install & Restart failed:', e);
+    updateMessage.textContent = 'Install failed: ' + e.message;
   }
 });
 

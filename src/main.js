@@ -4,9 +4,14 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
-const { autoUpdater } = require('electron-updater');
+const https = require('https');
+// const { autoUpdater } = require('electron-updater'); // Disabled, using custom fallback only
 const { createNotesStore } = require('./store/notesStore');
 const { loadFolderNotes, readPdfAsDataUri, readPdfBuffer, createMarkdownFile, renameMarkdownFile, saveMarkdownFile } = require('./store/folderManager');
+
+// Expose performFallbackUpdate in module scope so IPC handlers can call it
+let performFallbackUpdate;
+let pendingUpdatePath = null;
 
 // Helper function to convert HTML to DOCX children
 async function htmlToDocxChildren(html, folderPath) {
@@ -201,6 +206,89 @@ ipcMain.handle('debug:write', async (_event, payload) => {
   }
 });
 
+// Read the replacement script debug log (written by the detached installer script)
+ipcMain.handle('debug:readReplaceLog', async () => {
+  try {
+    const os = require('os');
+    const tmp = os.tmpdir();
+    const logPath = path.join(tmp, 'nta-replace.log');
+    const content = await fsp.readFile(logPath, 'utf8');
+    return { ok: true, file: logPath, content };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
+
+// List files in the workspace .debug directory and read individual files
+ipcMain.handle('debug:listWorkspaceDebug', async () => {
+  try {
+    const workspaceDebugDir = path.join(__dirname, '..', '.debug');
+    await fsp.mkdir(workspaceDebugDir, { recursive: true });
+    const items = await fsp.readdir(workspaceDebugDir);
+    return { ok: true, dir: workspaceDebugDir, items };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('debug:readWorkspaceDebugFile', async (_event, filename) => {
+  try {
+    const workspaceDebugDir = path.join(__dirname, '..', '.debug');
+    const safeName = path.basename(filename || '');
+    const filePath = path.join(workspaceDebugDir, safeName);
+    const content = await fsp.readFile(filePath, 'utf8');
+    return { ok: true, file: filePath, content };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
+
+// Kill the spawned replacer process (reads pid from workspace .debug/nta-replace.pid)
+ipcMain.handle('debug:killWorkspaceReplacer', async () => {
+  try {
+    const workspaceDebugDir = path.join(__dirname, '..', '.debug');
+    const pidPath = path.join(workspaceDebugDir, 'nta-replace.pid');
+    const pidText = await fsp.readFile(pidPath, 'utf8').catch(() => null);
+    if (!pidText) return { ok: false, error: 'No pid file found' };
+    const pid = parseInt(pidText.trim(), 10);
+    if (!pid || Number.isNaN(pid)) return { ok: false, error: 'Invalid pid in file' };
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch (e) {
+      // If process already exited or permission denied, try force kill then continue
+      try { process.kill(pid, 'SIGKILL'); } catch (ee) {}
+    }
+    return { ok: true, pid };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
+
+// Open the replaced app based on the workspace or /tmp sentinel
+ipcMain.handle('debug:openWorkspaceReplacedApp', async () => {
+  try {
+    const workspaceDebugDir = path.join(__dirname, '..', '.debug');
+    const workspaceResult = path.join(workspaceDebugDir, 'nta-replace-result.json');
+    const tmpResult = path.join(require('os').tmpdir(), 'nta-replace-result.json');
+    let content = null;
+    try { content = await fsp.readFile(workspaceResult, 'utf8'); } catch (e) { /* ignore */ }
+    if (!content) {
+      try { content = await fsp.readFile(tmpResult, 'utf8'); } catch (e) { /* ignore */ }
+    }
+    if (!content) return { ok: false, error: 'No result sentinel found' };
+    let obj = null;
+    try { obj = JSON.parse(content); } catch (e) { return { ok: false, error: 'Failed to parse sentinel: ' + String(e) }; }
+    const target = obj && obj.target ? obj.target : null;
+    if (!target) return { ok: false, error: 'No target path in sentinel' };
+    // Use electron.shell.openPath to open the application path
+    const res = await shell.openPath(target);
+    // shell.openPath returns an empty string on success, or an error string
+    return { ok: res === '', target, result: res };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
+
 const toFileUrl = (targetPath) => {
   if (!targetPath) {
     return '';
@@ -251,6 +339,7 @@ const isHtmlFile = (targetPath) => {
 };
 
 const createMainWindow = () => {
+  console.log('createMainWindow: Creating main window...');
   const windowOptions = {
     width: 1280,
     height: 800,
@@ -285,6 +374,33 @@ const createMainWindow = () => {
 
   const startPage = path.join(__dirname, 'renderer', 'index.html');
   mainWindow.loadFile(startPage);
+  
+  console.log('createMainWindow: Main window created and loading page:', startPage);
+
+  // Diagnostic: check whether preload-exposed API is available in the renderer
+  try {
+    mainWindow.webContents.once('did-finish-load', () => {
+      try {
+        mainWindow.webContents.executeJavaScript(`(function(){
+          try {
+            return {
+              hasApi: typeof window.api !== 'undefined',
+              hasInvoke: (typeof window.api !== 'undefined') ? (typeof window.api.invoke === 'function') : false,
+              hasDownloadUpdate: (typeof window.api !== 'undefined') ? (typeof window.api.downloadUpdate === 'function') : false,
+              hasDownloadAndReplace: (typeof window.api !== 'undefined') ? (typeof window.api.downloadAndReplace === 'function') : false
+            };
+          } catch (e) { return { error: String(e) }; }
+        })()`)
+        .then((result) => {
+          try { console.log('Renderer preload API check:', result); } catch (e) {}
+        }).catch((err) => {
+          try { console.log('Renderer preload API exec error:', String(err)); } catch (e) {}
+        });
+      } catch (e) {
+        try { console.log('Renderer preload API check scheduling failed:', String(e)); } catch (e) {}
+      }
+    });
+  } catch (e) {}
 
   // Forward renderer console messages to the main process terminal in development
   try {
@@ -325,253 +441,629 @@ const createMainWindow = () => {
   }
 };
 
-// Auto-updater configuration
+// Auto-updater configuration - disabled, using custom fallback only
 const setupAutoUpdater = () => {
-  // Disable ShipIt code signature validation for development
-  process.env.DISABLE_CODE_SIGNATURE_VALIDATION = '1';
-  
-  // Configure auto-updater for GitHub releases
-  autoUpdater.setFeedURL({
-    provider: 'github',
-    owner: 'Maurone7',
-    repo: 'NTA'
-  });
-  // Allow updates even with invalid code signatures (for development/testing)
-  autoUpdater.forceDevUpdateConfig = true;
-  try { console.log('autoUpdater configured for GitHub: owner=Maurone7 repo=NTA'); } catch (e) {}
+  // Skip electron-updater entirely; use custom fallback updater
+  console.log('setupAutoUpdater: Using custom fallback updater only (no electron-updater)');
 
-  // Auto-updater events
-  autoUpdater.on('checking-for-update', () => {
-  });
-  autoUpdater.on('update-available', (info) => {
-    // Notify user about available update
-    if (mainWindow) {
-      mainWindow.webContents.send('update-available', info);
-    }
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    // Notify renderer that no update was found
-    if (mainWindow) {
-      try { mainWindow.webContents.send('update-not-available', info); } catch (e) { }
-    }
-  });
-
-  // To avoid repeatedly attempting the fallback we guard with this flag
-  let _fallbackTriggered = false;
-  autoUpdater.on('error', (err) => {
-    // Log the error in the main process so it appears in terminal logs
-    try { console.error('autoUpdater error:', err); } catch (e) {}
-    // Forward error to renderer for better debugging visibility
-    if (mainWindow) {
-      try { mainWindow.webContents.send('update-error', String(err)); } catch (e) { }
-    }
-
-    // If this looks like a macOS code-signature validation failure, try the fallback updater once
-    try {
-      const msg = String(err && (err.message || err)).toLowerCase();
-      if (!_fallbackTriggered && /did not pass validation|code has no resources|code object is not signed|signature/i.test(msg)) {
-        _fallbackTriggered = true;
-        // notify renderer that fallback is starting
-        if (mainWindow) {
-          try { mainWindow.webContents.send('fallback-started'); } catch (e) {}
-        }
-        // call the fallback updater but don't await blocking the error handler
-        performFallbackUpdate().then((res) => {
-          if (mainWindow) {
-            try { mainWindow.webContents.send('fallback-result', res); } catch (e) {}
-          }
-        }).catch((e) => {
-          if (mainWindow) {
-            try { mainWindow.webContents.send('fallback-result', { ok: false, error: String(e) }); } catch (err) {}
-          }
-        });
-      }
-    } catch (e) {}
-  });
-
-  autoUpdater.on('download-progress', (progressObj) => {
-    let log_message = `Download speed: ${progressObj.bytesPerSecond}`;
-    log_message += ` - Downloaded ${progressObj.percent}%`;
-    log_message += ` (${progressObj.transferred}/${progressObj.total})`;
-    
-    // Send progress to renderer
-    if (mainWindow) {
-      mainWindow.webContents.send('update-progress', progressObj);
-    }
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    // Notify user that update is ready to install
-    if (mainWindow) {
-      mainWindow.webContents.send('update-downloaded', info);
-    }
-  });
-
-  // Check for updates on app start (after 3 seconds delay)
-  setTimeout(() => {
-    autoUpdater.checkForUpdatesAndNotify();
-    try { console.log('Scheduled automatic checkForUpdatesAndNotify()'); } catch (e) {}
-  }, 3000);
-
-  // Check for updates every 4 hours
-  setInterval(() => {
-    autoUpdater.checkForUpdatesAndNotify();
-  }, 4 * 60 * 60 * 1000);
+  // No auto-updater events or periodic checks
 };
 
-const bootstrap = async () => {
-  notesStore = createNotesStore(app.getPath('userData'));
-  await notesStore.initialize();
-
-  // Configure auto-updater
-  setupAutoUpdater();
-
-  ipcMain.handle('notes:load', async () => {
-    return notesStore.loadNotes();
-  });
-
-  ipcMain.handle('notes:save', async (_event, notes) => {
-    await notesStore.saveNotes(notes);
-    return true;
-  });
-
-  ipcMain.handle('notes:selectPdf', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-      title: 'Import PDF',
-      buttonLabel: 'Import',
-      filters: [{ name: 'PDF files', extensions: ['pdf'] }],
-      properties: ['openFile']
-    });
-
-    if (canceled || !filePaths || !filePaths.length) {
-      return null;
+// Helper function to fetch text from URL, following redirects up to a limit
+const fetchText = (u, redirectCount = 0) => new Promise((resolve, reject) => {
+  const MAX_REDIRECTS = 5;
+  const req = https.get(u, { headers: { 'User-Agent': 'NTA-updater' }, timeout: 10000 }, (res) => {
+    // Follow 3xx redirects when Location header is present
+    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers && res.headers.location) {
+      if (redirectCount >= MAX_REDIRECTS) {
+        reject(new Error('Too many redirects for ' + u));
+        return;
+      }
+      const next = res.headers.location.startsWith('http') ? res.headers.location : new URL(res.headers.location, u).toString();
+      // consume and discard current response before following
+      res.resume();
+      return fetchText(next, redirectCount + 1).then(resolve).catch(reject);
     }
-
-    const pdfPath = filePaths[0];
-    return notesStore.importPdf(pdfPath);
-  });
-
-  ipcMain.handle('notes:loadPdfData', async (_event, payload) => {
-    if (!payload) {
-      return null;
+    if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 400)) {
+      reject(new Error('HTTP ' + res.statusCode + ' for ' + u));
+      return;
     }
-
-    const { storedPath, absolutePath } = payload;
-
-    if (absolutePath) {
-      return readPdfAsDataUri(absolutePath);
-    }
-
-    return notesStore.readPdfAsDataUri(storedPath);
+    let s = '';
+    res.setEncoding('utf8');
+    res.on('data', (c) => s += c);
+    res.on('end', () => resolve(s));
   });
-
-  ipcMain.handle('notes:paths', async () => {
-    return notesStore.getPaths();
+  req.on('error', reject);
+  req.on('timeout', () => {
+    req.destroy();
+    reject(new Error('Request timeout for ' + u));
   });
+});
 
-  // Update handlers
-  ipcMain.handle('app:checkForUpdates', async () => {
-    try { console.log('IPC app:checkForUpdates invoked'); } catch (e) {}
-    // Provide a structured response and ensure errors are forwarded to renderer
-    return await new Promise((resolve) => {
-      let settled = false;
+// then spawns a detached shell script that waits for the app to quit and replaces
+// /Applications/NTA.app using `ditto`. This is intended for developer/internal use.
 
-      const cleanup = () => {
-        try {
-          autoUpdater.removeListener('update-available', onAvailable);
-          autoUpdater.removeListener('update-not-available', onNotAvailable);
-          autoUpdater.removeListener('error', onError);
-        } catch (e) {}
-      };
+performFallbackUpdate = async function({ preferUserApplications = true } = {}) {
+  const https = require('https');
+  const os = require('os');
+  const cp = require('child_process');
+  const tmpdir = os.tmpdir();
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
 
-      const onAvailable = (info) => {
-        if (settled) return;
-        settled = true;
-        if (mainWindow) {
-          try { mainWindow.webContents.send('update-available', info); } catch (e) {}
-        }
-        cleanup();
-        resolve({ status: 'update-available', info });
-      };
+  const notify = (channel, payload) => {
+    try {
+      if (mainWindow) mainWindow.webContents.send(channel, payload);
+    } catch (e) {}
+  };
 
-      const onNotAvailable = (info) => {
-        if (settled) return;
-        settled = true;
-        if (mainWindow) {
-          try { mainWindow.webContents.send('update-not-available', info); } catch (e) {}
-        }
-        cleanup();
-        resolve({ status: 'update-not-available', info });
-      };
-
-      const onError = (err) => {
-        if (settled) return;
-        settled = true;
-        try { console.error('autoUpdater error (during manual check):', err); } catch (e) {}
-        if (mainWindow) {
-          try { mainWindow.webContents.send('update-error', String(err)); } catch (e) {}
-        }
-        cleanup();
-        resolve({ status: 'error', error: String(err) });
-      };
-
-      autoUpdater.once('update-available', onAvailable);
-      autoUpdater.once('update-not-available', onNotAvailable);
-      autoUpdater.once('error', onError);
-
+  try {
+    console.log('performFallbackUpdate: Starting fallback update process');
+    // Dev override: allow reading a local manifest for testing
+    let yamlText = null;
+    if (process.env.NTA_TEST_MANIFEST_PATH) {
       try {
-        autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          try { console.error('autoUpdater check failed:', err); } catch (e) {}
-          if (mainWindow) {
-            try { mainWindow.webContents.send('update-error', String(err)); } catch (e) {}
+        const manifestPath = process.env.NTA_TEST_MANIFEST_PATH;
+        yamlText = await fsp.readFile(manifestPath, 'utf8');
+      } catch (e) {
+        // fallthrough to network fetch if local read fails
+        yamlText = null;
+      }
+    }
+
+    if (!yamlText) {
+      console.log('performFallbackUpdate: Fetching latest-mac.yml manifest');
+      const tryUrls = [
+        'https://github.com/Maurone7/NTA/releases/latest/download/latest-mac.yml'
+      ];
+      let lastErr = null;
+      for (const u of tryUrls) {
+        try {
+          console.log('performFallbackUpdate: Trying URL:', u);
+          yamlText = await fetchText(u);
+          if (yamlText) {
+            console.log('performFallbackUpdate: Successfully fetched manifest from', u);
+            break;
           }
-          resolve({ status: 'error', error: String(err) });
-        });
-      } catch (err) {
-        if (!settled) {
-          settled = true;
-          cleanup();
-          try { console.error('autoUpdater check exception:', err); } catch (e) {}
-          if (mainWindow) {
-            try { mainWindow.webContents.send('update-error', String(err)); } catch (e) {}
-          }
-          resolve({ status: 'error', error: String(err) });
+        } catch (e) {
+          console.log('performFallbackUpdate: Failed to fetch from', u, 'error:', e.message);
+          lastErr = e;
         }
       }
+      
+      // If network fetch failed, try to use the local dev manifest as fallback
+      if (!yamlText) {
+        try {
+          console.log('performFallbackUpdate: Network fetch failed, trying local dev manifest');
+          const devManifestPath = path.join(process.resourcesPath, '..', '..', 'dev-app-update.yml');
+          yamlText = await fsp.readFile(devManifestPath, 'utf8');
+          console.log('performFallbackUpdate: Using local dev manifest');
+        } catch (e) {
+          console.log('performFallbackUpdate: Local dev manifest also failed:', e.message);
+        }
+      }
+      
+      if (!yamlText) throw new Error('Failed to fetch latest-mac.yml: ' + (lastErr ? String(lastErr) : 'unknown'));
+    }
 
-      // Safety timeout
-      setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve({ status: 'timeout' });
-      }, 15000);
+    // Parse YAML manifest using js-yaml if available
+    let manifestObj = null;
+    try {
+      const yaml = require('js-yaml');
+      manifestObj = yaml.load(yamlText);
+    } catch (e) {
+      // fall back to naive parser
+      manifestObj = null;
+    }
+
+    let assetFile = null;
+    if (manifestObj && Array.isArray(manifestObj.files)) {
+      // prefer arch-specific
+      const files = manifestObj.files;
+      const match = files.find(f => String(f.url || '').includes(arch));
+      if (match && match.url) assetFile = match.url;
+      else if (files[0] && files[0].url) assetFile = files[0].url;
+    } else {
+      // naive fallback
+      const lines = yamlText.split('\n');
+      for (const l of lines) {
+        const ll = l.trim();
+        if (ll.startsWith('- url:') && ll.endsWith('.zip')) {
+          const fname = ll.replace('- url:', '').trim();
+          if (fname.includes(arch)) { assetFile = fname; break; }
+          if (!assetFile) assetFile = fname; // first found
+        }
+      }
+    }
+    if (!assetFile) throw new Error('No zip asset found in latest-mac.yml');
+
+    const verMatch = yamlText.match(/^version:\s*(\S+)/m);
+    const releaseTag = (verMatch && verMatch[1]) ? (String(verMatch[1]).startsWith('v') ? verMatch[1] : `v${verMatch[1]}`) : null;
+    let downloadUrl;
+    if (releaseTag) {
+      // Try the repo that matches the installed app first (NTA), then NoteTakingApp
+      downloadUrl = `https://github.com/Maurone7/NTA/releases/download/${releaseTag}/${assetFile}`;
+    } else {
+      downloadUrl = `https://github.com/Maurone7/NTA/releases/latest/download/${assetFile}`;
+    }
+
+    console.log('performFallbackUpdate: Will download from', downloadUrl, 'to', path.join(tmpdir, assetFile));
+    const outZip = path.join(tmpdir, assetFile);
+    
+    // Check if electron-updater already downloaded the file
+    const cacheDir = path.join(require('os').homedir(), 'Library', 'Caches', 'note-taking-app', 'pending');
+    const cachedZip = path.join(cacheDir, assetFile);
+    console.log('performFallbackUpdate: Checking for cached file:', cachedZip);
+    
+    let zipToUse = outZip;
+    try {
+      const stats = await fsp.stat(cachedZip);
+      if (stats.size > 1000000) { // At least 1MB
+        console.log('performFallbackUpdate: Using cached file, size:', stats.size);
+        zipToUse = cachedZip;
+      } else {
+        console.log('performFallbackUpdate: Cached file too small, downloading fresh');
+      }
+    } catch (e) {
+      console.log('performFallbackUpdate: No cached file found, downloading fresh');
+    }
+    console.log('performFallbackUpdate: Starting download...');
+    notify('fallback-progress', { stage: 'starting', message: 'Starting download' });
+    await new Promise((resolve, reject) => {
+      const downloadWithRedirect = (url, redirectCount = 0) => {
+        console.log('performFallbackUpdate: Attempting download from:', url, 'redirect count:', redirectCount);
+        notify('fallback-progress', { stage: 'downloading', message: `Starting download from ${url}` });
+        const MAX_REDIRECTS = 5;
+        const req = https.get(url, { headers: { 'User-Agent': 'NTA-updater' } }, (res) => {
+          // Follow 3xx redirects
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            if (redirectCount >= MAX_REDIRECTS) {
+              reject(new Error('Too many redirects for ' + url));
+              return;
+            }
+            const next = res.headers.location.startsWith('http') ? res.headers.location : new URL(res.headers.location, url).toString();
+            console.log('performFallbackUpdate: Following redirect to:', next);
+            res.resume(); // consume and discard current response
+            return downloadWithRedirect(next, redirectCount + 1);
+          }
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 400)) {
+            reject(new Error('Failed to download asset: ' + res.statusCode + ' from ' + url));
+            return;
+          }
+          const total = parseInt(res.headers['content-length'] || '0', 10) || 0;
+          let transferred = 0;
+          const file = fs.createWriteStream(outZip);
+          res.on('data', (chunk) => {
+            transferred += chunk.length;
+            const percent = total ? Math.round((transferred / total) * 100) : null;
+            notify('fallback-progress', { stage: 'downloading', percent, transferred, total });
+          });
+          res.pipe(file);
+          file.on('finish', () => file.close(resolve));
+          file.on('error', reject);
+        });
+        req.on('error', reject);
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error('Request timeout for ' + url));
+        });
+      };
+      downloadWithRedirect(downloadUrl);
     });
+    console.log('performFallbackUpdate: Download completed');
+    notify('fallback-progress', { stage: 'downloaded', message: 'Download completed' });
+    
+    console.log('performFallbackUpdate: Starting file verification...');
+    // Check if the downloaded file is actually a zip
+    try {
+      const stats = await fsp.stat(outZip);
+      console.log('performFallbackUpdate: File size:', stats.size);
+      if (stats.size < 1000) {
+        const content = await fsp.readFile(outZip, 'utf8');
+        console.log('performFallbackUpdate: Downloaded file content (first 500 chars):', content.substring(0, 500));
+      }
+    } catch (e) {
+      console.log('performFallbackUpdate: Error checking downloaded file:', e.message);
+    }
+
+    // Verify the file exists and is readable before extraction
+    try {
+      await fsp.access(outZip, fsp.constants.R_OK);
+      console.log('performFallbackUpdate: Downloaded file is readable');
+    } catch (e) {
+      console.log('performFallbackUpdate: Downloaded file is not readable:', e.message);
+      throw new Error('Downloaded file is not accessible: ' + e.message);
+    }
+
+    // Extract
+    console.log('performFallbackUpdate: Starting extraction...');
+    const extractDir = path.join(tmpdir, 'NTA-upd');
+    try { await fsp.rm(extractDir, { recursive: true, force: true }); } catch(e){}
+    await fsp.mkdir(extractDir, { recursive: true });
+    console.log('performFallbackUpdate: Extracting to:', extractDir);
+    await new Promise((resolve, reject) => {
+      notify('fallback-progress', { stage: 'extracting', message: 'Extraction started' });
+      const unzipProcess = cp.spawn('unzip', ['-qo', zipToUse, '-d', extractDir], { stdio: 'inherit' });
+      // send periodic heartbeat during extraction
+      const hb = setInterval(() => {
+        notify('fallback-progress', { stage: 'extracting', message: 'Extracting...' });
+      }, 1000);
+      
+      unzipProcess.on('close', (code) => {
+        clearInterval(hb);
+        if (code === 0) {
+          console.log('performFallbackUpdate: Extraction completed successfully');
+          notify('fallback-progress', { stage: 'extracted', message: 'Extraction completed' });
+          resolve();
+        } else {
+          console.log('performFallbackUpdate: unzip exited with code:', code);
+          notify('fallback-progress', { stage: 'error', message: 'Extraction failed', code });
+          reject(new Error('unzip exited with code ' + code));
+        }
+      });
+      
+      unzipProcess.on('error', (err) => {
+        console.log('performFallbackUpdate: unzip spawn error:', err);
+        reject(err);
+      });
+      
+      // Add timeout for unzip operation (5 minutes)
+      const timeout = setTimeout(() => {
+        console.log('performFallbackUpdate: Unzip timeout, killing process');
+        unzipProcess.kill('SIGTERM');
+        reject(new Error('Unzip operation timed out'));
+      }, 5 * 60 * 1000);
+      
+      unzipProcess.on('close', () => clearTimeout(timeout));
+    });
+
+    const extractedApp = path.join(extractDir, 'NTA.app');
+    console.log('performFallbackUpdate: Extracted app path:', extractedApp);
+    console.log('performFallbackUpdate: Removing code signature...');
+    try { await fsp.rm(path.join(extractedApp, 'Contents', '_CodeSignature'), { recursive: true, force: true }); } catch(e){}
+
+    notify('fallback-progress', { stage: 'ready', message: 'Update ready; installing' });
+
+    // Choose target path. Prefer the actual running app bundle when available (production builds).
+    let targetApp = preferUserApplications ? path.join(process.env.HOME || '/', 'Applications', 'NTA.app') : '/Applications/NTA.app';
+    try {
+      // process.execPath -> .../NTA.app/Contents/MacOS/NTA for packaged macOS app
+      const execBundle = path.resolve(process.execPath, '..', '..', '..');
+      console.log('performFallbackUpdate: execPath:', process.execPath);
+      console.log('performFallbackUpdate: execBundle:', execBundle);
+      // execBundle should be the .app path; verify it exists and looks like an app bundle
+      try {
+        const st = await fsp.stat(execBundle);
+        if (st && st.isDirectory() && String(execBundle).endsWith('.app')) {
+          // prefer replacing the bundle where the app is actually running from
+          console.log('performFallbackUpdate: Detected running app bundle at', execBundle);
+          targetApp = execBundle;
+        } else {
+          console.log('performFallbackUpdate: execBundle not valid:', st, execBundle);
+        }
+      } catch (e) {
+        console.log('performFallbackUpdate: Error checking execBundle:', e.message);
+      }
+    } catch (e) {}
+    
+    // For development/testing, check if we're running from a development directory
+    try {
+      const forceReplace = process.env.NTA_FORCE_REPLACE === '1';
+      // Check if we're running from a packaged app bundle
+      let isPackaged = false;
+      try {
+        const execBundle = path.resolve(process.execPath, '..', '..', '..');
+        const st = await fsp.stat(execBundle);
+        if (st && st.isDirectory() && String(execBundle).endsWith('.app')) {
+          isPackaged = true;
+        }
+      } catch (e) {}
+      
+      if (!isPackaged && !forceReplace) {
+        // Development mode - simulate successful update without quitting
+        console.log('performFallbackUpdate: Development mode - simulating successful update');
+        notify('fallback-progress', { stage: 'ready', message: 'Update ready; completed' });
+        notify('fallback-result', { ok: true, message: 'Development mode - update simulated', target: targetApp });
+        return { ok: true, message: 'Development mode - update simulated', target: targetApp };
+      }
+      if (!isPackaged && forceReplace) {
+        console.log('performFallbackUpdate: Development mode detected but NTA_FORCE_REPLACE=1 — forcing replacement');
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+    
+    console.log('performFallbackUpdate: Target app path:', targetApp);
+    console.log('performFallbackUpdate: Setting pending update path:', extractedApp);
+    pendingUpdatePath = extractedApp;
+    notify('update-downloaded', { version: releaseTag || 'latest' });
+    return { ok: true, message: 'Update downloaded and ready for installation', target: targetApp };
+    } catch (err) {
+      console.error('performFallbackUpdate error:', err);
+      return { ok: false, error: String(err) };
+    }
+  }
+
+  // (dev hook removed - moved into bootstrap so performCustomUpdate is in scope)
+
+  const bootstrap = async () => {
+    notesStore = createNotesStore(app.getPath('userData'));
+    await notesStore.initialize();
+
+    // Configure auto-updater
+    setupAutoUpdater();
+
+    // Dev-only: allow forcing the fallback updater to run on startup for testing
+    if (process.env.NTA_RUN_FALLBACK === '1') {
+      try {
+        console.log('Dev: NTA_RUN_FALLBACK=1 detected — invoking performFallbackUpdate()');
+        // run but don't await to avoid blocking boot
+        performFallbackUpdate({ preferUserApplications: true }).catch((e) => console.error('Fallback test error:', e));
+      } catch (e) {
+        console.error('Dev fallback trigger failed:', e);
+      }
+    }
+
+    ipcMain.handle('notes:load', async () => {
+      return notesStore.loadNotes();
+    });
+
+    ipcMain.handle('notes:save', async (_event, notes) => {
+      await notesStore.saveNotes(notes);
+      return true;
+    });
+
+    ipcMain.handle('notes:selectPdf', async () => {
+      const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+        title: 'Import PDF',
+        buttonLabel: 'Import',
+        filters: [{ name: 'PDF files', extensions: ['pdf'] }],
+        properties: ['openFile']
+      });
+
+      if (canceled || !filePaths || !filePaths.length) {
+        return null;
+      }
+
+      const pdfPath = filePaths[0];
+      return notesStore.importPdf(pdfPath);
+    });
+
+    ipcMain.handle('notes:loadPdfData', async (_event, payload) => {
+      if (!payload) {
+        return null;
+      }
+
+      const { storedPath, absolutePath } = payload;
+
+      if (absolutePath) {
+        return readPdfAsDataUri(absolutePath);
+      }
+
+      return notesStore.readPdfAsDataUri(storedPath);
+    });
+
+    ipcMain.handle('notes:paths', async () => {
+      return notesStore.getPaths();
+    });
+
+    // Update handlers - using custom fallback only
+    ipcMain.handle('app:checkForUpdates', async () => {
+      try { console.log('IPC app:checkForUpdates invoked - using custom fallback'); } catch (e) {}
+      // Fetch manifest and check if update available
+      const https = require('https');
+      const fetchText = (u, redirectCount = 0) => new Promise((resolve, reject) => {
+        const MAX_REDIRECTS = 5;
+        const req = https.get(u, { headers: { 'User-Agent': 'NTA-updater' }, timeout: 10000 }, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            if (redirectCount >= MAX_REDIRECTS) {
+              reject(new Error('Too many redirects for ' + u));
+              return;
+            }
+            const next = res.headers.location.startsWith('http') ? res.headers.location : new URL(res.headers.location, u).toString();
+            res.resume();
+            return fetchText(next, redirectCount + 1).then(resolve).catch(reject);
+          }
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 400)) {
+            reject(new Error('HTTP ' + res.statusCode + ' for ' + u));
+            return;
+          }
+          let s = '';
+          res.setEncoding('utf8');
+          res.on('data', (c) => s += c);
+          res.on('end', () => resolve(s));
+        });
+        req.on('error', reject);
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error('Request timeout for ' + u));
+        });
+    });
+
+    try {
+      const tryUrls = [
+        'https://github.com/Maurone7/NTA/releases/latest/download/latest-mac.yml',
+        'https://github.com/Maurone7/NoteTakingApp/releases/latest/download/latest-mac.yml'
+      ];
+      let yamlText = null;
+      for (const u of tryUrls) {
+        try {
+          yamlText = await fetchText(u);
+          if (yamlText) break;
+        } catch (e) {}
+      }
+      if (!yamlText) {
+        if (mainWindow) mainWindow.webContents.send('update-error', 'Failed to fetch update manifest');
+        return { status: 'error', error: 'Failed to fetch manifest' };
+      }
+
+      const verMatch = yamlText.match(/^version:\s*(\S+)/m);
+      const remoteVersion = verMatch && verMatch[1] ? verMatch[1] : null;
+      const currentVersion = app.getVersion();
+      if (remoteVersion && remoteVersion !== currentVersion) {
+        const info = { version: remoteVersion, currentVersion };
+        if (mainWindow) mainWindow.webContents.send('update-available', info);
+        return { status: 'update-available', info };
+      } else {
+        const info = { currentVersion };
+        if (mainWindow) mainWindow.webContents.send('update-not-available', info);
+        return { status: 'update-not-available', info };
+      }
+    } catch (err) {
+      if (mainWindow) mainWindow.webContents.send('update-error', String(err));
+      return { status: 'error', error: String(err) };
+    }
   });
 
   ipcMain.handle('app:quitAndInstall', async () => {
-    autoUpdater.quitAndInstall();
+    // For custom fallback, install update if available, then quit the app
+    const fs = require('fs');
+    const path = require('path');
+    const logFile = path.join(require('os').tmpdir(), 'nta-restart.log');
+    
+    const log = (msg) => {
+      const timestamp = new Date().toISOString();
+      const line = `${timestamp}: ${msg}\n`;
+      console.log(msg);
+      try { fs.appendFileSync(logFile, line); } catch(e) {}
+    };
+    
+    log('app:quitAndInstall: starting - called from renderer');
+    
+    // If there's a pending update, install it first, then quit
+    if (pendingUpdatePath) {
+      try {
+        log('app:quitAndInstall: installing pending update from ' + pendingUpdatePath);
+        const cp = require('child_process');
+        const os = require('os');
+        const tmpdir = os.tmpdir();
+        
+        // Wait for any existing NTA processes to exit first (but we should be the only one running)
+        log('app:quitAndInstall: checking for other NTA processes');
+        try {
+          const result = await new Promise((resolve, reject) => {
+            const child = cp.spawn('pgrep', ['-af', 'NTA.app/Contents/MacOS/NTA|NTA Helper'], { stdio: ['pipe', 'pipe', 'pipe'] });
+            let stdout = '';
+            child.stdout.on('data', (data) => stdout += data.toString());
+            child.on('close', (code) => {
+              if (code === 0) resolve(stdout.trim());
+              else resolve('');
+            });
+            child.on('error', () => resolve(''));
+          });
+          const filtered = result.split('\n').filter(line => line && !line.includes('nta-replace.sh') && !line.includes('/bin/sh -c')).join('\n');
+          if (filtered) {
+            log('app:quitAndInstall: found other NTA processes, waiting...');
+            // Wait a moment for processes to exit
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (e) {
+          log('app:quitAndInstall: error checking processes: ' + e.message);
+        }
+        
+        // Instead of replacing the running app, launch the new app from temp location
+        // and let the user restart manually or handle it differently
+        log('app:quitAndInstall: launching new app from temp location: ' + pendingUpdatePath);
+        await new Promise((resolve, reject) => {
+          const child = cp.spawn('open', [pendingUpdatePath], { stdio: 'inherit' });
+          child.on('close', (code) => {
+            if (code === 0) {
+              log('app:quitAndInstall: new app launched successfully from temp location');
+              resolve();
+            } else {
+              log('app:quitAndInstall: failed to launch new app from temp location, code: ' + code);
+              reject(new Error('Failed to launch new app'));
+            }
+          });
+          child.on('error', (err) => {
+            log('app:quitAndInstall: error launching new app: ' + err.message);
+            reject(err);
+          });
+        });
+        
+        // Clear pending update
+        pendingUpdatePath = null;
+        log('app:quitAndInstall: update completed - new app launched from temp location');
+      } catch (e) {
+        log('app:quitAndInstall: install failed: ' + e.message);
+        // Don't quit if install failed
+        return { success: false, error: e.message };
+      }
+    } else {
+      log('app:quitAndInstall: no pending update found');
+    }
+    
+    // Update completed successfully - don't quit the current app
+    log('app:quitAndInstall: update process completed');
+    return { success: true, message: 'Update completed successfully' };
+  });
+
+  ipcMain.handle('app:downloadUpdate', async () => {
+    // Use custom fallback updater
+    try {
+      const result = await performFallbackUpdate({ preferUserApplications: true });
+      if (result.quitting) {
+        // App is quitting, don't try to return to renderer
+        return;
+      }
+      return { success: true, result };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   });
 
   // Fallback updater (no Apple Developer ID required)
   // Downloads the latest release's zip for the current arch, extracts it to /tmp,
   // then spawns a detached shell script that waits for the app to quit and replaces
-  // /Applications/NTA.app using `ditto`. This is intended for developer/internal use.
+  ipcMain.handle('app:downloadAndReplace', async (_event, opts) => {
+    // Notify renderer that fallback has started
+    try {
+      if (mainWindow) mainWindow.webContents.send('fallback-started');
+    } catch (e) {}
 
-  async function performFallbackUpdate({ preferUserApplications = true } = {}) {
+    try {
+      const result = await performFallbackUpdate(opts || {});
+      try { if (mainWindow) mainWindow.webContents.send('fallback-result', result); } catch (e) {}
+      return result;
+    } catch (err) {
+      const res = { ok: false, error: String(err) };
+      try { if (mainWindow) mainWindow.webContents.send('fallback-result', res); } catch (e) {}
+      return res;
+    }
+  });
+
+  // Custom in-app updater: verifies manifest sha512 and streams download progress
+  async function performCustomUpdate({ preferUserApplications = true } = {}) {
     const https = require('https');
     const os = require('os');
     const cp = require('child_process');
     const tmpdir = os.tmpdir();
     const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+    const crypto = require('crypto');
 
-    // Helper to fetch text from URL
-    const fetchText = (u) => new Promise((resolve, reject) => {
+    const notify = (channel, payload) => {
+      try {
+        if (mainWindow) mainWindow.webContents.send(channel, payload);
+      } catch (e) {}
+    };
+
+    notify('custom-update-started', { arch });
+  console.log('performCustomUpdate: started (arch=' + arch + ')');
+
+    // Helper to fetch text from URL, following redirects up to a limit
+    const fetchText = (u, redirectCount = 0) => new Promise((resolve, reject) => {
+      const MAX_REDIRECTS = 5;
       const req = https.get(u, { headers: { 'User-Agent': 'NTA-updater' } }, (res) => {
+        // Follow 3xx redirects when Location header is present
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers && res.headers.location) {
+          if (redirectCount >= MAX_REDIRECTS) {
+            reject(new Error('Too many redirects for ' + u));
+            return;
+          }
+          const next = res.headers.location.startsWith('http') ? res.headers.location : new URL(res.headers.location, u).toString();
+          // consume and discard current response before following
+          res.resume();
+          return fetchText(next, redirectCount + 1).then(resolve).catch(reject);
+        }
         if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 400)) {
           reject(new Error('HTTP ' + res.statusCode + ' for ' + u));
           return;
@@ -585,62 +1077,182 @@ const bootstrap = async () => {
     });
 
     try {
-      const tryUrls = [
-        'https://github.com/Maurone7/NTA/releases/latest/download/latest-mac.yml',
-        'https://github.com/Maurone7/NoteTakingApp/releases/latest/download/latest-mac.yml'
-      ];
+      // Dev override: read local manifest if requested
       let yamlText = null;
-      let lastErr = null;
-      for (const u of tryUrls) {
+      if (process.env.NTA_TEST_MANIFEST_PATH) {
         try {
-          yamlText = await fetchText(u);
-          if (yamlText) break;
+          yamlText = await fsp.readFile(process.env.NTA_TEST_MANIFEST_PATH, 'utf8');
         } catch (e) {
-          lastErr = e;
+          yamlText = null;
         }
       }
-      if (!yamlText) throw new Error('Failed to fetch latest-mac.yml: ' + (lastErr ? String(lastErr) : 'unknown'));
 
-      // Parse for zip asset
-      const lines = yamlText.split('\n');
-      let assetFile = null;
-      for (const l of lines) {
-        const ll = l.trim();
-        if (ll.startsWith('- url:') && ll.endsWith('.zip')) {
-          const fname = ll.replace('- url:', '').trim();
-          if (fname.includes(arch)) { assetFile = fname; break; }
-          if (!assetFile) assetFile = fname; // first found
+      if (!yamlText) {
+        const tryUrls = [
+          'https://github.com/Maurone7/NTA/releases/latest/download/latest-mac.yml'
+        ];
+        let lastErr = null;
+        for (const u of tryUrls) {
+          try {
+            yamlText = await fetchText(u);
+            if (yamlText) break;
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        if (!yamlText) throw new Error('Failed to fetch latest-mac.yml: ' + (lastErr ? String(lastErr) : 'unknown'));
+      }
+
+      // Parse manifest entries using js-yaml when possible
+      let entries = null;
+      try {
+        const yaml = require('js-yaml');
+        const obj = yaml.load(yamlText);
+        if (obj && Array.isArray(obj.files)) {
+          entries = obj.files.map(f => ({ url: String(f.url || ''), sha512: String(f.sha512 || ''), size: Number(f.size || 0) }));
+        }
+      } catch (e) {
+        entries = null;
+      }
+
+      if (!entries) {
+        // fallback to naive parser
+        const lines = yamlText.split('\n');
+        entries = [];
+        for (let i = 0; i < lines.length; i++) {
+          const l = lines[i].trim();
+          if (l.startsWith('- url:') && l.endsWith('.zip')) {
+            const urlPart = l.replace('- url:', '').trim();
+            // look ahead for sha512 and size
+            let sha = null; let size = null;
+            for (let j = i+1; j < Math.min(lines.length, i+6); j++) {
+              const ll = lines[j].trim();
+              const mSha = ll.match(/^sha512:\s*(\S+)/);
+              if (mSha) sha = mSha[1];
+              const mSize = ll.match(/^size:\s*(\d+)/);
+              if (mSize) size = parseInt(mSize[1], 10);
+            }
+            entries.push({ url: urlPart, sha512: sha, size });
+          }
         }
       }
-      if (!assetFile) throw new Error('No zip asset found in latest-mac.yml');
+
+      if (!entries.length) throw new Error('No zip assets found in latest-mac.yml');
+
+      // Prefer arch-specific entry
+      let chosen = entries.find(e => e.url.includes(arch)) || entries[0];
+  console.log('performCustomUpdate: chosen entry:', chosen);
 
       const verMatch = yamlText.match(/^version:\s*(\S+)/m);
       const releaseTag = (verMatch && verMatch[1]) ? (String(verMatch[1]).startsWith('v') ? verMatch[1] : `v${verMatch[1]}`) : null;
       let downloadUrl;
       if (releaseTag) {
-        // Try the repo that matches the installed app first (NTA), then NoteTakingApp
-        downloadUrl = `https://github.com/Maurone7/NTA/releases/download/${releaseTag}/${assetFile}`;
+        downloadUrl = `https://github.com/Maurone7/NTA/releases/download/${releaseTag}/${chosen.url}`;
       } else {
-        downloadUrl = `https://github.com/Maurone7/NTA/releases/latest/download/${assetFile}`;
+        downloadUrl = `https://github.com/Maurone7/NTA/releases/latest/download/${chosen.url}`;
       }
 
-      const outZip = path.join(tmpdir, assetFile);
-      // Download
-      await new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(outZip);
-        const req = https.get(downloadUrl, { headers: { 'User-Agent': 'NTA-updater' } }, (res) => {
-          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 400)) {
-            reject(new Error('Failed to download asset: ' + res.statusCode + ' from ' + downloadUrl));
-            return;
-          }
-          res.pipe(file);
-          file.on('finish', () => file.close(resolve));
-        });
-        req.on('error', (err) => { try { fs.unlinkSync(outZip); } catch(e){}; reject(err); });
-      });
+      const outZip = path.join(tmpdir, chosen.url);
 
-      // Extract
-      const extractDir = path.join(tmpdir, 'NTA-upd');
+      // If testing with a local asset path, copy it instead of HTTPS download
+      if (process.env.NTA_TEST_ASSET_PATH) {
+        console.log('performCustomUpdate: using local asset path:', process.env.NTA_TEST_ASSET_PATH, '->', outZip);
+        const localAsset = path.resolve(process.env.NTA_TEST_ASSET_PATH);
+        try {
+          await fsp.copyFile(localAsset, outZip);
+          console.log('performCustomUpdate: copied local asset to', outZip);
+        } catch (e) {
+          throw new Error('Failed to copy local test asset: ' + String(e));
+        }
+
+        // compute sha512 of the copied file
+        const fd = await fsp.open(outZip, 'r');
+        try {
+          const hash = crypto.createHash('sha512');
+          const stream = fd.createReadStream();
+          await new Promise((resolve, reject) => {
+            stream.on('data', (chunk) => { try { hash.update(chunk); } catch (e) {} });
+            stream.on('end', () => resolve());
+            stream.on('error', (err) => reject(err));
+          });
+          const digest = hash.digest('base64');
+          console.log('performCustomUpdate: computed digest:', digest, 'expected:', chosen.sha512);
+          if (chosen.sha512 && digest && chosen.sha512 !== digest) {
+            try { await fsp.unlink(outZip); } catch (e) {}
+            throw new Error('SHA512 mismatch for downloaded asset');
+          }
+        } finally {
+          try { await fd.close(); } catch (e) {}
+        }
+      } else {
+        // Download to a temp file first, following redirects, then compute sha512
+        const downloadToFile = (url, dest, redirectCount = 0) => new Promise((resolve, reject) => {
+          const MAX_REDIRECTS = 5;
+          const req = https.get(url, { headers: { 'User-Agent': 'NTA-updater' } }, (res) => {
+            // Follow redirects
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers && res.headers.location) {
+              if (redirectCount >= MAX_REDIRECTS) {
+                reject(new Error('Too many redirects for ' + url));
+                return;
+              }
+              const next = res.headers.location.startsWith('http') ? res.headers.location : new URL(res.headers.location, url).toString();
+              res.resume();
+              return downloadToFile(next, dest, redirectCount + 1).then(resolve).catch(reject);
+            }
+            if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 400)) {
+              reject(new Error('Failed to download asset: ' + res.statusCode + ' from ' + url));
+              return;
+            }
+            const total = parseInt(res.headers['content-length'] || (chosen.size || '0'), 10) || 0;
+            let transferred = 0;
+            const file = fs.createWriteStream(dest);
+            res.on('data', (chunk) => {
+              transferred += chunk.length;
+              file.write(chunk);
+              const percent = total ? Math.round((transferred/total)*10000)/100 : null;
+              notify('custom-update-progress', { transferred, total, percent });
+            });
+            res.on('end', () => {
+              file.end(() => resolve({ transferred, total }));
+            });
+            res.on('error', (err) => {
+              try { file.close(); } catch(e) {}
+              try { fs.unlinkSync(dest); } catch(e) {}
+              reject(err);
+            });
+          });
+          req.on('error', reject);
+        });
+
+        await downloadToFile(downloadUrl, outZip);
+
+        // Compute final hash from the saved file and verify against manifest sha512 if provided
+        try {
+          const fd = await fsp.open(outZip, 'r');
+          try {
+            const hash = crypto.createHash('sha512');
+            const stream = fd.createReadStream();
+            await new Promise((resolve, reject) => {
+              stream.on('data', (chunk) => { try { hash.update(chunk); } catch (e) {} });
+              stream.on('end', () => resolve());
+              stream.on('error', (err) => reject(err));
+            });
+            const digest = hash.digest('base64');
+            console.log('performCustomUpdate: computed digest (post-download):', digest, 'expected:', chosen.sha512);
+            if (chosen.sha512 && digest && chosen.sha512 !== digest) {
+              try { await fsp.unlink(outZip); } catch (e) {}
+              throw new Error('SHA512 mismatch for downloaded asset');
+            }
+          } finally {
+            try { await fd.close(); } catch (e) {}
+          }
+        } catch (err) {
+          throw err;
+        }
+      }
+
+    // Extract
+    const extractDir = path.join(tmpdir, 'NTA-upd');
       try { await fsp.rm(extractDir, { recursive: true, force: true }); } catch(e){}
       await fsp.mkdir(extractDir, { recursive: true });
       await new Promise((resolve, reject) => {
@@ -648,30 +1260,34 @@ const bootstrap = async () => {
       });
 
       const extractedApp = path.join(extractDir, 'NTA.app');
+  console.log('performCustomUpdate: extracted app path:', extractedApp);
       try { await fsp.rm(path.join(extractedApp, 'Contents', '_CodeSignature'), { recursive: true, force: true }); } catch(e){}
 
       // Choose target path
       const targetApp = preferUserApplications ? path.join(process.env.HOME || '/', 'Applications', 'NTA.app') : '/Applications/NTA.app';
 
-      // Create replacement script
-      const scriptPath = path.join(tmpdir, 'nta-replace.sh');
-      const script = `#!/bin/sh\n\n# wait a bit to allow the app to exit\nsleep 1\n\n# remove old app and copy new one (uses ditto to preserve metadata)\nrm -rf "${targetApp}"\n/usr/bin/ditto "${extractedApp}" "${targetApp}"\n\n# open replaced app\nopen -a "${targetApp}"\n`;
-      await fsp.writeFile(scriptPath, script, { mode: 0o755 });
-      const child = cp.spawn('sh', [scriptPath], { detached: true, stdio: 'ignore' });
-      child.unref();
-      try { app.quit(); } catch(e){}
-      return { ok: true, message: 'Started background replacement script', target: targetApp };
+      console.log('performCustomUpdate: Target app path:', targetApp);
+      console.log('performCustomUpdate: Setting pending update path:', extractedApp);
+      pendingUpdatePath = extractedApp;
+      notify('update-downloaded', { version: releaseTag || 'latest' });
+      notify('custom-update-result', { ok: true, target: targetApp });
+      return { ok: true, message: 'Update downloaded and ready for installation', target: targetApp };
     } catch (err) {
-      try { console.error('performFallbackUpdate error:', err); } catch(e){}
+      notify('custom-update-result', { ok: false, error: String(err) });
+      try { console.error('performCustomUpdate error:', err); } catch(e){}
       return { ok: false, error: String(err) };
     }
   }
 
-  ipcMain.handle('app:downloadAndReplace', async (_event, opts) => {
-    return await performFallbackUpdate(opts || {});
+  ipcMain.handle('app:customCheckAndUpdate', async (_event, opts) => {
+    return await performCustomUpdate(opts || {});
   });
 
   ipcMain.handle('app:getVersion', async () => {
+    // Dev/testing override: if NTA_FAKE_VERSION is set, return that instead of the
+    // real app version. This lets us emulate a user running an older installed
+    // version (for example v0.0.7) while the running development build is newer.
+    if (process.env.NTA_FAKE_VERSION) return String(process.env.NTA_FAKE_VERSION);
     return app.getVersion();
   });
 
@@ -957,11 +1573,11 @@ const bootstrap = async () => {
     const exportWindow = new BrowserWindow({
       show: false,
       width: 900,
-      height: 1200,
+      height:  1200,
       webPreferences: {
         sandbox: false,
         offscreen: true,
-        backgroundThrottling: false
+               backgroundThrottling: false
       }
     });
 
@@ -1524,7 +2140,24 @@ ${rootVariables}
     }
     return { success: false, error: 'Window not found' };
   });
+  // If running in dev with the test hook enabled, execute the custom updater once
+  try {
+    if (process.env.NTA_TEST_CUSTOM_UPDATER === '1') {
+      console.log('Dev hook: running performCustomUpdate() (NTA_TEST_CUSTOM_UPDATER=1)');
+      performCustomUpdate({ preferUserApplications: true }).then((res) => {
+        console.log('performCustomUpdate result:', res);
+      }).catch((e) => {
+        console.error('performCustomUpdate failed:', e);
+      });
+    }
+  } catch (e) {
+    console.error('maybeRunDevCustomUpdater invocation failed:', e);
+  }
+  // end bootstrap
+  // Create the main window when the app is ready
+  createMainWindow();
 };
+
 
 app.whenReady().then(bootstrap);
 

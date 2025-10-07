@@ -26,6 +26,13 @@ const api = {
   pasteFile: (data) => ipcRenderer.invoke('workspace:pasteFile', data),
   // Debug helper: append a JSON line to a temp logfile (useful when console forwarding is unavailable)
   writeDebugLog: (payload) => ipcRenderer.invoke('debug:write', payload),
+  readReplaceLog: () => ipcRenderer.invoke('debug:readReplaceLog'),
+  listWorkspaceDebug: () => ipcRenderer.invoke('debug:listWorkspaceDebug'),
+  readWorkspaceDebugFile: (filename) => ipcRenderer.invoke('debug:readWorkspaceDebugFile', filename),
+  killWorkspaceReplacer: () => ipcRenderer.invoke('debug:killWorkspaceReplacer'),
+  openWorkspaceReplacedApp: () => ipcRenderer.invoke('debug:openWorkspaceReplacedApp'),
+  killWorkspaceReplacer: () => ipcRenderer.invoke('debug:killWorkspaceReplacer'),
+  openWorkspaceReplacedApp: () => ipcRenderer.invoke('debug:openWorkspaceReplacedApp'),
   
   // Set window title
   setTitle: (title) => ipcRenderer.invoke('window:setTitle', title),
@@ -37,11 +44,16 @@ const api = {
   // Update methods
   checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
   quitAndInstall: () => ipcRenderer.invoke('app:quitAndInstall'),
+  downloadUpdate: () => ipcRenderer.invoke('app:downloadUpdate'),
   // Fallback dev updater: download and replace the app bundle without ShipIt
   downloadAndReplace: () => ipcRenderer.invoke('app:downloadAndReplace'),
+  // Custom in-app updater: verified download + progress events
+  customCheckAndUpdate: (opts) => ipcRenderer.invoke('app:customCheckAndUpdate', opts || {}),
   // Dev-only check which queries GitHub directly (works in unpacked/dev mode)
   devCheckForUpdates: () => ipcRenderer.invoke('app:devCheckForUpdates'),
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
+  // Generic invoke for backward compatibility with existing renderer code
+  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
   
   // IPC listeners
   onWorkspaceChanged: (callback) => {
@@ -53,7 +65,7 @@ const api = {
   
   // Update event listeners
   on: (channel, callback) => {
-    const validChannels = ['update-available', 'update-progress', 'update-downloaded', 'update-not-available', 'update-error', 'workspace:changed'];
+  const validChannels = ['update-available', 'update-progress', 'update-downloaded', 'update-not-available', 'update-error', 'workspace:changed', 'custom-update-progress', 'custom-update-started', 'custom-update-result', 'fallback-started', 'fallback-result', 'fallback-available', 'fallback-progress'];
     if (validChannels.includes(channel)) {
       ipcRenderer.on(channel, (_event, data) => callback(data));
     }
