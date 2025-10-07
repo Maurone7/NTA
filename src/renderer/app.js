@@ -171,7 +171,6 @@ const elements = {
   borderThicknessValue: document.getElementById('border-thickness-value') || document.createElement('span'),
   resetBorderThicknessButton: document.getElementById('reset-border-thickness') || document.createElement('button'),
   checkUpdatesButton: document.getElementById('check-updates-btn') || document.createElement('button'),
-  fallbackUpdateButton: document.getElementById('fallback-update-btn') || document.createElement('button'),
   // Debug replacer panel elements (may not exist in production UI)
   replacerStatus: document.getElementById('replacer-status') || document.createElement('div'),
   replacerOpenBtn: document.getElementById('replacer-open-btn') || document.createElement('button'),
@@ -898,6 +897,11 @@ const state = {
     messages: [],
     overlay: null
   }
+  ,
+  // Preview scroll sync mode: when true, editor motions scroll the global preview
+  previewScrollSync: false,
+  // Internal: store active sync handlers so they can be removed when panes change
+  _previewSyncHandler: null
 };
 
 // Now that `state` exists, install mouse tracking to capture the last pointer
@@ -2275,6 +2279,43 @@ const getPdfCacheKey = (note) => {
 // Cache for PDF resources (object URLs etc.)
 const pdfCache = new Map();
 
+// Track the resource currently displayed in the global PDF viewer so we can
+// revoke object URLs when they are no longer needed. This prevents leaking
+// Blob object URLs and helps keep memory usage low when users open many PDFs.
+let currentDisplayedPdfResource = null;
+
+// Clear the global PDF viewer and release any non-cached object URL resource.
+const clearGlobalPdfViewer = () => {
+  try {
+    if (elements.pdfViewer) {
+      elements.pdfViewer.classList.remove('visible');
+      // Remove src so the iframe does not keep a reference to the blob
+      elements.pdfViewer.removeAttribute('src');
+      // Remove accessibility focus if set
+      try { elements.pdfViewer.blur(); } catch (e) {}
+    }
+
+    // If the currently displayed resource was an objectUrl and it is not
+    // present in the cache (i.e., we created it for a one-off view), revoke it.
+    if (currentDisplayedPdfResource && currentDisplayedPdfResource.type === 'objectUrl') {
+      const stillCached = Array.from(pdfCache.values()).some(r => r && r.value === currentDisplayedPdfResource.value);
+      if (!stillCached) {
+        releasePdfResource(currentDisplayedPdfResource);
+      }
+    }
+
+    currentDisplayedPdfResource = null;
+    // Restore focus to a sensible place (active editor or workspace)
+    try {
+      const ed = getAnyEditorInstance();
+      if (ed && typeof ed.focus === 'function') ed.focus();
+      else if (elements.workpace) elements.workpace?.focus?.();
+    } catch (e) {}
+  } catch (e) {
+    // ignore cleanup errors
+  }
+};
+
 // Caches for resolved preview resources (images, video, html embeds)
 const imageResourceCache = new Map();
 const videoResourceCache = new Map();
@@ -2322,10 +2363,56 @@ const applyPdfResource = (resource) => {
   
   // Use our custom PDF.js viewer with the PDF file URL and theme
   const viewerUrl = './pdfjs/pdf-viewer.html?file=' + encodeURIComponent(resource.value) + '&theme=' + encodeURIComponent(currentTheme);
+  // Clear any previous viewer state first
+  clearGlobalPdfViewer();
+
   elements.pdfViewer.src = viewerUrl;
   elements.pdfViewer.classList.add('visible');
+
+  // Mark the current displayed resource so it can be revoked later if not cached
+  currentDisplayedPdfResource = resource;
+
+  // Accessibility: make the iframe focusable and move focus to it so keyboard
+  // users can interact with the PDF viewer. The iframe will expose its own
+  // controls (toolbar) inside the embedded viewer.
+  try {
+    elements.pdfViewer.setAttribute('tabindex', '0');
+    elements.pdfViewer.setAttribute('role', 'document');
+    elements.pdfViewer.setAttribute('aria-label', 'PDF viewer');
+    // Move focus after a short delay to allow the iframe to attach
+    setTimeout(() => { try { elements.pdfViewer.focus(); } catch (e) {} }, 150);
+  } catch (e) {}
   return true;
 };
+
+// When the global PDF viewer is active, allow Escape to close it and restore
+// focus to the editor. We attach a document-level keydown handler when the
+// viewer receives focus and remove it when we clear the viewer.
+const onPdfViewerKeydown = (ev) => {
+  try {
+    if (!ev || ev.key !== 'Escape') return;
+    // Close viewer
+    clearGlobalPdfViewer();
+    // Prevent default so the event doesn't propagate to editors
+    ev.preventDefault();
+    ev.stopPropagation();
+  } catch (e) {}
+};
+
+// Attach focus/blur handlers to the iframe so it can register/unregister
+// the Escape key listener appropriately.
+try {
+  if (elements.pdfViewer) {
+    elements.pdfViewer.addEventListener('focus', () => {
+      document.addEventListener('keydown', onPdfViewerKeydown, { capture: true });
+      elements.pdfViewer.setAttribute('aria-hidden', 'false');
+    });
+    elements.pdfViewer.addEventListener('blur', () => {
+      document.removeEventListener('keydown', onPdfViewerKeydown, { capture: true });
+      elements.pdfViewer.setAttribute('aria-hidden', 'true');
+    });
+  }
+} catch (e) {}
 
 // Helpers for per-pane PDF rendering. Some users prefer PDFs to open inside
 // the editor pane they dropped the file into rather than the central live
@@ -4695,11 +4782,19 @@ const setActiveEditorPane = (pane) => {
           // treated as editable elsewhere.
           inst.el.value = paneNote.content ?? '';
         } else if (paneNote.type === 'notebook') {
-          // Notebook: show a JSON representation
+          // Notebook: render a read-only cell-based view inside the pane
           try {
-            inst.el.value = JSON.stringify(paneNote.notebook ?? paneNote.content ?? {}, null, 2);
+            // Attempt to render a pane-local notebook viewer. If it fails,
+            // fall back to showing the JSON representation in the textarea.
+            const rendered = renderNotebookInPane(paneNote, pane);
+            if (rendered) {
+              // If we rendered pane viewer, clear textarea value to avoid stale content
+              try { inst.el.value = ''; } catch (e) {}
+            } else {
+              inst.el.value = JSON.stringify(paneNote.notebook ?? paneNote.content ?? {}, null, 2);
+            }
           } catch (e) {
-            inst.el.value = String(paneNote.notebook ?? paneNote.content ?? '');
+            try { inst.el.value = JSON.stringify(paneNote.notebook ?? paneNote.content ?? {}, null, 2); } catch (ee) { inst.el.value = String(paneNote.notebook ?? paneNote.content ?? ''); }
           }
         } else if (paneNote.type === 'markdown' || paneNote.type === 'latex') {
           // Markdown and LaTeX are editable and should show their raw content
@@ -4820,24 +4915,41 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
       } else {
         // For non-markdown files, still show useful content in editor but keep it read-only
         try { clearPaneViewer(pane); } catch (e) {}
-        inst.el.hidden = false;
-        inst.el.disabled = true;
-        // Determine a friendly representation depending on type
-        let displayValue = '';
+        // For notebooks, render a pane-local notebook viewer instead of
+        // placing the raw JSON into the textarea. If rendering fails,
+        // fall back to a JSON representation so the user can still view it.
         if (note.type === 'notebook') {
           try {
-            displayValue = JSON.stringify(note.notebook ?? note.content ?? {}, null, 2);
-          } catch (e) { displayValue = String(note.notebook ?? note.content ?? ''); }
-        } else if (note.type === 'image') {
-          displayValue = `Image: ${note.absolutePath ?? note.title ?? ''}`;
-        } else if (note.type === 'html') {
-          displayValue = note.content ?? '';
-        } else if (note.type === 'code') {
-          displayValue = note.content ?? '';
+            const rendered = renderNotebookInPane(note, pane);
+            if (rendered) {
+              inst.el.hidden = true;
+              inst.el.disabled = true;
+            } else {
+              inst.el.hidden = false;
+              inst.el.disabled = true;
+              try { inst.el.value = JSON.stringify(note.notebook ?? note.content ?? {}, null, 2); } catch (e) { inst.el.value = String(note.notebook ?? note.content ?? ''); }
+            }
+          } catch (e) {
+            inst.el.hidden = false;
+            inst.el.disabled = true;
+            try { inst.el.value = JSON.stringify(note.notebook ?? note.content ?? {}, null, 2); } catch (ee) { inst.el.value = String(note.notebook ?? note.content ?? ''); }
+          }
         } else {
-          displayValue = note.content ?? '';
+          inst.el.hidden = false;
+          inst.el.disabled = true;
+          // Determine a friendly representation depending on type
+          let displayValue = '';
+          if (note.type === 'image') {
+            displayValue = `Image: ${note.absolutePath ?? note.title ?? ''}`;
+          } else if (note.type === 'html') {
+            displayValue = note.content ?? '';
+          } else if (note.type === 'code') {
+            displayValue = note.content ?? '';
+          } else {
+            displayValue = note.content ?? '';
+          }
+          inst.el.value = displayValue;
         }
-        inst.el.value = displayValue;
       }
     }
   } catch (e) { /* ignore */ }
@@ -4909,7 +5021,23 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
     inst.el.disabled = true;
   }
         if (note.type === 'notebook' || note.type === 'code') {
-          try { inst.el.value = note.content ?? JSON.stringify(note.notebook ?? {}, null, 2); } catch (e) { inst.el.value = note.content ?? ''; }
+                if (note.type === 'notebook') {
+                  try {
+                    const rendered = renderNotebookInPane(note, pane);
+                    if (rendered) {
+                      inst.el.hidden = true;
+                      inst.el.disabled = true;
+                    } else {
+                      inst.el.hidden = false;
+                      inst.el.disabled = true;
+                      try { inst.el.value = JSON.stringify(note.notebook ?? note.content ?? {}, null, 2); } catch (e) { inst.el.value = note.content ?? ''; }
+                    }
+                  } catch (e) {
+                    try { inst.el.value = JSON.stringify(note.notebook ?? note.content ?? {}, null, 2); } catch (ee) { inst.el.value = note.content ?? ''; }
+                  }
+                } else {
+                  try { inst.el.value = note.content ?? JSON.stringify(note.notebook ?? {}, null, 2); } catch (e) { inst.el.value = note.content ?? ''; }
+                }
           // If this is a plain-text code file (.txt), make sure any inline styles
           // applied by the math overlay are cleared so the caret is visible and
           // the textarea can accept input.
@@ -5755,11 +5883,16 @@ const renderNotebookPreview = (note) => {
   if (!elements.preview) {
     return;
   }
-
-  const notebook = note?.notebook;
-
+  const container = createNotebookContainer(note);
   elements.preview.replaceChildren();
+  elements.preview.appendChild(container);
+  elements.preview.scrollTop = 0;
+};
 
+// Build and return a DOM container representing the notebook. This can be
+// used either for the global preview or for a pane-local viewer.
+const createNotebookContainer = (note) => {
+  const notebook = note?.notebook;
   const container = document.createElement('div');
   container.className = 'notebook-preview';
 
@@ -5769,22 +5902,37 @@ const renderNotebookPreview = (note) => {
 
   const cells = Array.isArray(notebook?.cells) ? notebook.cells : [];
 
-  cells.forEach((cell) => {
+  cells.forEach((cell, idx) => {
     const section = document.createElement('section');
     section.className = `nb-cell nb-cell--${cell.type ?? 'unknown'}`;
 
+    // Per-cell header with index and a small copy button for code cells
+    const header = document.createElement('header');
+    header.className = 'nb-cell__header';
+    header.textContent = cell.type === 'markdown' ? `Markdown` : `In [${(cell.index ?? idx) + 1}]`;
+
+    // Add a copy button for code cells
+    if (cell.type !== 'markdown') {
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'nb-cell__copy-btn';
+      copyBtn.title = 'Copy code';
+      copyBtn.textContent = 'Copy';
+      copyBtn.addEventListener('click', () => {
+        try { navigator.clipboard.writeText(cell.source ?? ''); } catch (e) {}
+      });
+      header.appendChild(copyBtn);
+    }
+
+    section.appendChild(header);
+
     if (cell.type === 'markdown') {
       const html = window.DOMPurify.sanitize(window.marked.parse(cell.source ?? ''));
-  const content = document.createElement('div');
-  content.className = 'nb-cell__markdown';
-  try { content.innerHTML = html; } catch (e) { content.textContent = html; }
+      const content = document.createElement('div');
+      content.className = 'nb-cell__markdown';
+      try { content.innerHTML = html; } catch (e) { content.textContent = html; }
       section.appendChild(content);
     } else {
-      const header = document.createElement('header');
-      header.className = 'nb-cell__header';
-      header.textContent = `In [${(cell.index ?? 0) + 1}]`;
-      section.appendChild(header);
-
       const pre = document.createElement('pre');
       pre.className = 'nb-cell__code';
       const codeElement = document.createElement('code');
@@ -5817,8 +5965,303 @@ const renderNotebookPreview = (note) => {
     container.appendChild(empty);
   }
 
-  elements.preview.appendChild(container);
-  elements.preview.scrollTop = 0;
+  return container;
+};
+
+// Create a cell-by-cell editor for a notebook. Each code/markdown cell gets a textarea.
+const createNotebookEditor = (note) => {
+  const notebook = note?.notebook;
+  const editor = document.createElement('div');
+  editor.className = 'notebook-editor';
+
+  const cells = Array.isArray(notebook?.cells) ? notebook.cells : [];
+
+  cells.forEach((cell, idx) => {
+    const cellWrap = document.createElement('div');
+    cellWrap.className = 'nb-editor-cell';
+    cellWrap.dataset.cellType = cell.type === 'markdown' ? 'markdown' : 'code';
+    cellWrap.dataset.outputs = JSON.stringify(cell.outputs || []);
+
+    const header = document.createElement('header');
+    header.className = 'nb-editor-cell__header';
+    header.textContent = cell.type === 'markdown' ? `Markdown` : `In [${(cell.index ?? idx) + 1}]`;
+    cellWrap.appendChild(header);
+
+    // Create the editable textarea
+    const ta = document.createElement('textarea');
+    ta.className = 'nb-editor-cell__textarea';
+    ta.value = cell.source ?? '';
+    // For markdown cells add a live preview toggle
+    if (cell.type === 'markdown') {
+      const controls = document.createElement('div');
+      controls.className = 'nb-editor-cell__controls';
+
+      const previewBtn = document.createElement('button');
+      previewBtn.type = 'button';
+      previewBtn.className = 'nb-editor-cell__preview-toggle';
+      previewBtn.textContent = 'Preview';
+      controls.appendChild(previewBtn);
+
+      header.appendChild(controls);
+
+      // Preview element (initially hidden)
+      const previewEl = document.createElement('div');
+      previewEl.className = 'nb-editor-cell__preview';
+      previewEl.style.display = 'none';
+
+      // Render function
+      const renderPreview = () => {
+        try {
+          const html = window.marked ? window.marked.parse(ta.value || '') : (ta.value || '');
+          const safe = window.DOMPurify ? window.DOMPurify.sanitize(html) : html;
+          previewEl.innerHTML = safe;
+        } catch (e) {
+          previewEl.textContent = ta.value || '';
+        }
+      };
+
+      // Toggle preview visibility
+      previewBtn.addEventListener('click', () => {
+        const isShown = previewEl.style.display !== 'none';
+        if (isShown) {
+          previewEl.style.display = 'none';
+          previewBtn.textContent = 'Preview';
+        } else {
+          renderPreview();
+          previewEl.style.display = '';
+          previewBtn.textContent = 'Hide preview';
+        }
+      });
+
+      // Update preview live as user types (only if visible)
+      ta.addEventListener('input', () => {
+        if (previewEl.style.display !== 'none') {
+          renderPreview();
+        }
+      });
+
+      cellWrap.appendChild(ta);
+      cellWrap.appendChild(previewEl);
+    } else {
+      cellWrap.appendChild(ta);
+    }
+
+    // Show read-only outputs below editor
+    if (Array.isArray(cell.outputs) && cell.outputs.length) {
+      const outWrap = document.createElement('div');
+      outWrap.className = 'nb-editor-cell__outputs';
+      cell.outputs.forEach((o) => {
+        const pre = document.createElement('pre');
+        pre.className = 'nb-editor-cell__output';
+        pre.textContent = o;
+        outWrap.appendChild(pre);
+      });
+      cellWrap.appendChild(outWrap);
+    }
+
+    editor.appendChild(cellWrap);
+  });
+
+  if (!cells.length) {
+    const p = document.createElement('p');
+    p.className = 'nb-empty';
+    p.textContent = 'This notebook has no cells to edit.';
+    editor.appendChild(p);
+  }
+
+  return editor;
+};
+
+// Render a notebook inside a specific editor pane by creating a pane-local
+// viewer. This hides the textarea and adds an interactive read-only view.
+const renderNotebookInPane = async (note, paneId) => {
+  if (!note || note.type !== 'notebook' || !paneId) return false;
+  const root = getPaneRootElement(paneId);
+  if (!root) return false;
+
+  // Clear any global preview to avoid duplicates
+  try { clearGlobalPdfViewer(); } catch (e) {}
+
+  // Clear existing pane viewers and hide editor
+  clearPaneViewer(paneId);
+  const cm = root.querySelector('.CodeMirror');
+  if (cm) cm.style.display = 'none';
+  const ta = root.querySelector('textarea');
+  if (ta) { ta.hidden = true; ta.disabled = true; }
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'nb-pane-viewer pane-viewer';
+  wrapper.setAttribute('data-note-id', note.id);
+  let viewerContainer = createNotebookContainer(note);
+  wrapper.appendChild(viewerContainer);
+  // Add an Edit Raw toggle + Save/Cancel controls so users can edit the notebook JSON
+  const controls = document.createElement('div');
+  controls.className = 'nb-pane-controls';
+
+  const editToggle = document.createElement('button');
+  editToggle.type = 'button';
+  editToggle.className = 'nb-edit-toggle';
+  editToggle.textContent = 'Edit raw';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'nb-save-btn';
+  saveBtn.textContent = 'Save';
+  saveBtn.style.display = 'none';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'nb-cancel-btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.display = 'none';
+
+  controls.appendChild(editToggle);
+  controls.appendChild(saveBtn);
+  controls.appendChild(cancelBtn);
+  // Insert controls before the current viewer container
+  wrapper.insertBefore(controls, viewerContainer);
+
+  // Editor container will be created on demand (cell-by-cell editor)
+  let editorContainer = null;
+
+  let editing = false;
+
+  editToggle.addEventListener('click', () => {
+    // Open the cell-by-cell editor
+    editing = true;
+    // Hide the current viewer container while editing
+    if (viewerContainer && viewerContainer.style) viewerContainer.style.display = 'none';
+    editToggle.style.display = 'none';
+    saveBtn.style.display = '';
+    cancelBtn.style.display = '';
+
+    // Create editor lazily and swap it in place of the viewer so editing happens inline
+    if (!editorContainer) {
+      editorContainer = createNotebookEditor(note);
+      // Find the current viewer inside wrapper (robust if viewerContainer changed)
+      const currentViewer = wrapper.querySelector('.notebook-preview') || viewerContainer;
+      if (currentViewer && currentViewer.parentNode === wrapper) {
+        wrapper.replaceChild(editorContainer, currentViewer);
+      } else {
+        wrapper.appendChild(editorContainer);
+      }
+    }
+    editorContainer.style.display = 'block';
+    try { const firstTa = editorContainer.querySelector('textarea'); if (firstTa) firstTa.focus(); } catch (e) {}
+  });
+
+  cancelBtn.addEventListener('click', () => {
+    // Close editor and restore viewer in-place
+    editing = false;
+    editToggle.style.display = '';
+    saveBtn.style.display = 'none';
+    cancelBtn.style.display = 'none';
+    if (editorContainer) {
+      // Recreate a fresh viewer from the current note state (safer than reusing stale node)
+      const freshViewer = createNotebookContainer(note);
+      try {
+        wrapper.replaceChild(freshViewer, editorContainer);
+        viewerContainer = freshViewer;
+      } catch (e) {
+        // Fallback: remove editor and append viewer
+        editorContainer.remove();
+        wrapper.appendChild(freshViewer);
+        viewerContainer = freshViewer;
+      }
+      editorContainer = null;
+    } else {
+      // ensure viewer is visible
+      const cur = wrapper.querySelector('.notebook-preview');
+      if (cur) cur.style.display = '';
+    }
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    // Collect edited cells from the cell editor
+    let parsedNotebook = null;
+    try {
+      if (!editorContainer) throw new Error('Editor not present');
+      const editedCells = [];
+      const cellNodes = Array.from(editorContainer.querySelectorAll('.nb-editor-cell'));
+      for (const cn of cellNodes) {
+        const type = cn.dataset.cellType === 'markdown' ? 'markdown' : 'code';
+        const ta = cn.querySelector('textarea');
+        const source = ta ? ta.value : '';
+        // Preserve outputs where possible (read-only)
+        const outputs = JSON.parse(cn.dataset.outputs || '[]');
+        editedCells.push({ type, source, metadata: {}, outputs });
+      }
+      parsedNotebook = { metadata: note.notebook.metadata || {}, cells: editedCells };
+    } catch (e) {
+      setStatus('Failed to collect edited cells: ' + String(e && e.message ? e.message : e), false);
+      return;
+    }
+
+    const filePath = note.absolutePath;
+    try {
+      const res = await window.api.saveNotebook({ filePath, notebook: parsedNotebook });
+      if (res && res.success) {
+        setStatus('Notebook saved.', true);
+        // Update in-memory note representation so viewer reflects saved content
+        note.notebook = parsedNotebook;
+        // Rebuild viewer container and swap into place
+        const newViewer = createNotebookContainer(note);
+        try {
+          if (editorContainer && editorContainer.parentNode === wrapper) {
+            wrapper.replaceChild(newViewer, editorContainer);
+          } else {
+            const cur = wrapper.querySelector('.notebook-preview') || viewerContainer;
+            if (cur && cur.parentNode === wrapper) {
+              wrapper.replaceChild(newViewer, cur);
+            } else {
+              wrapper.appendChild(newViewer);
+            }
+          }
+        } catch (e) {
+          if (editorContainer && editorContainer.parentNode) editorContainer.remove();
+          try { if (viewerContainer && viewerContainer.parentNode) viewerContainer.replaceWith(newViewer); else wrapper.appendChild(newViewer); } catch (e2) { wrapper.appendChild(newViewer); }
+        }
+        // update current viewer reference
+        viewerContainer = newViewer;
+        // If this notebook is currently the active or last-renderable note, update the global preview
+        try {
+          if (typeof renderNotebookPreview === 'function' && elements && elements.preview) {
+            const isActiveOrLast = state.activeNoteId === note.id || state.lastRenderableNoteId === note.id;
+            // If no active note or this note is the relevant renderable, refresh the right-hand preview
+            if (isActiveOrLast || !state.activeNoteId) {
+              try {
+                renderNotebookPreview(note);
+                state.lastRenderableNoteId = note.id;
+                state.activeNoteId = note.id;
+              } catch (e) {
+                // ignore preview errors
+              }
+            }
+          }
+        } catch (e) { /* ignore */ }
+        // exit editing
+        editing = false;
+        editorContainer = null;
+        // Ensure the new viewer is visible
+        try { if (viewerContainer && viewerContainer.style) viewerContainer.style.display = ''; } catch (e) {}
+        // Restore control visibility on the newly inserted controls (they are fresh nodes)
+        try {
+          const freshEdit = wrapper.querySelector('.nb-edit-toggle');
+          const freshSave = wrapper.querySelector('.nb-save-btn');
+          const freshCancel = wrapper.querySelector('.nb-cancel-btn');
+          if (freshEdit) freshEdit.style.display = '';
+          if (freshSave) freshSave.style.display = 'none';
+          if (freshCancel) freshCancel.style.display = 'none';
+        } catch (e) { /* ignore */ }
+      } else {
+        setStatus('Failed to save: ' + (res && res.error ? res.error : 'unknown'), false);
+      }
+    } catch (e) {
+      setStatus('Save failed: ' + (e && e.message ? e.message : 'unknown'), false);
+    }
+  });
+  root.appendChild(wrapper);
+  return true;
 };
 
 const renderPdfPreview = async (note) => {
@@ -5831,12 +6274,8 @@ const renderPdfPreview = async (note) => {
 
   const cacheKey = getPdfCacheKey(note);
 
-  const resetViewer = () => {
-    elements.pdfViewer.classList.remove('visible');
-    elements.pdfViewer.removeAttribute('src');
-  };
-
-  resetViewer();
+  // Ensure any previous global viewer is cleared using our centralized cleanup
+  clearGlobalPdfViewer();
 
   if (cacheKey && pdfCache.has(cacheKey)) {
     if (applyPdfResource(pdfCache.get(cacheKey))) {
@@ -5885,11 +6324,11 @@ const renderPdfPreview = async (note) => {
       }
     }
 
-    resetViewer();
+    clearGlobalPdfViewer();
     setStatus('Unable to load PDF data.', false);
   } catch (error) {
   // Debug prints removed
-    resetViewer();
+    clearGlobalPdfViewer();
     setStatus('Failed to load PDF.', false);
   }
 };
@@ -8142,37 +8581,38 @@ const handleEditorInput = (event, opts = {}) => {
   const pane = opts.pane || (event.target === elements.editorRight ? 'right' : 'left');
   const paneNoteId = state.editorPanes?.[pane]?.noteId || state.activeNoteId;
   const note = paneNoteId ? state.notes.get(paneNoteId) : getActiveNote();
-  if (!note || note.type !== 'markdown') {
-    return;
-  }
 
   // Update math preview popup
   updateMathPreview(event.target);
   
   // Check for LaTeX auto-completion before updating note content
   // Pass the inputType to avoid triggering on delete operations
-  const latexCompleted = handleLatexAutoCompletion(event.target, event.inputType);
+  const latexCompleted = note && note.type === 'markdown' ? handleLatexAutoCompletion(event.target, event.inputType) : false;
   
-  note.content = event.target.value;
-  note.updatedAt = new Date().toISOString();
-  note.dirty = true;
-  refreshBlockIndexForNote(note);
-  refreshHashtagsForNote(note);
-  // Only render preview if this pane is the active pane
-  if (state.activeEditorPane === pane) {
-    // Use debounced render to avoid excessive work on every keystroke.
-    // If latex auto-completion altered the content below, we'll trigger an
-    // immediate render afterwards.
-    debouncedRenderPreview(note.content, note.id);
-  }
-  scheduleSave();
+  // Update note content if it's a markdown note
+  if (note && note.type === 'markdown') {
+    note.content = event.target.value;
+    note.updatedAt = new Date().toISOString();
+    note.dirty = true;
+    refreshBlockIndexForNote(note);
+    refreshHashtagsForNote(note);
+    // Only render preview if this pane is the active pane
+    if (state.activeEditorPane === pane) {
+      // Use debounced render to avoid excessive work on every keystroke.
+      // If latex auto-completion altered the content below, we'll trigger an
+      // immediate render afterwards.
+      debouncedRenderPreview(note.content, note.id);
+    }
+    scheduleSave();
 
-  if (state.search.open) {
-    const activeEd = getActiveEditorInstance();
-    const caret = activeEd?.selectionStart ?? state.search.lastCaret ?? 0;
-    updateEditorSearchMatches({ preserveActive: true, caret, focusEditor: false });
+    if (state.search.open) {
+      const activeEd = getActiveEditorInstance();
+      const caret = activeEd?.selectionStart ?? state.search.lastCaret ?? 0;
+      updateEditorSearchMatches({ preserveActive: true, caret, focusEditor: false });
+    }
   }
-  // Debug prints removed
+  
+  // Always update suggestions, as they don't depend on the note being saved or markdown
   updateWikiSuggestions(event.target);
   updateHashtagSuggestions(event.target);
   updateFileSuggestions(event.target);
@@ -9877,6 +10317,10 @@ const extractFileNameFromPath = (fullPath) => {
 };
 
 const closeWikiSuggestions = () => {
+  if (state.wikiSuggest.timeout) {
+    clearTimeout(state.wikiSuggest.timeout);
+    state.wikiSuggest.timeout = null;
+  }
   state.wikiSuggest.open = false;
   state.wikiSuggest.items = [];
   state.wikiSuggest.selectedIndex = 0;
@@ -10023,14 +10467,14 @@ const getTextareaCaretCoordinates = (textarea, position) => {
 
 const computeWikiSuggestionPosition = (textarea, caret) => {
   const coords = getTextareaCaretCoordinates(textarea, caret);
-  const parent = elements.wikiSuggestions?.parentElement ?? null;
-  const parentHeight = parent?.clientHeight ?? window.innerHeight;
-  const parentWidth = parent?.clientWidth ?? window.innerWidth;
+  const rect = textarea?.getBoundingClientRect() ?? { top: 0, left: 0 };
+  const parentHeight = window.innerHeight;
+  const parentWidth = window.innerWidth;
   const estimatedHeight = Math.min(state.wikiSuggest.items.length * 36 + 12, 280);
   const estimatedWidth = Math.min(360, parentWidth - 32);
 
-  let anchorTop = (textarea?.offsetTop ?? 0) + coords.top + coords.lineHeight + 6;
-  let anchorLeft = (textarea?.offsetLeft ?? 0) + coords.left;
+  let anchorTop = rect.top + coords.top + coords.lineHeight + 6;
+  let anchorLeft = rect.left + coords.left;
 
   if (anchorTop + estimatedHeight > parentHeight - 8) {
     anchorTop = Math.max(8, parentHeight - estimatedHeight - 8);
@@ -10055,14 +10499,14 @@ const computeWikiSuggestionPosition = (textarea, caret) => {
 
 const computeHashtagSuggestionPosition = (textarea, caret) => {
   const coords = getTextareaCaretCoordinates(textarea, caret);
-  const parent = elements.hashtagSuggestions?.parentElement ?? null;
-  const parentHeight = parent?.clientHeight ?? window.innerHeight;
-  const parentWidth = parent?.clientWidth ?? window.innerWidth;
+  const rect = textarea?.getBoundingClientRect() ?? { top: 0, left: 0 };
+  const parentHeight = window.innerHeight;
+  const parentWidth = window.innerWidth;
   const estimatedHeight = Math.min(state.tagSuggest.items.length * 36 + 12, 240);
   const estimatedWidth = Math.min(320, parentWidth - 32);
 
-  let anchorTop = (textarea?.offsetTop ?? 0) + coords.top + coords.lineHeight + 6;
-  let anchorLeft = (textarea?.offsetLeft ?? 0) + coords.left;
+  let anchorTop = rect.top + coords.top + coords.lineHeight + 6;
+  let anchorLeft = rect.left + coords.left;
 
   if (anchorTop + estimatedHeight > parentHeight - 8) {
     anchorTop = Math.max(8, parentHeight - estimatedHeight - 8);
@@ -10082,12 +10526,15 @@ const computeHashtagSuggestionPosition = (textarea, caret) => {
 };
 
 const renderWikiSuggestions = () => {
+  console.log('renderWikiSuggestions called', { open: state.wikiSuggest.open, items: state.wikiSuggest.items?.length });
   const container = elements.wikiSuggestions;
   if (!container) {
+    console.log('renderWikiSuggestions: no container');
     return;
   }
 
   if (!state.wikiSuggest.open || !state.wikiSuggest.items.length) {
+    console.log('renderWikiSuggestions: not open or no items, closing');
     closeWikiSuggestions();
     return;
   }
@@ -10099,6 +10546,7 @@ const renderWikiSuggestions = () => {
   }
   container.hidden = false;
   container.setAttribute('data-open', 'true');
+  console.log('renderWikiSuggestions: showing suggestions at', state.wikiSuggest.position);
   try {
     container.style.top = `${state.wikiSuggest.position.top}px`;
     container.style.left = `${state.wikiSuggest.position.left}px`;
@@ -10777,8 +11225,9 @@ const collectWikiSuggestionItems = (query) => {
 };
 
 const getWikiSuggestionTrigger = (value, caret) => {
+  console.log('getWikiSuggestionTrigger called with value:', JSON.stringify(value), 'caret:', caret);
   if (!value || caret === null || caret === undefined) {
-    // Debug prints removed
+    console.log('getWikiSuggestionTrigger: invalid input');
     return null;
   }
 
@@ -10787,79 +11236,79 @@ const getWikiSuggestionTrigger = (value, caret) => {
   }
 
   const before = value.slice(0, caret);
+  console.log('getWikiSuggestionTrigger: before =', JSON.stringify(before));
   
-  // Check for !![[ first
-  let lastOpen = before.lastIndexOf('!![[');
-  let embedType = 'inline';
-  if (lastOpen === -1) {
-    // Check for ![[
-    lastOpen = before.lastIndexOf('![[');
-    embedType = true;
-    if (lastOpen === -1) {
-      // Check for [[
-      lastOpen = before.lastIndexOf('[[');
-      embedType = false;
-      if (lastOpen === -1) {
-        return null;
-      }
+  const tryTrigger = (prefix, embedType) => {
+    const lastOpen = before.lastIndexOf(prefix);
+    console.log(`getWikiSuggestionTrigger: trying ${prefix}, lastOpen =`, lastOpen);
+    if (lastOpen === -1) return null;
+
+    // Check prefix validity
+    if (embedType === 'inline' && lastOpen > 0 && before[lastOpen - 1] === '!') {
+      console.log('getWikiSuggestionTrigger: !!![[ detected, invalid');
+      return null;
     }
-  }
+    if (embedType === true && lastOpen > 0 && before[lastOpen - 1] === '!') {
+      console.log('getWikiSuggestionTrigger: !![[ detected for ![[, invalid');
+      return null;
+    }
+    if (embedType === false && lastOpen > 0 && (before[lastOpen - 1] === '!' || (lastOpen > 1 && before[lastOpen - 2] === '!' && before[lastOpen - 1] === '!'))) {
+      console.log('getWikiSuggestionTrigger: ![[ or !![[ detected for [[, invalid');
+      return null;
+    }
 
-  // For !![[, we need to check that it's not !!![[ or more
-  if (embedType === 'inline' && lastOpen > 0 && before[lastOpen - 1] === '!') {
-    // It's !!![[ or more, not valid
-    return null;
-  }
+    const openLength = prefix.length;
+    const sinceOpen = before.slice(lastOpen + openLength);
+    console.log('getWikiSuggestionTrigger: sinceOpen =', JSON.stringify(sinceOpen));
+    if (sinceOpen.includes(']]')) {
+      console.log('getWikiSuggestionTrigger: contains ]], invalid');
+      return null;
+    }
+    if (sinceOpen.includes('|')) {
+      console.log('getWikiSuggestionTrigger: contains |, invalid');
+      return null;
+    }
+    if (sinceOpen.includes('\n')) {
+      console.log('getWikiSuggestionTrigger: contains newline, invalid');
+      return null;
+    }
 
-  // For ![[, check it's not !![[
-  if (embedType === true && lastOpen > 0 && before[lastOpen - 1] === '!') {
-    // It's !![[, which should be handled above
-    return null;
-  }
-
-  // For [[, check it's not ![[ or !![[
-  if (embedType === false && lastOpen > 0 && (before[lastOpen - 1] === '!' || (lastOpen > 1 && before[lastOpen - 2] === '!' && before[lastOpen - 1] === '!'))) {
-    return null;
-  }
-
-  const openLength = embedType === 'inline' ? 4 : (embedType === true ? 3 : 2);
-  const sinceOpen = before.slice(lastOpen + openLength);
-  // Debug prints removed
-  if (sinceOpen.includes(']]')) {
-    return null;
-  }
-
-  if (sinceOpen.includes('|')) {
-    return null;
-  }
-
-  if (sinceOpen.includes('\n')) {
-    return null;
-  }
-
-  return {
-    start: lastOpen + openLength,
-    end: caret,
-    query: sinceOpen,
-    embed: embedType
+    const trigger = {
+      start: lastOpen + openLength,
+      end: caret,
+      query: sinceOpen,
+      embed: embedType
+    };
+    console.log('getWikiSuggestionTrigger: valid trigger', trigger);
+    return trigger;
   };
+
+  let trigger = tryTrigger('!![[', 'inline');
+  if (!trigger) trigger = tryTrigger('![[', true);
+  if (!trigger) trigger = tryTrigger('[[', false);
+
+  if (!trigger) {
+    console.log('getWikiSuggestionTrigger: no valid trigger found');
+  }
+  return trigger;
 };
 
 const openWikiSuggestions = (trigger, textarea) => {
-  // Debug prints removed
+  console.log('openWikiSuggestions called', { trigger, textarea: textarea?.id });
   // Defensive: if wiki index appears empty, rebuild it (notes might have been
   // loaded after initial index build or index was cleared). This helps ensure
   // suggestions are available when workspace contents exist.
   try {
     if ((!state.wikiIndex || state.wikiIndex.size === 0) && state.notes && state.notes.size) {
-  // Debug prints removed
+      console.log('openWikiSuggestions: rebuilding wiki index');
       rebuildWikiIndex();
     }
   } catch (e) {}
 
   const items = collectWikiSuggestionItems(trigger.query);
-  // Debug prints removed
+  console.log('openWikiSuggestions: collected items', items.length, items.map(i => i.display));
   if (!items.length) {
+    console.log('openWikiSuggestions: no items, closing');
     closeWikiSuggestions();
     return;
   }
@@ -10878,15 +11327,15 @@ const openWikiSuggestions = (trigger, textarea) => {
 };
 
 const updateWikiSuggestions = (textarea = getActiveEditorInstance().el, editorType = 'editor1') => {
-  // Debug prints removed
+  console.log('updateWikiSuggestions called', { textarea: textarea?.id, editorType, activeElement: document.activeElement?.id });
   if (!textarea || textarea !== document.activeElement) {
-  // Debug prints removed
+    console.log('updateWikiSuggestions: textarea not active, closing');
     closeWikiSuggestions(editorType);
     return;
   }
 
   if (state.wikiSuggest.suppress) {
-  // Debug prints removed
+    console.log('updateWikiSuggestions: suppressed');
     state.wikiSuggest.suppress = false;
     closeWikiSuggestions(editorType);
     return;
@@ -10895,13 +11344,18 @@ const updateWikiSuggestions = (textarea = getActiveEditorInstance().el, editorTy
   const selectionStart = textarea.selectionStart ?? 0;
   const selectionEnd = textarea.selectionEnd ?? 0;
   if (selectionStart !== selectionEnd) {
-  // Debug prints removed
+    console.log('updateWikiSuggestions: selection not collapsed');
     closeWikiSuggestions(editorType);
     return;
   }
 
   const trigger = getWikiSuggestionTrigger(textarea.value, selectionStart);
+  console.log('updateWikiSuggestions: trigger', trigger);
   if (!trigger) {
+    if (state.wikiSuggest.timeout) {
+      clearTimeout(state.wikiSuggest.timeout);
+      state.wikiSuggest.timeout = null;
+    }
     closeWikiSuggestions(editorType);
     return;
   }
@@ -10911,13 +11365,24 @@ const updateWikiSuggestions = (textarea = getActiveEditorInstance().el, editorTy
   }
 
   if (state.wikiSuggest.open && trigger.start === state.wikiSuggest.start && trigger.query === state.wikiSuggest.query) {
+    console.log('updateWikiSuggestions: updating existing suggestions');
     state.wikiSuggest.end = trigger.end;
     computeWikiSuggestionPosition(textarea, trigger.end, editorType);
     renderWikiSuggestions(editorType);
     return;
   }
 
-  openWikiSuggestions(trigger, textarea);
+  // Clear any pending timeout
+  if (state.wikiSuggest.timeout) {
+    clearTimeout(state.wikiSuggest.timeout);
+  }
+  // Delay opening to avoid flickering
+  console.log('updateWikiSuggestions: scheduling openWikiSuggestions with delay', window.autocompleteDelay || 300);
+  state.wikiSuggest.timeout = setTimeout(() => {
+    console.log('updateWikiSuggestions: timeout fired, calling openWikiSuggestions');
+    state.wikiSuggest.timeout = null;
+    openWikiSuggestions(trigger, textarea);
+  }, window.autocompleteDelay || 300);
 };
 
 const moveWikiSuggestionSelection = (delta) => {
@@ -12326,9 +12791,18 @@ const handleGlobalShortcuts = (event) => {
     event.preventDefault();
     generateTableOfContents();
   } else if (key === 'i') {
-    // Cmd/Ctrl+I should open inline chat — move chat mapping here and prevent stats opening
+    // Cmd/Ctrl+I toggles inline chat when Shift is held; otherwise toggle preview scroll sync
     event.preventDefault();
-    toggleInlineChat();
+    if (event.shiftKey) {
+      toggleInlineChat();
+    } else {
+      // Toggle preview scroll sync
+      state.previewScrollSync = !state.previewScrollSync;
+      try {
+        setStatus(`Preview scroll sync ${state.previewScrollSync ? 'enabled' : 'disabled'}.`, true);
+      } catch (e) {}
+      try { applyPreviewScrollSync(state.previewScrollSync); } catch (e) {}
+    }
   } else if (key === 'f') {
     if (isOtherEditableTarget) {
       return;
@@ -12398,6 +12872,85 @@ const restoreLastWorkspace = async () => {
     persistLastWorkspaceFolder(null);
     setStatus('Could not reopen the last workspace folder.', false);
   }
+};
+
+// Attach or detach scroll-sync between the active editor and the global preview
+const applyPreviewScrollSync = (enable) => {
+  // Remove any previous handler
+  try {
+    if (state._previewSyncHandler && state._previewSyncHandler.detach) state._previewSyncHandler.detach();
+  } catch (e) {}
+  state._previewSyncHandler = null;
+
+  if (!enable) return;
+
+  const attach = () => {
+    const editorInst = getActiveEditorInstance();
+    const previewEl = elements.preview;
+    if (!editorInst || !editorInst.el || !previewEl) return null;
+
+    // Smooth RAF-driven updater. We capture the latest editor fraction on events
+    // and animate the preview.scrollTop toward the target each frame. This avoids
+    // running expensive layout calculations on every key event and provides a
+    // smooth visual result.
+    let running = true;
+    let latestFraction = 0;
+
+    const calcFraction = () => {
+      try {
+        const ta = editorInst.el;
+        latestFraction = ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight);
+        if (!Number.isFinite(latestFraction)) latestFraction = 0;
+      } catch (e) { latestFraction = 0; }
+    };
+
+    // Frame loop with fallback for environments without requestAnimationFrame
+    const raf = typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame.bind(window) : (cb) => setTimeout(cb, 16);
+    const caf = typeof window.cancelAnimationFrame === 'function' ? window.cancelAnimationFrame.bind(window) : (id) => clearTimeout(id);
+
+    let rafId = null;
+    const ease = 0.25; // interpolation factor for smoothing (0-1)
+
+    const tick = () => {
+      try {
+        if (!running) return;
+        const target = Math.round(latestFraction * Math.max(0, previewEl.scrollHeight - previewEl.clientHeight));
+        const cur = previewEl.scrollTop || 0;
+        const next = Math.round(cur + (target - cur) * ease);
+        if (Math.abs(next - cur) > 0) previewEl.scrollTop = next;
+      } catch (e) {}
+      rafId = raf(tick);
+    };
+
+    // Attach listeners: scroll and input are sufficient and cheaper than key events
+    const eventHandler = () => { try { calcFraction(); } catch (e) {} };
+    taAddListeners(editorInst.el, ['scroll', 'input'], eventHandler);
+    // Initialize fraction and start loop
+    calcFraction();
+    rafId = raf(tick);
+
+    return {
+      detach: () => {
+        try { running = false; if (rafId) caf(rafId); } catch (e) {}
+        try { taRemoveListeners(editorInst.el, ['scroll', 'input'], eventHandler); } catch (e) {}
+      }
+    };
+  };
+
+  // Helper to add/remove listeners safely
+  const taAddListeners = (el, events, fn) => {
+    if (!el) return;
+    events.forEach((ev) => { try { el.addEventListener(ev, fn, { passive: true }); } catch (e) {} });
+  };
+  const taRemoveListeners = (el, events, fn) => {
+    if (!el) return;
+    events.forEach((ev) => { try { el.removeEventListener(ev, fn, { passive: true }); } catch (e) {} });
+  };
+
+  // Attach now and also re-attach on pane switches
+  state._previewSyncHandler = attach();
+  // If getActiveEditorInstance changes later, listen for pane activation to re-attach
+  // We will rely on setActiveEditorPane re-focusing to call this when toggled again.
 };
 
 const activateWikiLinkElement = (element) => {
@@ -12657,6 +13210,11 @@ const getWikiTargetPresentation = (token, targetInfo) => {
   const blockId = targetInfo?.blockId ?? null;
   const hasBlock = Boolean(blockId);
   const labelDisplay = blockEntry?.rawLabel ?? blockId ?? null;
+  // Replace any hyphens in the block label with spaces so titles like
+  // "some-label" become "some label" when shown in embed headers.
+  const labelDisplaySanitized = typeof labelDisplay === 'string' && labelDisplay.length
+    ? labelDisplay.replace(/-/g, ' ')
+    : labelDisplay;
   const blockTitle = blockEntry?.title ?? null;
 
   let display = alias;
@@ -12665,10 +13223,12 @@ const getWikiTargetPresentation = (token, targetInfo) => {
     if (hasBlock) {
       if (blockTitle) {
         display = blockTitle;
-      } else if (note?.title && labelDisplay) {
-        display = `${note.title} · ^${labelDisplay}`;
+      } else if (labelDisplay && note?.title) {
+        // Prefer showing the block label first (with hyphens converted to
+        // spaces), then the file it comes from, e.g. "my label, My File".
+        display = `${labelDisplaySanitized}, ${note.title}`;
       } else if (labelDisplay) {
-        display = `^${labelDisplay}`;
+        display = `${labelDisplaySanitized}`;
       } else if (note?.title) {
         display = note.title;
       } else {
@@ -12683,16 +13243,26 @@ const getWikiTargetPresentation = (token, targetInfo) => {
 
   const metaParts = [];
   if (hasBlock) {
-    const blockMetaParts = [];
-    if (note?.title) {
-      blockMetaParts.push(note.title);
+    // Build a concise meta label for block references. Prefer showing the
+    // block label first, then the file it comes from, e.g. "label, File Name".
+    if (labelDisplay && note?.title) {
+      metaParts.push(`${labelDisplaySanitized}, ${note.title}`);
+    } else if (labelDisplay) {
+      metaParts.push(`${labelDisplaySanitized}`);
+    } else if (note?.title) {
+      metaParts.push(note.title);
     }
-    if (labelDisplay) {
-      blockMetaParts.push(`^${labelDisplay}`);
-    }
-    if (blockMetaParts.length) {
-      metaParts.push(blockMetaParts.join(' · '));
-    }
+  }
+
+  // Remove any leading hyphen/dash that might have been introduced into
+  // a block display or meta (some inputs or previous formatting added
+  // a leading "- "). Normalize both the visible display and the meta
+  // parts so embedded titles don't start with a stray dash.
+  if (typeof display === 'string') {
+    display = display.replace(/^\s*-\s*/, '');
+  }
+  for (let i = 0; i < metaParts.length; i++) {
+    if (typeof metaParts[i] === 'string') metaParts[i] = metaParts[i].replace(/^\s*-\s*/, '');
   }
 
   return {
@@ -16703,113 +17273,15 @@ const initialize = () => {
   } else {
     console.warn('checkUpdatesButton not found, cannot add click listener');
   }
-  if (elements.fallbackUpdateButton) {
-    elements.fallbackUpdateButton.addEventListener('click', async () => {
-      // Prefer the new verified in-app updater when available
-      try {
-        elements.fallbackUpdateButton.disabled = true;
-        elements.fallbackUpdateButton.textContent = 'Starting...';
-
-        // Helper to reset UI after a failure/success that doesn't quit the app
-        const resetButton = (text = 'Download & Install (Fallback)') => {
-          try {
-            elements.fallbackUpdateButton.disabled = false;
-            elements.fallbackUpdateButton.textContent = text;
-          } catch (e) {}
-        };
-
-        if (window.api && typeof window.api.customCheckAndUpdate === 'function') {
-          // Attach listeners for progress and result
-          const onStarted = () => {
-            try { elements.fallbackUpdateButton.textContent = 'Starting...'; } catch (e) {}
-          };
-          const onProgress = (p) => {
-            try {
-              if (p && typeof p.percent === 'number') {
-                elements.fallbackUpdateButton.textContent = `Downloading... ${Math.round(p.percent)}%`;
-              } else if (p && p.transferred != null) {
-                elements.fallbackUpdateButton.textContent = `Downloading... (${p.transferred}/${p.total || '??'})`;
-              } else {
-                elements.fallbackUpdateButton.textContent = 'Downloading...';
-              }
-            } catch (e) {}
-          };
-          const onResult = (res) => {
-            try {
-              if (res && res.ok) {
-                elements.fallbackUpdateButton.textContent = 'Downloaded';
-                elements.fallbackUpdateButton.disabled = false;
-                // Update will be shown via update-downloaded event
-              } else {
-                elements.fallbackUpdateButton.textContent = 'Failed';
-                setTimeout(() => resetButton(), 3000);
-              }
-            } finally {
-              // remove listeners (ipcRenderer.removeAllListeners via preload)
-              try { window.api.removeListener('custom-update-progress'); } catch (e) {}
-              try { window.api.removeListener('custom-update-started'); } catch (e) {}
-              try { window.api.removeListener('custom-update-result'); } catch (e) {}
-            }
-          };
-
-          // Subscribe
-          try { window.api.on('custom-update-started', onStarted); } catch (e) {}
-          try { window.api.on('custom-update-progress', onProgress); } catch (e) {}
-          try { window.api.on('custom-update-result', onResult); } catch (e) {}
-
-          // Invoke custom updater
-          try {
-            const res = await window.api.customCheckAndUpdate({ preferUserApplications: true });
-            // The result will usually be handled via the 'custom-update-result' event; handle fallback here too
-            if (res && res.ok) {
-              elements.fallbackUpdateButton.textContent = 'Replacing...';
-            } else if (res && res.error) {
-              elements.fallbackUpdateButton.textContent = 'Failed';
-              setTimeout(() => resetButton(), 3000);
-            }
-          } catch (err) {
-            console.error('custom updater error', err);
-            elements.fallbackUpdateButton.textContent = 'Failed';
-            setTimeout(() => resetButton(), 3000);
-            try { window.api.removeListener('custom-update-progress'); } catch (e) {}
-            try { window.api.removeListener('custom-update-started'); } catch (e) {}
-            try { window.api.removeListener('custom-update-result'); } catch (e) {}
-          }
-
-        } else {
-          // Fallback: original downloadAndReplace flow
-          try {
-            const res = await window.api.downloadAndReplace();
-            console.log('downloadAndReplace result:', res);
-            if (res && res.ok) {
-              elements.fallbackUpdateButton.textContent = 'Replacing...';
-            } else {
-              elements.fallbackUpdateButton.textContent = 'Failed';
-              setTimeout(() => { elements.fallbackUpdateButton.disabled = false; elements.fallbackUpdateButton.textContent = 'Download & Install (Fallback)'; }, 3000);
-            }
-          } catch (err) {
-            console.error('fallback update error', err);
-            elements.fallbackUpdateButton.disabled = false;
-            elements.fallbackUpdateButton.textContent = 'Download & Install (Fallback)';
-          }
-        }
-      } catch (err) {
-        console.error('fallback update error', err);
-        elements.fallbackUpdateButton.disabled = false;
-        elements.fallbackUpdateButton.textContent = 'Download & Install (Fallback)';
-      }
-    });
-  }
   elements.themeSelect?.addEventListener('change', handleThemeChange);
   elements.bgColorPicker?.addEventListener('change', handleBgColorChange);
   elements.resetBgColorButton?.addEventListener('click', resetBgColor);
-  elements.fontFamilySelect?.addEventListener('change', handleFontFamilyChange);
+              
   elements.fontSizeSlider?.addEventListener('input', handleFontSizeChange);
   elements.resetFontSizeButton?.addEventListener('click', resetFontSize);
   elements.resetFontFamilyButton?.addEventListener('click', resetFontFamily);
   elements.textColorPicker?.addEventListener('change', handleTextColorChange);
   elements.resetTextColorButton?.addEventListener('click', resetTextColor);
-  elements.borderColorPicker?.addEventListener('change', handleBorderColorChange);
   elements.resetBorderColorButton?.addEventListener('click', resetBorderColor);
   elements.borderThicknessSlider?.addEventListener('input', handleBorderThicknessChange);
   elements.resetBorderThicknessButton?.addEventListener('click', resetBorderThickness);
@@ -17129,22 +17601,68 @@ window.dumpResourceCaches = () => {
 const updateNotification = document.getElementById('update-notification');
 const updateMessage = document.querySelector('.update-notification__message');
 const updateProgress = document.querySelector('.update-notification__progress');
+const updateSubMessage = document.querySelector('.update-notification__submessage');
+const inlineCheckSubmessage = document.getElementById('check-updates-submessage');
 const updateProgressFill = document.querySelector('.update-notification__progress-fill');
 const updateProgressText = document.querySelector('.update-notification__progress-text');
+// The update download button now lives in the Settings pane next to Check Now
 const updateDownloadButton = document.getElementById('update-download-button');
 const updateInstallButton = document.getElementById('update-install-button');
 const updateDismissButton = document.getElementById('update-dismiss-button');
 let fallbackAvailable = false;
 let fallbackWatchdog = null;
+let releaseUrlForUI = null;
+
+// Positioning helper: try to show the update notification directly below the
+// 'Check for Updates' button if it's present and visible. Falls back to the
+// default centered behavior when the button isn't available.
+function positionUpdateNotificationBelowCheckBtn() {
+  try {
+    const btn = elements && elements.checkUpdatesButton ? elements.checkUpdatesButton : document.getElementById('check-updates-btn');
+    if (!btn) {
+      // revert any inline positioning so CSS rules apply
+      updateNotification.style.position = '';
+      updateNotification.style.top = '';
+      updateNotification.style.left = '';
+      updateNotification.style.transform = '';
+      updateNotification.style.width = '';
+      updateNotification.style.maxWidth = '';
+      return;
+    }
+
+    const rect = btn.getBoundingClientRect();
+    if (!rect) return;
+
+    // Ensure the notification is fixed relative to the viewport so it follows
+    // the settings panel / button even if the page scrolls.
+    updateNotification.style.position = 'fixed';
+    const padding = 8; // space between button and notification
+    const top = Math.round(rect.bottom + padding);
+
+    // Center notification above/below the button horizontally
+    const centerX = Math.round(rect.left + rect.width / 2);
+    updateNotification.style.top = `${top}px`;
+    updateNotification.style.left = `${centerX}px`;
+    updateNotification.style.transform = 'translateX(-50%)';
+    // Keep a sensible max width
+    updateNotification.style.maxWidth = '660px';
+    // Let the notification shrink to content width but not be narrower than the button
+    updateNotification.style.width = `${Math.max(240, rect.width)}px`;
+    // Ensure it's above most UI but below title-bar traffic lights
+    updateNotification.style.zIndex = '900';
+  } catch (e) {
+    // ignore positioning errors and fall back to CSS defaults
+  }
+}
 const startFallbackWatchdog = (timeoutMs = 30000) => {
   try {
     clearFallbackWatchdog();
     fallbackWatchdog = setTimeout(() => {
       try {
-        updateMessage.textContent = 'The installer appears to be stuck. You can retry the alternative update.';
-        updateDownloadButton.hidden = false;
-        updateDownloadButton.disabled = false;
-        updateDownloadButton.textContent = fallbackAvailable ? 'Try Alternative Update' : 'Download Update';
+  updateMessage.textContent = 'The installer appears to be stuck. You can open the release page to retry installation.';
+  updateDownloadButton.hidden = false;
+  updateDownloadButton.disabled = false;
+  updateDownloadButton.textContent = fallbackAvailable ? 'Open Release Page (Fallback)' : 'Open Release Page';
       } catch (e) {}
     }, timeoutMs);
   } catch (e) {}
@@ -17153,11 +17671,15 @@ const clearFallbackWatchdog = () => { try { if (fallbackWatchdog) { clearTimeout
 
 // Listen for update events from main process
 window.api.on('update-available', (info) => {
-  updateMessage.textContent = `Version ${info.version} is available. Would you like to download it?`;
+  updateMessage.textContent = `Version ${info.version} is available. You can open the release page to download it manually.`;
+  if (updateSubMessage) updateSubMessage.textContent = 'New update available';
+  // Store release URL for the UI to open externally
+  releaseUrlForUI = info && info.releaseUrl ? info.releaseUrl : null;
   updateDownloadButton.hidden = false;
   updateDownloadButton.disabled = false;
-  updateDownloadButton.textContent = 'Download Update';
+  updateDownloadButton.textContent = 'Open Release Page';
   updateNotification.hidden = false;
+  positionUpdateNotificationBelowCheckBtn();
 });
 
 window.api.on('update-progress', (progressObj) => {
@@ -17179,7 +17701,9 @@ window.api.on('update-not-available', (info) => {
   // Optionally notify the user in the UI
   try {
     updateMessage.textContent = 'No updates available.';
-    updateNotification.hidden = false;
+    if (updateSubMessage) updateSubMessage.textContent = 'You are running the newest version';
+  updateNotification.hidden = false;
+  positionUpdateNotificationBelowCheckBtn();
     setTimeout(() => { updateNotification.hidden = true; }, 3000);
   } catch (e) { }
 });
@@ -17189,7 +17713,8 @@ window.api.on('update-error', (err) => {
   // Surface in UI so user gets a clear indication
   try {
     updateMessage.textContent = `Update check failed: ${String(err)}`;
-    updateNotification.hidden = false;
+  updateNotification.hidden = false;
+  positionUpdateNotificationBelowCheckBtn();
     // Also ensure the check button resets if present
     if (elements.checkUpdatesButton) {
       elements.checkUpdatesButton.disabled = false;
@@ -17201,6 +17726,8 @@ window.api.on('update-error', (err) => {
 window.api.on('fallback-started', () => {
   console.log('fallback update started');
   try {
+    // If a fallback update run starts, clear any watchdog that might think the installer is stuck
+    try { clearFallbackWatchdog(); } catch (e) {}
     updateMessage.textContent = 'Update check failed, trying alternative update method...';
     updateNotification.hidden = false;
     if (elements.checkUpdatesButton) {
@@ -17213,10 +17740,10 @@ window.api.on('fallback-started', () => {
 window.api.on('fallback-available', () => {
   try {
     fallbackAvailable = true;
-    updateMessage.textContent = 'An alternative update method is available due to an error. Click "Download Update" to try it.';
+  updateMessage.textContent = 'An alternative update method is available due to an error. Click "Open Release Page" to try it.';
     updateDownloadButton.hidden = false;
     updateDownloadButton.disabled = false;
-    updateDownloadButton.textContent = 'Try Alternative Update';
+  updateDownloadButton.textContent = 'Open Release Page (Fallback)';
     updateNotification.hidden = false;
   } catch (e) { }
 });
@@ -17264,10 +17791,11 @@ window.api.on('fallback-progress', (payload) => {
     } else if (stage === 'error') {
       clearFallbackWatchdog();
       updateMessage.textContent = payload.message || 'Update failed';
-      updateNotification.hidden = false;
+  updateNotification.hidden = false;
+  positionUpdateNotificationBelowCheckBtn();
       updateDownloadButton.hidden = false;
       updateDownloadButton.disabled = false;
-      updateDownloadButton.textContent = fallbackAvailable ? 'Try Alternative Update' : 'Download Update';
+  updateDownloadButton.textContent = fallbackAvailable ? 'Open Release Page (Fallback)' : 'Open Release Page';
     }
   } catch (e) { }
 });
@@ -17298,7 +17826,8 @@ window.api.on('fallback-result', (result) => {
     } else {
       const errorMsg = result && result.error ? result.error : 'Unknown error';
       updateMessage.textContent = `Alternative update failed: ${errorMsg}`;
-      updateNotification.hidden = false;
+  updateNotification.hidden = false;
+  positionUpdateNotificationBelowCheckBtn();
       if (elements.checkUpdatesButton) {
         elements.checkUpdatesButton.disabled = false;
         elements.checkUpdatesButton.textContent = 'Try Again';
@@ -17309,50 +17838,136 @@ window.api.on('fallback-result', (result) => {
 
 // Handle update actions
 updateDownloadButton.addEventListener('click', async () => {
+  console.log('updateDownloadButton clicked; releaseUrlForUI=', releaseUrlForUI);
   updateDownloadButton.disabled = true;
-  updateDownloadButton.textContent = 'Downloading...';
+  updateDownloadButton.textContent = 'Opening release page...';
   try {
+    // Clear watchdog so we don't show the 'installer appears stuck' while actively downloading
+    try { clearFallbackWatchdog(); } catch (e) {}
+  const defaultReleaseUrl = 'https://github.com/Maurone7/NTA/releases/latest';
+    const targetUrl = releaseUrlForUI || defaultReleaseUrl;
+
     if (fallbackAvailable) {
-      // Trigger the fallback updater (downloads and replaces the app)
-      if (window.api && typeof window.api.downloadAndReplace === 'function') {
-        const res = await window.api.downloadAndReplace();
-        // result will be sent via 'fallback-result' channel; we just show temporary status
-        updateMessage.textContent = 'Attempting alternative update...';
-      } else if (window.api && typeof window.api.invoke === 'function') {
-        window.api.invoke('app:downloadAndReplace');
-        updateMessage.textContent = 'Attempting alternative update...';
-      } else {
-        throw new Error('Fallback update API unavailable');
+      // Downloads disabled: open release page or instruct manual install
+      try {
+        if (targetUrl && window.api && typeof window.api.invoke === 'function') {
+          // Try main-process openExternal first
+          try {
+            const res = await window.api.invoke('app:openExternal', targetUrl);
+            if (res && res.success) {
+              updateMessage.textContent = 'Opened release page in your browser.';
+            } else {
+              // Fallback: try window.open then anchor click, then copy to clipboard
+              let opened = false;
+              try { window.open(targetUrl, '_blank', 'noopener'); opened = true; } catch (e) {}
+              if (!opened) {
+                try {
+                  const a = document.createElement('a');
+                  a.href = targetUrl;
+                  a.target = '_blank';
+                  a.rel = 'noopener';
+                  a.style.display = 'none';
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  opened = true;
+                } catch (e) {}
+              }
+              if (opened) {
+                updateMessage.textContent = 'Opened release page in your browser.';
+              } else {
+                // Last resort: copy URL to clipboard and instruct user
+                try {
+                  if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                    await navigator.clipboard.writeText(targetUrl);
+                    updateMessage.textContent = 'Could not open browser automatically — release URL copied to clipboard.';
+                  } else {
+                    updateMessage.textContent = `Please open: ${targetUrl}`;
+                  }
+                } catch (e) {
+                  updateMessage.textContent = `Please open: ${targetUrl}`;
+                }
+              }
+            }
+          } catch (e) {
+            // If invoke itself threw, attempt same fallbacks
+            let opened = false;
+            try { window.open(targetUrl, '_blank', 'noopener'); opened = true; } catch (e) {}
+            if (!opened) {
+              try {
+                const a = document.createElement('a');
+                a.href = targetUrl;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                opened = true;
+              } catch (e) {}
+            }
+            if (opened) {
+              updateMessage.textContent = 'Opened release page in your browser.';
+            } else {
+              try {
+                if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                  await navigator.clipboard.writeText(targetUrl);
+                  updateMessage.textContent = 'Could not open browser automatically — release URL copied to clipboard.';
+                } else {
+                  updateMessage.textContent = `Please open: ${targetUrl}`;
+                }
+              } catch (err2) {
+                updateMessage.textContent = `Please open: ${targetUrl}`;
+              }
+            }
+          }
+        } else {
+          updateMessage.textContent = 'Alternative update available - please install manually from releases.';
+        }
+      } catch (e) {
+        console.error('Failed to open release page', e);
+        updateMessage.textContent = 'Failed to open release page.';
       }
     } else {
-      // Call the new downloadUpdate method for normal auto-updater download
-      if (window.api && typeof window.api.invoke === 'function') {
-        const result = await window.api.invoke('app:downloadUpdate');
-        if (!result.success) {
-          throw new Error(result.error);
+      // Downloads are disabled; open the release page externally if available
+      try {
+        if (targetUrl && window.api && typeof window.api.invoke === 'function') {
+          const res = await window.api.invoke('app:openExternal', targetUrl);
+          if (res && res.success) updateMessage.textContent = 'Opened release page in your browser.';
+          else updateMessage.textContent = 'Could not open browser automatically — please open the release page manually.';
+        } else {
+          updateMessage.textContent = 'Updates must be downloaded manually from the project releases.';
         }
-      } else {
-        throw new Error('Update API unavailable');
+      } catch (e) {
+        console.error('Failed to open release page', e);
+        updateMessage.textContent = 'Failed to open release page.';
       }
     }
   } catch (error) {
     updateDownloadButton.disabled = false;
-    updateDownloadButton.textContent = fallbackAvailable ? 'Try Alternative Update' : 'Download Update';
-    updateMessage.textContent = `Download failed: ${error.message}`;
+    updateDownloadButton.textContent = 'Open Release Page';
+    updateMessage.textContent = `Opening failed: ${error.message}`;
   }
 });
 
 updateInstallButton.addEventListener('click', async () => {
-  console.log('Install & Restart button clicked');
+  console.log('Install & Restart button clicked - handler triggered');
   try {
+    // Immediately clear any watchdog - we're actively installing now
+    try { clearFallbackWatchdog(); } catch (e) {}
+    updateInstallButton.disabled = true;
+    updateMessage.textContent = 'Installing update... Please wait.';
+
     if (window.api && typeof window.api.quitAndInstall === 'function') {
       console.log('Calling window.api.quitAndInstall()');
-      await window.api.quitAndInstall();
-      console.log('quitAndInstall call completed');
+      // Don't await - the app will quit and won't send a response
+      window.api.quitAndInstall();
+      console.log('quitAndInstall call initiated - app should quit');
     } else if (window.api && typeof window.api.invoke === 'function') {
       console.log('Calling window.api.invoke(app:quitAndInstall)');
-      await window.api.invoke('app:quitAndInstall');
-      console.log('invoke call completed');
+      // Don't await - the app will quit and won't send a response
+      window.api.invoke('app:quitAndInstall');
+      console.log('invoke call initiated - app should quit');
     } else {
       console.error('No quitAndInstall API available');
       updateMessage.textContent = 'Install failed: API not available';
@@ -19768,6 +20383,13 @@ async function checkForUpdatesManually() {
     elements.checkUpdatesButton.textContent = 'Checking...';
     
     try {
+        // Show immediate feedback below the main update message
+        try {
+          if (updateSubMessage) updateSubMessage.textContent = 'Checking for updates...';
+          if (inlineCheckSubmessage) inlineCheckSubmessage.textContent = 'Checking for updates...';
+          updateNotification.hidden = false;
+          positionUpdateNotificationBelowCheckBtn();
+        } catch (e) {}
       // Check if running in development mode
       let version = 'Unknown';
       if (window.api && typeof window.api.getVersion === 'function') {
@@ -19788,15 +20410,45 @@ async function checkForUpdatesManually() {
       }
       
       console.log('checkForUpdatesManually: Calling update check API');
+      let checkResult = null;
       if (window.api && typeof window.api.checkForUpdates === 'function') {
         console.log('checkForUpdatesManually: Using window.api.checkForUpdates()');
-        await window.api.checkForUpdates();
-        console.log('checkForUpdatesManually: window.api.checkForUpdates() completed successfully');
+        try {
+          checkResult = await window.api.checkForUpdates();
+          console.log('checkForUpdatesManually: window.api.checkForUpdates() completed successfully', checkResult);
+        } catch (e) {
+          console.log('checkForUpdatesManually: window.api.checkForUpdates() returned error', e && e.message);
+        }
       } else if (window.api && typeof window.api.invoke === 'function') {
         console.log('checkForUpdatesManually: Using window.api.invoke("app:checkForUpdates")');
-        await window.api.invoke('app:checkForUpdates');
-        console.log('checkForUpdatesManually: window.api.invoke() completed successfully');
+        try {
+          checkResult = await window.api.invoke('app:checkForUpdates');
+          console.log('checkForUpdatesManually: window.api.invoke() completed successfully', checkResult);
+        } catch (e) {
+          console.log('checkForUpdatesManually: window.api.invoke() returned error', e && e.message);
+        }
       }
+
+      // Reflect result in the submessage so user sees immediate feedback even if events don't arrive
+      try {
+        if (checkResult && checkResult.status === 'update-available') {
+          if (updateSubMessage) updateSubMessage.textContent = 'New update available';
+          if (inlineCheckSubmessage) inlineCheckSubmessage.textContent = 'New update available';
+        } else if (checkResult && checkResult.status === 'update-not-available') {
+          if (updateSubMessage) updateSubMessage.textContent = 'You are running the newest version';
+          if (inlineCheckSubmessage) inlineCheckSubmessage.textContent = 'You are running the newest version';
+        } else {
+          // If no structured result returned, keep the existing updateNotification state
+          if (updateSubMessage && !updateSubMessage.textContent) updateSubMessage.textContent = '';
+          if (inlineCheckSubmessage && !inlineCheckSubmessage.textContent) inlineCheckSubmessage.textContent = '';
+        }
+      } catch (e) {}
+
+      // Debug: log notification and submessage visibility/state
+      try {
+        console.log('checkForUpdatesManually: updateNotification.hidden=', !!updateNotification.hidden, 'updateSubMessage=', updateSubMessage ? updateSubMessage.textContent : null);
+      } catch (e) {}
+
       console.log('checkForUpdatesManually: Update check completed, setting button to "Check Complete"');
       elements.checkUpdatesButton.textContent = 'Check Complete';
       setTimeout(() => {
@@ -21442,6 +22094,7 @@ try {
     module.exports.__test__.openNoteById = typeof openNoteById === 'function' ? openNoteById : null;
     module.exports.__test__.updateFileMetadataUI = typeof updateFileMetadataUI === 'function' ? updateFileMetadataUI : null;
   module.exports.__test__.applyWikiSuggestion = typeof applyWikiSuggestion === 'function' ? applyWikiSuggestion : null;
+  module.exports.__test__.updateWikiSuggestions = typeof updateWikiSuggestions === 'function' ? updateWikiSuggestions : null;
   }
 } catch (e) { /* ignore in browsers */ }
 

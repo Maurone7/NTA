@@ -8,6 +8,8 @@ const api = {
   chooseFolder: () => ipcRenderer.invoke('workspace:chooseFolder'),
   loadWorkspaceAtPath: (data) => ipcRenderer.invoke('workspace:loadAtPath', data),
   saveExternalMarkdown: (data) => ipcRenderer.invoke('workspace:saveExternalMarkdown', data),
+  // Save a notebook (.ipynb). Payload: { filePath, notebook }
+  saveNotebook: (data) => ipcRenderer.invoke('workspace:saveNotebook', data),
   createMarkdownFile: (data) => ipcRenderer.invoke('workspace:createMarkdownFile', data),
   // Read a bibliography file (e.g., bibliography.bib) from the workspace
   readBibliography: (data) => ipcRenderer.invoke('workspace:readBibliography', data),
@@ -44,9 +46,7 @@ const api = {
   // Update methods
   checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
   quitAndInstall: () => ipcRenderer.invoke('app:quitAndInstall'),
-  downloadUpdate: () => ipcRenderer.invoke('app:downloadUpdate'),
-  // Fallback dev updater: download and replace the app bundle without ShipIt
-  downloadAndReplace: () => ipcRenderer.invoke('app:downloadAndReplace'),
+  // Note: download/update APIs removed - app no longer performs automatic downloads.
   // Custom in-app updater: verified download + progress events
   customCheckAndUpdate: (opts) => ipcRenderer.invoke('app:customCheckAndUpdate', opts || {}),
   // Dev-only check which queries GitHub directly (works in unpacked/dev mode)

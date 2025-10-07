@@ -1,6 +1,6 @@
 {
   "name": "note-taking-app",
-  "version": "0.0.5",
+  "version": "0.0.4",
   "description": "Cross-platform Markdown note taking app with PDF viewing support",
   "main": "src/main.js",
   "homepage": "https://github.com/Maurone7/NTA",
@@ -22,8 +22,10 @@
     "build:all": "CI=true electron-builder --mac --win --linux",
     "build:publish": "CI=true electron-builder --publish=always",
     "dist": "npm run build",
-    "pack": "electron-builder --dir"
+    "pack": "electron-builder --dir",
+    "clean:artifacts": "node scripts/clean-repo.js"
   },
+
   "author": "Maurone7",
   "license": "MIT",
   "dependencies": {
@@ -55,7 +57,13 @@
     },
     "files": [
       "src/**/*",
-      "package.json"
+  "package.json",
+  "!**/test-folder/**",
+      "!test-screenshot.png",
+      "!dist/**",
+      "!**/*.map",
+      "!**/sample-doc.pdf",
+      "!**/compressed.tracemonkey-pldi-09.pdf"
     ],
     "publish": {
       "provider": "github",

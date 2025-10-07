@@ -28,6 +28,7 @@
         <div class="update-notification__text">
           <div class="update-notification__title">Update Available</div>
           <div class="update-notification__message">A new version of NoteTakingApp is available.</div>
+          <div class="update-notification__submessage" aria-live="polite"></div>
           <div class="update-notification__progress" hidden>
             <div class="update-notification__progress-bar">
               <div class="update-notification__progress-fill"></div>
@@ -37,7 +38,6 @@
         </div>
         <div class="update-notification__actions">
           <button id="update-install-button" class="button primary small" hidden>Install & Restart</button>
-          <button id="update-download-button" class="button primary small">Download</button>
           <button id="update-dismiss-button" class="button ghost small">Later</button>
         </div>
       </div>
@@ -374,7 +374,7 @@
                 Unable to load this HTML file.
               </div>
             </div>
-            <iframe id="pdf-viewer" class="pdf-viewer" title="PDF Viewer"></iframe>
+            <iframe id="pdf-viewer" class="pdf-viewer" title="PDF Viewer" role="document" tabindex="-1" aria-hidden="true"></iframe>
           </section>
 
           <!-- Math WYSIWYG Panel -->
@@ -1039,10 +1039,15 @@
               <div class="settings-section">
                 <div class="settings-item">
                   <label class="settings-item__label">Check for Updates</label>
-                  <div style="display:flex;gap:8px;align-items:center;">
-                    <button id="check-updates-btn" class="settings-button">Check Now</button>
-                    <button id="fallback-update-btn" class="settings-button--secondary">Download & Install (Fallback)</button>
-                  </div>
+                    <div class="update-check-row">
+                      <div class="check-button-column">
+                        <button id="check-updates-btn" class="settings-button">Check Now</button>
+                        <div id="check-updates-submessage" class="settings-submessage" aria-live="polite"></div>
+                      </div>
+                      <div>
+                        <button id="update-download-button" class="settings-button">Open Release Page</button>
+                      </div>
+                    </div>
                 </div>
                 <div class="settings-item">
                   <label class="settings-item__label">App Version</label>

@@ -307,6 +307,122 @@ body[data-high-contrast="true"] {
 
 /* Update Notification */
 
+/* Ensure the notification does not overlap the macOS custom title bar or traffic lights.
+   Use the --title-bar-height variable so the notification sits just under the title bar
+   on macOS. Also keep its z-index lower than the title bar (which uses 1000) so the
+   traffic lights remain on top. */
+.update-notification {
+  position: relative;
+  z-index: 1200; /* raised so notification appears above settings modal */
+  margin-top: 0;
+}
+
+body.platform-darwin .update-notification {
+  /* push the notification below the title bar on macOS; keep it fixed so it
+     can't be overlaid by the custom title bar traffic lights or other
+     positioned elements. Center it horizontally and limit width for
+     readability. */
+  position: fixed;
+  top: var(--title-bar-height);
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 40px);
+  max-width: 900px;
+  z-index: 1200;
+}
+
+.update-notification__submessage {
+  font-size: 12px;
+  color: var(--fg-soft);
+  margin-top: 4px;
+}
+
+.settings-submessage {
+  font-size: 12px;
+  color: var(--fg-soft);
+}
+
+.settings-item > div > div > .settings-submessage {
+  margin-left: 0; /* align under the button in the new column layout */
+  max-width: 420px;
+  word-break: break-word;
+}
+
+/* Layout for update check row: reserve vertical space for submessage so buttons don't move */
+.update-check-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.check-button-column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Reserve height so the Open Release Page button doesn't shift when submessage appears */
+  min-height: 44px; /* approximate height of button + small message */
+  min-width: 140px;
+}
+
+.check-button-column .settings-submessage {
+  min-height: 18px; /* reserve a line for the message */
+  opacity: 1;
+  transition: opacity 160ms ease-in-out;
+}
+
+/* Visual polish for update buttons */
+.update-check-row .settings-button {
+  border-radius: 8px;
+  font-weight: 600;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 4px 12px rgba(18,24,38,0.04);
+}
+
+.update-check-row .settings-button.icon-left {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.update-check-row .settings-button .btn-icon {
+  font-size: 14px;
+  opacity: 0.95;
+}
+
+.update-check-row .settings-button.primary {
+  background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+}
+
+.update-check-row .settings-button.secondary {
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+
+.settings-submessage {
+  color: var(--fg-soft);
+}
+
+/* Make the two columns share available width so their buttons match size */
+.update-check-row > .check-button-column,
+.update-check-row > div {
+  flex: 1 1 0;
+}
+
+.update-check-row .settings-button {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Ensure both update buttons have identical height and centered content */
+.update-check-row .settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px; /* keep consistent padding */
+  min-height: 38px; /* enforce consistent height */
+}
+
+
 .update-notification__message {
   font-size: 14px;
   color: var(--fg-soft);
@@ -2320,7 +2436,7 @@ body[data-theme="dark"] .editor-pane:not(.active) {
 }
 
 .wiki-suggest {
-  position: absolute;
+  position: fixed;
   top: 24px;
   left: 24px;
   min-width: 220px;
@@ -2486,6 +2602,13 @@ body[data-theme="dark"] .editor-pane:not(.active) {
   display: block;
   height: 100%;
 }
+.pdf-viewer[tabindex="0"]:focus {
+  outline: 3px solid rgba(76, 110, 245, 0.28);
+  outline-offset: 2px;
+}
+.preview-pane .pdf-viewer {
+  min-height: 220px; /* reasonable default to avoid large shifts */
+}
 
 .preview-scroll h1,
 .preview-scroll h2,
@@ -2639,6 +2762,47 @@ body[data-theme="dark"] .editor-pane:not(.active) {
   margin: 0;
 }
 
+/* Pane-local notebook viewer styling */
+.nb-pane-viewer {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nb-pane-controls { display:flex; gap:8px; margin-bottom:8px; }
+.nb-pane-controls .nb-edit-toggle,
+.nb-pane-controls .nb-save-btn,
+.nb-pane-controls .nb-cancel-btn { padding:6px 10px; border-radius:6px; border:1px solid var(--border-strong); background:var(--bg-elevated); cursor:pointer; }
+.nb-raw-editor { width:100%; min-height:240px; font-family: monospace; font-size:13px; padding:8px; border:1px solid var(--border); border-radius:6px; }
+
+/* Notebook editor styles */
+.notebook-editor { display:flex; flex-direction:column; gap:12px; }
+.nb-editor-cell { border:1px solid var(--border); padding:8px; border-radius:8px; background: var(--bg-elevated); }
+.nb-editor-cell__header { font-weight:600; font-size:13px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+.nb-editor-cell__textarea { width:100%; min-height:100px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', 'Courier New', monospace; font-size:13px; padding:8px; border-radius:6px; border:1px solid var(--border); }
+.nb-editor-cell__outputs { margin-top:8px; }
+.nb-editor-cell__output { background: #1f1f1f10; padding:8px; border-radius:6px; white-space:pre-wrap; font-size:13px; }
+
+.nb-editor-cell__controls { display:flex; gap:8px; align-items:center; }
+.nb-editor-cell__preview-toggle { padding:6px 8px; border-radius:6px; border:1px solid var(--border-strong); background:var(--bg); cursor:pointer; }
+.nb-editor-cell__preview { border-top:1px dashed var(--border); margin-top:8px; padding-top:8px; }
+.nb-editor-cell__preview :where(p, h1, h2, h3, ul, ol, pre) { margin: 0 0 8px 0; }
+
+.nb-cell .nb-cell__copy-btn {
+  margin-left: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: none;
+  background: var(--bg-muted);
+  cursor: pointer;
+}
+
+.nb-cell .nb-cell__copy-btn:hover {
+  background: var(--bg);
+}
+
 .wikilink {
   color: var(--accent);
   cursor: pointer;
@@ -2684,6 +2848,15 @@ body[data-theme="dark"] .editor-pane:not(.active) {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+/* Hide the small meta label that appears at the top-right of embedded blocks.
+   This removes the extra text (type/label) shown in the embed header. If you
+   later want to show it only in certain contexts, replace this with a more
+   specific selector (for example: .editor-math-overlay .wikilink-embed__meta).
+*/
+.wikilink-embed__meta {
+  display: none !important;
 }
 
 .wikilink-embed__body {
@@ -3678,11 +3851,35 @@ body[data-theme="dark"] {
 
 .preview-scroll .katex-display {
   margin: 16px 0;
-  overflow-x: auto;
+  /* Allow KaTeX blocks (including tall matrices) to grow instead of showing
+     an inner scrollbar. Previously this used overflow-x:auto which caused
+     horizontal/vertical scrollbars inside the preview; make them visible so
+     the outer preview handles scrolling. */
+  overflow: visible;
 }
 
 .preview-scroll .katex {
   font-size: 16px;
+  overflow: visible;
+}
+
+/* Allow wikilink embeds and html iframes inside the preview to expand to
+   their content where possible. Some embeds were inserted with inline
+   height styles (e.g. height:600px) which produced inner scrollbars; use
+   a permissive rule here to prefer auto sizing while keeping a sensible
+   minimum height. Important is used to override inline styles placed on
+   the iframe by the renderer. */
+.wikilink-embed, .wikilink-embed__body {
+  overflow: visible;
+}
+
+.html-embed-iframe,
+.embedded-html-iframe,
+.editor-html-block iframe,
+iframe.html-embed-iframe {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 120px;
 }
 
 /* Inline Chat Styles */
