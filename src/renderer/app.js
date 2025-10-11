@@ -22804,6 +22804,10 @@ async function handleExport(format) {
   const note = getActiveNote();
   if (!note) return;
   
+  // Ensure all images are resolved before exporting
+  await processPreviewImages();
+  await processPreviewHtmlIframes();
+  
   const title = note.title || 'Untitled';
   const html = elements.preview ? elements.preview.innerHTML : '';
   const folderPath = elements.workspacePath?.title;
