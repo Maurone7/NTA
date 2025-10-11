@@ -5233,13 +5233,13 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
     } catch (e) { }
 
     updateEditorPaneVisuals();
-    setStatus(`File opened in ${pane} editor.`, true);
+    setStatus(`${note.title || 'Untitled'} opened in editor.`, true);
     try { if (window.api && typeof window.api.writeDebugLog === 'function') window.api.writeDebugLog({ event: 'openNoteInPane:activated', noteId, pane, noteType: note?.type, timestamp: Date.now() }); } catch (e) { }
   } else {
     // Non-activating open: update UI lists/badges without changing preview/active pane
     renderWorkspaceTree();
     updateEditorPaneVisuals();
-    setStatus(`File assigned to ${pane} editor.`, true);
+    setStatus(`${note.title || 'Untitled'} assigned to editor.`, true);
   }
 
   return existingTab;
@@ -13454,10 +13454,28 @@ const handleGlobalShortcuts = (event) => {
   } else if (key === 'e') {
     event.preventDefault();
     event.stopPropagation();
-    // Directly export using the default format from settings
-    const defaultFormat = localStorage.getItem('defaultExportFormat') || 
-                         (elements.defaultExportFormatSelect?.value) || 'pdf';
-    handleExport(defaultFormat);
+    // Check the checkbox setting for direct export
+    let directExportVal = readStorage(storageKeys.cmdEDirectExport);
+    if (directExportVal === null) {
+      try { directExportVal = window.localStorage?.getItem('cmdEDirectExport'); } catch (e) { directExportVal = null; }
+    }
+    // Normalize to boolean: default true when key not present
+    const directExportEnabled = directExportVal === null ? true : ('' + directExportVal !== 'false'); // Default to true
+
+    try { console.warn('Cmd+E handler: directExportEnabled =', directExportEnabled); } catch (e) {}
+
+    if (directExportEnabled) {
+      try { console.warn('Cmd+E action: performing direct export'); } catch (e) {}
+      const defaultFormat = readStorage(storageKeys.defaultExportFormat) || 'pdf';
+      handleExport(defaultFormat);
+    } else {
+      try { console.warn('Cmd+E action: opening export dropdown'); } catch (e) {}
+      // Open export dropdown
+      const exportButton = document.getElementById('export-dropdown-button');
+      if (exportButton) {
+        exportButton.click();
+      }
+    }
   } else if (key === 'l') {
   // Use current editor selection for CMD+L functionality (math WYSIWYG toggle)
   const hasSelection = activeEditorEl && activeEditorEl.selectionStart !== activeEditorEl.selectionEnd;
@@ -22738,40 +22756,10 @@ function saveKeybindings() {
 }
 
 function handleKeybinding(e) {
-  // Export with default format: Cmd/Ctrl+E (check this first to override custom keybindings)
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
-    e.preventDefault();
-    // Read namespaced setting first; fallback to legacy 'cmdEDirectExport' key
-    let directExportVal = readStorage(storageKeys.cmdEDirectExport);
-    if (directExportVal === null) {
-      try { directExportVal = window.localStorage?.getItem('cmdEDirectExport'); } catch (e) { directExportVal = null; }
-    }
-    // Normalize to boolean: default true when key not present
-    const directExportEnabled = directExportVal === null ? true : ('' + directExportVal !== 'false'); // Default to true
-
-    try { console.warn('Cmd+E handler: directExportEnabled =', directExportEnabled); } catch (e) {}
-
-    if (directExportEnabled) {
-      try { console.warn('Cmd+E action: performing direct export'); } catch (e) {}
-      const defaultFormat = readStorage(storageKeys.defaultExportFormat) || 'pdf';
-      handleExport(defaultFormat);
-    } else {
-      try { console.warn('Cmd+E action: opening export dropdown'); } catch (e) {}
-      // Open export dropdown
-      const exportButton = document.getElementById('export-dropdown-button');
-      if (exportButton) {
-        exportButton.click();
-      }
-    }
-    return;
-  }
-
   // Check custom keybindings
   const keyCombo = getKeyCombo(e);
   for (const kb of _keybindings || []) {
     if (kb.keys === keyCombo) {
-      // Skip custom keybindings for Cmd+E to ensure the checkbox controls it
-      if (keyCombo === 'Cmd+E') continue;
       e.preventDefault();
       executeKeybindingAction(kb.action, e);
       return;
