@@ -17,9 +17,9 @@ describe('LaTeX editor behavior', function() {
     // Check that handleLatexEnvironmentAutoComplete function exists
     assert(src.includes('const handleLatexEnvironmentAutoComplete'), 'handleLatexEnvironmentAutoComplete function should exist');
     
-    // Check that it's called in handleEditorKeydown for LaTeX files
+    // Check that it's called in handleEditorKeydown for LaTeX and Markdown files
     assert(src.includes("handleLatexEnvironmentAutoComplete(ta)"), 'handleLatexEnvironmentAutoComplete should be called in keydown handler');
-    assert(src.includes("note.type === 'latex'"), 'Auto-completion should only work for LaTeX files');
+    assert(src.includes("note.type === 'latex' || note.type === 'markdown'"), 'Auto-completion should work for LaTeX and Markdown files');
   });
 
   it('should process LaTeX includegraphics commands', async function() {
@@ -56,5 +56,23 @@ describe('LaTeX editor behavior', function() {
     
     // Check that renderLatexPreview calls processPreviewImages
     assert(src.includes('void processPreviewImages()'), 'renderLatexPreview should call processPreviewImages');
+  });
+
+  it('should show file title in status bar when opening files in editor', async function() {
+    const appPath = path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js');
+    const src = await fs.readFile(appPath, 'utf8');
+    
+    // Check that status message uses note.title instead of generic "File"
+    assert(src.includes('setStatus(`${note.title || \'Untitled\'} opened in editor.`, true)'), 'Status message should show file title when opening in editor');
+    assert(src.includes('setStatus(`${note.title || \'Untitled\'} assigned to editor.`, true)'), 'Status message should show file title when assigning to editor');
+  });
+
+  it('should wait for image processing before exporting', async function() {
+    const appPath = path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js');
+    const src = await fs.readFile(appPath, 'utf8');
+    
+    // Check that handleExport calls processPreviewImages before getting HTML
+    assert(src.includes('await processPreviewImages()'), 'handleExport should wait for image processing before exporting');
+    assert(src.includes('await processPreviewHtmlIframes()'), 'handleExport should wait for iframe processing before exporting');
   });
 });

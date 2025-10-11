@@ -2521,7 +2521,7 @@ body[data-theme="dark"] .editor-pane:not(.active) {
   box-shadow: 0 12px 40px rgba(15, 17, 23, 0.16);
   overflow: hidden; /* Disable scrolling */
   padding: 6px 0;
-  z-index: 20;
+  z-index: 10000;
 }
 
 .wiki-suggest__item {

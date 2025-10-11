@@ -1005,6 +1005,35 @@ function toWikiSlug(value) {
   return normalized;
 }
 
+// Compute a POSIX-style relative path from `fromFolder` to `toAbsolutePath`.
+// Falls back to the basename if computation is not possible. Uses simple
+// string operations and works with both POSIX and Windows-style paths.
+function getRelativePath(fromFolder, toAbsolutePath) {
+  if (!fromFolder || !toAbsolutePath || typeof fromFolder !== 'string' || typeof toAbsolutePath !== 'string') {
+    return extractFileNameFromPath(toAbsolutePath || '') || '';
+  }
+  // Normalize separators to '/'
+  const from = fromFolder.replace(/\\/g, '/').replace(/\/$/, '');
+  const to = toAbsolutePath.replace(/\\/g, '/');
+  // If to is exactly inside from (or equals), return the remainder
+  if (to.startsWith(from + '/')) {
+    return to.slice(from.length + 1);
+  }
+  // Split into segments
+  const fromSeg = from.split('/').filter(Boolean);
+  const toSeg = to.split('/').filter(Boolean);
+  // Find common prefix
+  let i = 0;
+  while (i < fromSeg.length && i < toSeg.length && fromSeg[i].toLowerCase() === toSeg[i].toLowerCase()) {
+    i++;
+  }
+  const up = fromSeg.length - i;
+  const relParts = [];
+  for (let j = 0; j < up; j++) relParts.push('..');
+  relParts.push(...toSeg.slice(i));
+  return relParts.join('/') || extractFileNameFromPath(toAbsolutePath) || '';
+}
+
 // Minimal tab activation helper to keep state in sync. Real implementation
 // should update DOM and focus, but this keeps flows from throwing.
 function setActiveTab(tabId) {
@@ -8803,9 +8832,11 @@ const handleEditorInput = (event, opts = {}) => {
     }
   }
   
-  // Always update suggestions, as they don't depend on the note being saved or markdown
-  updateWikiSuggestions(event.target);
-  updateHashtagSuggestions(event.target);
+  // Update suggestions for markdown notes
+  if (note && note.type === 'markdown') {
+    updateWikiSuggestions(event.target);
+    updateHashtagSuggestions(event.target);
+  }
   updateFileSuggestions(event.target);
   
   // If LaTeX was auto-completed, trigger another input event to update everything with the new content
@@ -10024,7 +10055,7 @@ const handleEditorKeydown = (event) => {
       const ta = edt?.el ?? null;
       const note = getActiveNote();
       console.log('Enter pressed, checking LaTeX auto-complete:', { ta: !!ta, noteType: note?.type });
-      if (ta && note && note.type === 'latex') {
+      if (ta && note && (note.type === 'latex' || note.type === 'markdown')) {
         const handled = handleLatexEnvironmentAutoComplete(ta);
         if (handled) {
           event.preventDefault();
@@ -11180,7 +11211,9 @@ const getTextareaCaretCoordinates = (textarea, position) => {
   div.style.wordSpacing = style.wordSpacing;
   div.style.whiteSpace = 'pre-wrap';
   div.style.wordBreak = 'break-word';
-  div.style.padding = '0';
+  // Copy padding and box-sizing from the textarea so measurements match exactly
+  div.style.padding = style.padding;
+  div.style.boxSizing = style.boxSizing || 'content-box';
   div.style.margin = '0';
   div.style.border = 'none';
   div.style.boxSizing = 'content-box';
@@ -11199,8 +11232,18 @@ const getTextareaCaretCoordinates = (textarea, position) => {
   const rect = span.getBoundingClientRect();
   const divRect = div.getBoundingClientRect();
   
-  const top = rect.top - divRect.top;
-  const left = rect.left - divRect.left;
+  let top = rect.top - divRect.top;
+  let left = rect.left - divRect.left;
+
+  // Adjust for textarea scrolling so coordinates are relative to the visible caret
+  try {
+    const scrollTop = typeof textarea.scrollTop === 'number' ? textarea.scrollTop : 0;
+    const scrollLeft = typeof textarea.scrollLeft === 'number' ? textarea.scrollLeft : 0;
+    top -= scrollTop;
+    left -= scrollLeft;
+  } catch (e) {
+    // ignore
+  }
   
   document.body.removeChild(div);
   
@@ -11217,7 +11260,9 @@ const computeWikiSuggestionPosition = (textarea, caret) => {
   const estimatedHeight = Math.min(state.wikiSuggest.items.length * 36 + 12, 280);
   const estimatedWidth = Math.min(360, parentWidth - 32);
 
-  let anchorTop = rect.top + coords.top + coords.lineHeight + 6;
+  // Position the suggestion box so its top edge sits exactly at the bottom of the caret
+  // Add 1px safety offset to avoid overlapping the caret due to fractional pixels
+  let anchorTop = rect.top + coords.top + coords.lineHeight + 1;
   let anchorLeft = rect.left + coords.left;
 
   if (anchorTop + estimatedHeight > parentHeight - 8) {
@@ -11288,9 +11333,29 @@ const renderWikiSuggestions = () => {
   if (!state.wikiSuggest.position || typeof state.wikiSuggest.position !== 'object') {
     state.wikiSuggest.position = { top: 24, left: 24 };
   }
+  // Ensure the suggestions container is attached to the document body to avoid
+  // being trapped in a stacking context (transforms, z-index of parents, etc.).
+  try {
+    if (container.parentNode !== document.body) {
+      document.body.appendChild(container);
+      console.log('renderWikiSuggestions: moved container to document.body');
+    }
+    // Force high inline z-index to override other UI layers
+    container.style.zIndex = '10001';
+  } catch (e) {
+    console.log('renderWikiSuggestions: error ensuring container root', e);
+  }
+
   container.hidden = false;
   container.setAttribute('data-open', 'true');
   console.log('renderWikiSuggestions: showing suggestions at', state.wikiSuggest.position);
+  try {
+    const computed = window.getComputedStyle(container);
+    console.log('renderWikiSuggestions: container computed style zIndex=', computed.zIndex, 'visibility=', computed.visibility, 'display=', computed.display);
+    console.log('renderWikiSuggestions: element client rect=', container.getBoundingClientRect());
+  } catch (e) {
+    console.log('renderWikiSuggestions: error reading container styles', e);
+  }
   try {
     container.style.top = `${state.wikiSuggest.position.top}px`;
     container.style.left = `${state.wikiSuggest.position.left}px`;
@@ -11881,10 +11946,76 @@ const collectWikiSuggestionItems = (query) => {
     generalVariants.push('');
   }
 
-  const noteVariants = buildQueryVariants(parsed.notePart);
+  const noteVariantsRaw = buildQueryVariants(parsed.notePart);
   const blockVariants = buildQueryVariants(parsed.blockPart);
+
+  // Determine whether user typed a folder path (contains '/') in the note part.
+  const userTypedIncludesSlash = typeof parsed.notePart === 'string' && parsed.notePart.includes('/');
+
+  // If user typed a folder prefix like "subfolder/partial", split it so we
+  // filter notes to that subfolder and match only the remainder after the '/'.
+  let folderPrefix = null;
+  let noteVariants = noteVariantsRaw;
+  if (userTypedIncludesSlash) {
+    const parts = parsed.notePart.split('/');
+    // folderPrefix = everything before the final slash
+    folderPrefix = parts.slice(0, -1).join('/');
+    const noteTail = parts[parts.length - 1] ?? '';
+    noteVariants = buildQueryVariants(noteTail);
+  }
+
   const fallbackNoteVariants = noteVariants.length ? noteVariants : generalVariants.length ? generalVariants : [''];
   const fallbackBlockVariants = blockVariants.length ? blockVariants : generalVariants.length ? generalVariants : [''];
+  const activeNoteId = state.activeNoteId;
+  const activeNote = activeNoteId ? state.notes.get(activeNoteId) : null;
+  const activeFolder = activeNote?.folderPath ?? state.currentFolder ?? '';
+
+  // Offer folder suggestions (subfolders of the active folder) so users can
+  // quickly jump to or create pages inside subfolders using e.g. [[sub/...
+  try {
+    const activeFolderPath = activeFolder ?? '';
+    const treeRoot = state.tree ?? null;
+    if (treeRoot && activeFolderPath) {
+      // Find the node corresponding to activeFolderPath in the workspace tree
+      const findNode = (node) => {
+        if (!node) return null;
+        if (node.type === 'directory' && node.path === activeFolderPath) return node;
+        if (node.type === 'directory' && Array.isArray(node.children)) {
+          for (const child of node.children) {
+            if (child.type === 'directory') {
+              const found = findNode(child);
+              if (found) return found;
+            }
+          }
+        }
+        return null;
+      };
+
+      const activeNode = findNode(treeRoot);
+      if (activeNode && Array.isArray(activeNode.children)) {
+        for (const child of activeNode.children) {
+          if (child && child.type === 'directory') {
+            const folderName = child.name || '';
+            // Only suggest folders when the user hasn't typed a note fragment that
+            // looks like a block or when the folder name matches the typed query
+            const matches = buildQueryVariants(parsed.notePart || '');
+            const folderMatches = matches.length === 0 || matches.some((v) => folderName.toLowerCase().includes(v));
+            if (folderMatches) {
+              suggestions.push({
+                kind: 'folder',
+                target: `${folderName}/`,
+                display: `${folderName}/`,
+                meta: 'folder',
+                sortKey: -1 // show folders above notes by default
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // non-fatal
+  }
 
   state.notes.forEach((note) => {
     if (!note) {
@@ -11895,17 +12026,52 @@ const collectWikiSuggestionItems = (query) => {
     const fileName = extractFileNameFromPath(note.absolutePath ?? '') ?? '';
     const baseName = stripExtension(fileName);
     const slug = toWikiSlug(title);
-    const score = computeWikiSuggestionScore([title, baseName, fileName, slug], fallbackNoteVariants);
+  const score = computeWikiSuggestionScore([title, baseName, fileName, slug], fallbackNoteVariants);
 
     if (!parsed.isEmpty && noteVariants.length && score === null) {
       return;
     }
 
+  // Determine a sensible insertion target: if the note is in a different
+    // folder than the active note, prefer a relative path (folder/file.md).
+    const activeNoteId = state.activeNoteId;
+    const activeNote = activeNoteId ? state.notes.get(activeNoteId) : null;
+    const activeFolder = activeNote?.folderPath ?? state.currentFolder ?? '';
+    const relativePath = note.absolutePath ? getRelativePath(activeFolder, note.absolutePath) : fileName;
+    // If the note is in a different folder (relativePath contains a '/'), prefer
+    // inserting a folder-prefixed wiki link using the note title, e.g. "folder/Note Title".
+    let target;
+    if (relativePath && relativePath.includes('/')) {
+      // Extract the folder part (everything before the final slash)
+      const folderPart = relativePath.split('/').slice(0, -1).join('/');
+      // Use the note title (no extension) as the target name
+      const titlePart = title;
+      target = `${folderPart}/${titlePart}`;
+    } else {
+      // Same folder or no folder info: use the title
+      target = title;
+    }
+
+    // If the user typed a folder prefix, only include notes that are inside
+    // that folder (relativePath starts with folderPrefix + '/'). If no folder
+    // prefix was typed, apply the previous logic: hide cross-folder notes when
+    // user did not type a slash.
+    if (userTypedIncludesSlash) {
+      if (folderPrefix && relativePath && !relativePath.startsWith(folderPrefix + '/')) {
+        return;
+      }
+    } else {
+      if (!userTypedIncludesSlash && activeFolder && relativePath && relativePath.includes('/')) {
+        return;
+      }
+    }
+
     suggestions.push({
       kind: 'note',
       noteId: note.id,
-      target: title,
+      target,
       display: title,
+      relativePath,
       meta: fileName && fileName !== title ? fileName : null,
       sortKey: score ?? 0
     });
@@ -11934,6 +12100,12 @@ const collectWikiSuggestionItems = (query) => {
     }
 
     const effectiveScore = (blockScore ?? (noteScore !== null ? noteScore + 0.5 : null) ?? 0) + 0.5;
+
+    // Determine relative path for the block's note and apply the same folder-filtering
+    const blockRelativePath = note.absolutePath ? getRelativePath(activeFolder, note.absolutePath) : '';
+    if (!userTypedIncludesSlash && activeFolder && blockRelativePath && blockRelativePath.includes('/')) {
+      return;
+    }
 
     const blockMetaParts = [];
     if (blockTitle && title) {
@@ -12066,7 +12238,15 @@ const openWikiSuggestions = (trigger, textarea) => {
   state.wikiSuggest.embed = trigger.embed;
   state.wikiSuggest.suppress = false;
 
+  // Compute position and log diagnostics to help troubleshoot visibility/position issues
   computeWikiSuggestionPosition(textarea, trigger.end);
+  try {
+    const caretCoords = getTextareaCaretCoordinates(textarea, trigger.end);
+    const taRect = textarea?.getBoundingClientRect ? textarea.getBoundingClientRect() : null;
+    console.log('openWikiSuggestions: caretCoords=', caretCoords, 'textareaRect=', taRect, 'suggestPos=', state.wikiSuggest.position);
+  } catch (e) {
+    console.log('openWikiSuggestions: error computing diagnostics', e);
+  }
   renderWikiSuggestions();
 };
 
@@ -22888,6 +23068,7 @@ try {
     module.exports.__test__.applyWikiSuggestion = typeof applyWikiSuggestion === 'function' ? applyWikiSuggestion : null;
     module.exports.__test__.updateWikiSuggestions = typeof updateWikiSuggestions === 'function' ? updateWikiSuggestions : null;
     module.exports.__test__.handleLatexEnvironmentAutoComplete = typeof handleLatexEnvironmentAutoComplete === 'function' ? handleLatexEnvironmentAutoComplete : null;
+    module.exports.__test__.handleGlobalShortcuts = typeof handleGlobalShortcuts === 'function' ? handleGlobalShortcuts : null;
   }
 } catch (e) { /* ignore in browsers */ }
 
