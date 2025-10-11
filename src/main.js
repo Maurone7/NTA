@@ -361,13 +361,14 @@ const createMainWindow = () => {
     // macOS specific - use custom title bar
     windowOptions.titleBarStyle = 'hiddenInset';
     windowOptions.trafficLightPosition = { x: 13, y: 4 }; // Position for 10px title bar
+    windowOptions.icon = path.join(__dirname, '..', 'assets', 'NTA logo.png');
   } else if (process.platform === 'win32') {
     // Windows specific
     windowOptions.autoHideMenuBar = true;
-    windowOptions.icon = path.join(__dirname, '..', 'assets', 'icon.ico');
+    windowOptions.icon = path.join(__dirname, '..', 'assets', 'NTA logo.png');
   } else {
     // Linux specific
-    windowOptions.icon = path.join(__dirname, '..', 'assets', 'icon.png');
+    windowOptions.icon = path.join(__dirname, '..', 'assets', 'NTA logo.png');
   }
 
   mainWindow = new BrowserWindow(windowOptions);

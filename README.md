@@ -235,3 +235,8 @@ Implement drag and drop function that opens a new pane
 Implement function that allows user to change color of certain characters/patterns
 Fix search function
 Make "x" to close window more neat
+Add option to make checklist with &checklist
+Allow insertion of 3d models (stl)
+Fix window resizing
+Add &subfigure
+Add the & commands to latex

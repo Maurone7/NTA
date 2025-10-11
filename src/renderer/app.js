@@ -163,6 +163,7 @@ const elements = {
   spellcheckToggle: document.getElementById('spellcheck-toggle') || document.createElement('input'),
   softwrapToggle: document.getElementById('softwrap-toggle') || document.createElement('input'),
   defaultExportFormatSelect: document.getElementById('default-export-format-select') || document.createElement('select'),
+  cmdEDirectExportToggle: document.getElementById('cmd-e-direct-export-toggle') || document.createElement('input'),
   textColorPicker: document.getElementById('text-color-picker') || document.createElement('input'),
   resetTextColorButton: document.getElementById('reset-text-color') || document.createElement('button'),
   borderColorPicker: document.getElementById('border-color-picker') || document.createElement('input'),
@@ -442,6 +443,7 @@ const storageKeys = {
   previewCollapsed: 'NTA.previewCollapsed',
   editorPanes: 'NTA.editorPanes',
   editorSplitVisible: 'NTA.editorSplitVisible',
+  editorLeftVisible: 'NTA.editorLeftVisible',
   highContrast: 'NTA.highContrast'
   ,
   // New settings keys
@@ -449,7 +451,8 @@ const storageKeys = {
   autosaveInterval: 'NTA.autosaveInterval',
   editorSpellcheck: 'NTA.editorSpellcheck',
   editorSoftWrap: 'NTA.editorSoftWrap',
-  defaultExportFormat: 'NTA.defaultExportFormat'
+  defaultExportFormat: 'NTA.defaultExportFormat',
+  cmdEDirectExport: 'NTA.cmdEDirectExport'
   ,
   // New display preference: when true, only show the filename (not full path)
   showFileNameOnly: 'NTA.showFileNameOnly'
@@ -539,6 +542,25 @@ const readStorage = (key) => {
     return null;
   }
 };
+
+// Suppress routine console.log / console.debug messages to keep DevTools output clean
+// This preserves console.warn, console.info and console.error so real problems still surface.
+// Toggle by setting window.__nta_logs_suppressed = false and restoring originals if needed.
+try {
+  if (typeof window !== 'undefined' && !window.__nta_logs_suppressed) {
+    window.__nta_logs_suppressed = true;
+    try {
+      if (typeof console === 'object') {
+        // Keep originals in case we want to restore them during debugging
+        console._nta_orig_log = console._nta_orig_log || console.log;
+        console._nta_orig_debug = console._nta_orig_debug || console.debug;
+        // Silence non-essential logs
+        console.log = function() {};
+        console.debug = function() {};
+      }
+    } catch (e) { /* ignore */ }
+  }
+} catch (e) { /* ignore */ }
 
 const writeStorage = (key, value) => {
   try {
@@ -651,6 +673,13 @@ function initCommonSettingsControls() {
     if (defExp) elements.defaultExportFormatSelect.value = defExp;
     elements.defaultExportFormatSelect.addEventListener('change', (e) => {
       writeStorage(storageKeys.defaultExportFormat, e.target.value);
+    });
+
+    // Cmd+E direct export toggle
+    const cmdEDirect = readStorage(storageKeys.cmdEDirectExport);
+    elements.cmdEDirectExportToggle.checked = cmdEDirect === null ? true : ('' + cmdEDirect === 'true');
+    elements.cmdEDirectExportToggle.addEventListener('change', (e) => {
+      writeStorage(storageKeys.cmdEDirectExport, e.target.checked);
     });
 
   // Apply shared settings to existing editor instances/elements
@@ -793,6 +822,7 @@ const state = {
   editorRatio: 0.5,
   resizingEditor: false,
   splitterPointerId: null,
+  lastEditorResizeAt: 0,
   sidebarWidth: initialSidebarWidth,
   resizingSidebar: false,
   sidebarResizePointerId: null,
@@ -1172,12 +1202,18 @@ const createEditorPane = (paneId = null, label = '') => {
   overlay.hidden = true;
   section.appendChild(overlay);
 
-  // Insert before the splitter so editors remain left of preview
-  const splitter = document.getElementById('workspace-splitter');
-  if (splitter && splitter.parentNode) {
-    splitter.parentNode.insertBefore(section, splitter);
+  // Insert after the last editor pane so new panes are added on the right
+  const lastEditor = document.querySelector('.editor-pane:last-of-type');
+  if (lastEditor && lastEditor.parentNode) {
+    lastEditor.parentNode.insertBefore(section, lastEditor.nextSibling);
   } else {
-    workspace.appendChild(section);
+    // Fallback: insert before the splitter
+    const splitter = document.getElementById('workspace-splitter');
+    if (splitter && splitter.parentNode) {
+      splitter.parentNode.insertBefore(section, splitter);
+    } else {
+      workspace.appendChild(section);
+    }
   }
 
   // Create Editor instance and wire basic events
@@ -1213,9 +1249,11 @@ const createEditorPane = (paneId = null, label = '') => {
       // remove from state mappings
       if (state.editorPanes && state.editorPanes[id]) delete state.editorPanes[id];
       try { localStorage.setItem(storageKeys.editorPanes, JSON.stringify(state.editorPanes)); } catch (e) {}
-      // If active pane was this, switch to left
-      if (state.activeEditorPane === id) setActiveEditorPane('left');
-      updateEditorPaneVisuals();
+    // If active pane was this, switch to left
+    if (state.activeEditorPane === id) setActiveEditorPane('left');
+    updateEditorPaneVisuals();
+    // Rebuild dividers since panes changed
+    try { ensureEditorsDividers(); applyPersistedPaneWidths(); } catch (e) { console.debug('ensureEditorsDividers error', e); }
   } catch (e) { }
   });
 
@@ -1228,8 +1266,135 @@ const createEditorPane = (paneId = null, label = '') => {
   setActiveEditorPane(id);
   updateEditorPaneVisuals();
 
+  // Ensure there is a draggable divider between each pair of editor panes
+  try { ensureEditorsDividers(); applyPersistedPaneWidths(); } catch (e) { console.debug('ensureEditorsDividers error', e); }
+
   return id;
 };
+
+// Ensure there is a draggable divider between each pair of adjacent editor panes.
+const ensureEditorsDividers = () => {
+  const workspace = document.querySelector('.workspace__content');
+  if (!workspace) return;
+
+  // Remove any existing dividers to rebuild cleanly
+  Array.from(workspace.querySelectorAll('.editors__divider')).forEach(d => d.remove());
+
+  const panes = Array.from(workspace.querySelectorAll('.editor-pane'));
+  for (let i = 0; i < panes.length - 1; i++) {
+    const left = panes[i];
+    const right = panes[i + 1];
+
+    const divider = document.createElement('div');
+    divider.className = 'editors__divider';
+    divider.setAttribute('role', 'separator');
+    divider.setAttribute('aria-orientation', 'vertical');
+    divider.tabIndex = -1;
+
+    // Insert between left and right
+    if (right && right.parentNode) right.parentNode.insertBefore(divider, right);
+
+    // Pointer dragging state
+    let dragging = false;
+    let pointerId = null;
+    let initialMouseX = 0;
+    let initialLeftWidth = 0;
+    let initialRightWidth = 0;
+
+    const onPointerDown = (ev) => {
+      if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+      ev.preventDefault();
+
+      // Defensive cleanup: remove any stale drag overlays that might remain from
+      // previous interactions. Leftover overlays can block pointer events to other
+      // UI handles (for example the sidebar handle) and prevent subsequent drags.
+      try {
+        const staleOv1 = document.getElementById('__sidebar-drag-overlay');
+        if (staleOv1 && staleOv1.parentNode) staleOv1.parentNode.removeChild(staleOv1);
+      } catch (e) {}
+      try {
+        const staleOv2 = document.getElementById('__splitter-drag-overlay');
+        if (staleOv2 && staleOv2.parentNode) staleOv2.parentNode.removeChild(staleOv2);
+      } catch (e) {}
+
+      dragging = true;
+      pointerId = ev.pointerId;
+      divider.setPointerCapture(pointerId);
+      document.body.style.cursor = 'col-resize';
+
+      // Record initial positions
+      initialMouseX = ev.clientX;
+      const leftRect = left.getBoundingClientRect();
+      const rightRect = right.getBoundingClientRect();
+      initialLeftWidth = leftRect.width;
+      initialRightWidth = rightRect.width;
+
+      const onMove = (moveEv) => {
+        try {
+          // Compute new sizes based on mouse delta
+          const deltaX = moveEv.clientX - initialMouseX;
+          const total = initialLeftWidth + initialRightWidth;
+          const MIN = 120; // minimum width per pane
+          const newLeftWidth = Math.max(MIN, Math.min(total - MIN, initialLeftWidth + deltaX));
+          const newRightWidth = Math.max(MIN, Math.round(total - newLeftWidth));
+          left.style.flex = `0 0 ${Math.round(newLeftWidth)}px`;
+          right.style.flex = `0 0 ${Math.round(newRightWidth)}px`;
+        } catch (e) { console.debug('editors divider move error', e); }
+      };
+
+      const onUp = (upEv) => {
+        try { divider.releasePointerCapture(pointerId); } catch (e) {}
+        dragging = false;
+        pointerId = null;
+        document.body.style.cursor = '';
+        // cleanup listeners
+        divider.removeEventListener('pointermove', onMove);
+        divider.removeEventListener('pointerup', onUp);
+        // Persist the inline widths so the panes keep their sizes
+        try {
+          // store as data attributes for future reference
+          const leftMatch = left.style.flex.match(/0 0 (\d+)px/);
+          const rightMatch = right.style.flex.match(/0 0 (\d+)px/);
+          left.dataset.fixedWidth = leftMatch ? leftMatch[1] + 'px' : '';
+          right.dataset.fixedWidth = rightMatch ? rightMatch[1] + 'px' : '';
+        } catch (e) { console.debug('editors divider up store error', e); }
+      };
+
+      divider.addEventListener('pointermove', onMove);
+      divider.addEventListener('pointerup', onUp);
+    };
+
+    divider.addEventListener('pointerdown', onPointerDown);
+  }
+};
+
+// Re-apply persisted fixed widths (if any) to editor panes.
+const applyPersistedPaneWidths = () => {
+  try {
+    const panes = document.querySelectorAll('.editor-pane');
+    panes.forEach(p => {
+      if (p.dataset && p.dataset.fixedWidth) {
+        p.style.flex = `0 0 ${p.dataset.fixedWidth}`;
+      }
+    });
+  } catch (e) { console.debug('applyPersistedPaneWidths error', e); }
+};
+
+// Ensure dividers exist at startup
+try {
+  // Defer until DOM is likely ready
+  window.addEventListener('DOMContentLoaded', () => {
+    try { ensureEditorsDividers(); applyPersistedPaneWidths(); } catch (e) { console.debug('initial ensureEditorsDividers error', e); }
+  });
+} catch (e) {}
+
+// Defensive: if any other handlers remove inline sizes on pointerup, reapply
+// persisted pane widths shortly after pointerup so user adjustments stick.
+try {
+  window.addEventListener('pointerup', () => {
+    try { setTimeout(applyPersistedPaneWidths, 20); } catch (e) {}
+  });
+} catch (e) {}
 
 // Ensure editor pane state structure exists
 if (!state.editorPanes) {
@@ -3669,23 +3834,33 @@ const closeExportDropdown = () => {
 };
 
 const setEditorRatio = (ratio, announce = false) => {
-  state.editorRatio = clamp(ratio, minEditorRatio, maxEditorRatio);
+  const clamped = clamp(ratio, MIN_EDITOR_RATIO, MAX_EDITOR_RATIO);
+  console.debug('setEditorRatio called:', { ratio, clamped });
+  state.editorRatio = clamped;
   applyEditorRatio();
   if (announce) {
     setStatus(`Editor width ${(state.editorRatio * 100).toFixed(0)}%`, true);
   }
 };
 
+// Minimum and maximum allowed editor ratio (fraction of workspace width used by editors)
+// Provide safe defaults so code that references these values can't fail.
+const MIN_EDITOR_RATIO = 0.15;
+const MAX_EDITOR_RATIO = 1.0;
+
 const updateEditorRatioFromPointer = (clientX) => {
   if (!elements.workspaceContent) {
+    console.debug('updateEditorRatioFromPointer: no workspaceContent');
     return;
   }
 
   const bounds = elements.workspaceContent.getBoundingClientRect();
   if (!bounds.width) {
+    console.debug('updateEditorRatioFromPointer: bounds.width is zero');
     return;
   }
   const ratio = (clientX - bounds.left) / bounds.width;
+  console.debug('updateEditorRatioFromPointer:', { clientX, left: bounds.left, width: bounds.width, ratio });
   setEditorRatio(ratio, false);
 };
 
@@ -5647,10 +5822,8 @@ const renderLatexPreview = (latexContent, noteId) => {
 
   try {
     // Basic LaTeX processing: split content and render math expressions
-    const processedHtml = processLatexContent(latexContent);
-  // Debug prints removed
+    const processedHtml = processLatexContent(latexContent, noteId);
     elements.preview.innerHTML = processedHtml;
-  // Debug prints removed
     
     // Process any math expressions with KaTeX. Ensure KaTeX is loaded lazily
     // before attempting to auto-render. If KaTeX fails to load, skip math rendering.
@@ -5678,6 +5851,7 @@ const renderLatexPreview = (latexContent, noteId) => {
   // Debug prints removed
     
     // Process iframes and images if any
+    void processPreviewImages();
     void processPreviewHtmlIframes();
     addImageHoverPreviews();
     
@@ -5757,7 +5931,7 @@ const insertLatexBlockAtCursor = (opts = {}) => {
   }
 };
 
-const processLatexContent = (latexContent) => {
+const processLatexContent = (latexContent, noteId = null) => {
   if (!latexContent) return '';
 
   // If the content contains a document environment, extract only the body
@@ -5862,11 +6036,24 @@ const processLatexContent = (latexContent) => {
       processedLine = processedLine.replace(/\\end\{table\}/g, '</table>');
     }
     
+    // Handle \centering command (add centering class to parent figure)
+    if (processedLine.includes('\\centering')) {
+      processedLine = processedLine.replace(/\\centering/g, '');
+      // Note: We'll handle centering via CSS in the styles
+    }
+    
     // Handle \caption command
     processedLine = processedLine.replace(/\\caption\{([^}]+)\}/g, '<figcaption>$1</figcaption>');
     
     // Handle \label command (just remove it for now)
     processedLine = processedLine.replace(/\\label\{[^}]+\}/g, '');
+    
+    // Handle \includegraphics command
+    processedLine = processedLine.replace(/\\includegraphics(\[.*?\])?\{([^}]+)\}/g, (match, options, filename) => {
+      const alt = 'LaTeX image';
+      const noteIdAttr = noteId ? ` data-note-id="${noteId}"` : '';
+      return `<img src="${filename}" alt="${alt}" data-raw-src="${filename}" loading="lazy" style="max-width: 100%; height: auto;"${noteIdAttr} />`;
+    });
     
     // Handle line breaks
     if (processedLine.trim() === '') {
@@ -6665,7 +6852,11 @@ const updateEditorPaneVisuals = () => {
   const rightPane = document.querySelector('.editor-pane--right');
   if (leftPane) {
     leftPane.classList.toggle('active', state.activeEditorPane === 'left');
-    leftPane.hidden = false; // left pane always visible
+    // Respect persisted left-pane visibility (default: visible)
+    const persistedLeft = localStorage.getItem(storageKeys.editorLeftVisible);
+    const leftVisible = persistedLeft === null ? true : persistedLeft === 'true';
+    leftPane.hidden = !leftVisible;
+    try { leftPane.style.display = leftPane.hidden ? 'none' : ''; } catch (e) {}
   }
   if (rightPane) {
     // Hide right pane if it has no assigned note OR if the user has chosen
@@ -9683,6 +9874,59 @@ const applyInlineCommandTriggerIfNeeded = (textarea, note) => {
   return applyInlineCommandTrigger(textarea, note, trigger);
 };
 
+const handleLatexEnvironmentAutoComplete = (textarea) => {
+  const value = textarea.value;
+  const caretPos = textarea.selectionStart;
+  
+  // Find the start of the current line
+  const lineStart = value.lastIndexOf('\n', caretPos - 1) + 1;
+  const currentLine = value.substring(lineStart, caretPos);
+  
+  console.log('LaTeX auto-complete check:', { currentLine, caretPos, lineStart });
+  
+  // Check if current line ends with \begin{environment}
+  const beginMatch = currentLine.match(/\\begin\{([^}]+)\}\s*$/);
+  if (!beginMatch) {
+    console.log('No begin match found');
+    return false;
+  }
+  
+  const environment = beginMatch[1];
+  console.log('Found environment:', environment);
+  
+  // Insert the corresponding \end{environment} after the cursor with appropriate content
+  let insertContent;
+  let cursorOffset;
+  
+  if (environment === 'figure') {
+    // Insert full figure template
+    insertContent = `\n    \\centering\n    \\includegraphics{}\n    \\caption{}\n    \\label{fig:}\n\\end{${environment}}\n`;
+    cursorOffset = 22; // Position cursor after \centering\n    \includegraphics{
+  } else {
+    // Default behavior for other environments
+    insertContent = `\n\\end{${environment}}\n`;
+    cursorOffset = 1; // After the newline
+  }
+  
+  const newValue = value.substring(0, caretPos) + insertContent + value.substring(caretPos);
+  
+  textarea.value = newValue;
+  
+  // Position cursor appropriately
+  const newCaretPos = caretPos + cursorOffset;
+  textarea.setSelectionRange(newCaretPos, newCaretPos);
+  
+  // Trigger input event to update any listeners (skip in test environments)
+  try {
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  } catch (e) {
+    // Ignore in test environments where Event constructor may not be available
+  }
+  
+  console.log('Auto-completed LaTeX environment:', environment);
+  return true;
+};
+
 // keyboard handling for editor (simplified)
 const handleEditorKeydown = (event) => {
   // Wiki suggestions navigation
@@ -9700,6 +9944,7 @@ const handleEditorKeydown = (event) => {
     if (event.key === 'Enter' || event.key === 'Tab') {
       event.preventDefault();
       applyWikiSuggestion(state.wikiSuggest.selectedIndex);
+      closeWikiSuggestions();
       return;
     }
     if (event.key === 'Escape') {
@@ -9763,7 +10008,34 @@ const handleEditorKeydown = (event) => {
     return;
   }
 
-  // Inline command Enter handling (only when no suggestions open)
+  // LaTeX environment auto-completion
+  if (
+    event.key === 'Enter' &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !state.wikiSuggest.open &&
+    !state.tagSuggest.open &&
+    !state.fileSuggest.open
+  ) {
+    try {
+      const edt = getActiveEditorInstance();
+      const ta = edt?.el ?? null;
+      const note = getActiveNote();
+      console.log('Enter pressed, checking LaTeX auto-complete:', { ta: !!ta, noteType: note?.type });
+      if (ta && note && note.type === 'latex') {
+        const handled = handleLatexEnvironmentAutoComplete(ta);
+        if (handled) {
+          event.preventDefault();
+          console.log('LaTeX auto-complete handled');
+          return;
+        }
+      }
+    } catch (e) { console.error('LaTeX auto-complete error:', e); }
+  }
+
+// Inline command Enter handling (only when no suggestions open)
   if (
     event.key === 'Enter' &&
     !event.shiftKey &&
@@ -10018,6 +10290,18 @@ const handleSplitterPointerDown = (event) => {
     return;
   }
 
+  // Defensive cleanup: remove any stale drag overlays that might remain from
+  // previous interactions. Leftover overlays can block pointer events to other
+  // UI handles (for example the sidebar handle) and prevent subsequent drags.
+  try {
+    const staleOv1 = document.getElementById('__sidebar-drag-overlay');
+    if (staleOv1 && staleOv1.parentNode) staleOv1.parentNode.removeChild(staleOv1);
+  } catch (e) {}
+  try {
+    const staleOv2 = document.getElementById('__splitter-drag-overlay');
+    if (staleOv2 && staleOv2.parentNode) staleOv2.parentNode.removeChild(staleOv2);
+  } catch (e) {}
+
   if (event.pointerType === 'mouse' && event.button !== 0) {
     return;
   }
@@ -10027,22 +10311,137 @@ const handleSplitterPointerDown = (event) => {
   state.splitterPointerId = event.pointerId;
   elements.workspaceSplitter.setPointerCapture(event.pointerId);
   elements.workspaceSplitter.classList.add('workspace__splitter--active');
+  console.debug('workspace splitter pointerdown', { pointerId: event.pointerId, pointerType: event.pointerType });
+  // Disable split toggle button while resizing so clicks don't create panes
+  try {
+    const btn = document.getElementById('toggle-split-button');
+    if (btn) btn.disabled = true;
+  } catch (e) {}
+
+  // Hide scrollbars on editor textareas during drag to prevent visual artifacts
+  try {
+    elements.editor.style.overflow = 'hidden';
+    elements.editor.style.overflowX = 'hidden';
+    elements.editorRight.style.overflow = 'hidden';
+    elements.editorRight.style.overflowX = 'hidden';
+  } catch (e) {}
+
+  // Hide the splitter handle during drag to prevent visual artifacts
+  try {
+    elements.workspaceSplitter.style.opacity = '0';
+  } catch (e) {}
+
+  // Hide scrollbars on editor panes during drag to prevent visual artifacts
+  try {
+    const editorPanes = document.querySelectorAll('.editor-pane');
+    editorPanes.forEach(pane => pane.style.overflow = 'hidden');
+  } catch (e) {}
+
+  // Create a transparent overlay to capture pointer and click events while
+  // the user is dragging the workspace splitter. This prevents accidental
+  // clicks (for example on the toggle-split-button) from being delivered
+  // during or immediately after the drag.
+  try {
+    if (!document.getElementById('__splitter-drag-overlay')) {
+      const overlay = document.createElement('div');
+      overlay.id = '__splitter-drag-overlay';
+      overlay.style.position = 'fixed';
+      overlay.style.left = '0';
+      overlay.style.top = '0';
+      overlay.style.right = '0';
+      overlay.style.bottom = '0';
+      overlay.style.zIndex = '2147483646'; // very high but below any devtools overlay
+      overlay.style.background = 'transparent';
+      overlay.style.cursor = 'col-resize';
+      overlay.style.pointerEvents = 'auto';
+      // Prevent any default interactions
+      overlay.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); ev.preventDefault(); });
+      overlay.addEventListener('click', (ev) => { ev.stopPropagation(); ev.preventDefault(); });
+      document.body.appendChild(overlay);
+      state._splitterOverlayAdded = true;
+    }
+  } catch (e) {
+    console.debug('failed to add splitter drag overlay', e);
+  }
 };
 
 const handleSplitterPointerMove = (event) => {
   if (!state.resizingEditor) {
     return;
   }
+  try {
+    console.debug('workspace splitter pointermove', { clientX: event.clientX, target: (event.target && event.target.tagName) });
 
-  updateEditorRatioFromPointer(event.clientX);
+    // First compute the ratio (this updates state.editorRatio)
+    updateEditorRatioFromPointer(event.clientX);
+    // First compute the ratio (this updates state.editorRatio)
+    updateEditorRatioFromPointer(event.clientX);
+
+    // Also force inline widths so the preview visibly resizes during drag.
+    const workspace = elements.workspaceContent || document.querySelector('.workspace__content');
+    if (!workspace) return;
+    const bounds = workspace.getBoundingClientRect();
+    if (!bounds.width) return;
+
+    const splitterEl = elements.workspaceSplitter || document.getElementById('workspace-splitter');
+    const splitterWidth = splitterEl ? (splitterEl.getBoundingClientRect().width || 12) : 12;
+
+    const previewPane = document.querySelector('.preview-pane');
+    const editorPanes = Array.from(document.querySelectorAll('.editor-pane')).filter(pane => getComputedStyle(pane).display !== 'none');
+
+    // Compute available width (splitter is absolute, so no need to subtract its width)
+    const available = Math.max(0, Math.round(bounds.width));
+    const editorsWidth = Math.round(available * (state.editorRatio || 0.5));
+    const previewWidth = Math.max(0, available - editorsWidth);
+
+    console.log('Splitter drag: bounds.width:', bounds.width, 'available:', available, 'editorsWidth:', editorsWidth, 'previewWidth:', previewWidth, 'editorPanes:', editorPanes.length);
+
+    // Ensure preview stays anchored to the right by using flex basis and ordering
+    if (previewPane) {
+      // Ensure workspace is a positioned container so right:0 anchors correctly
+      try { workspace.style.position = workspace.style.position || 'relative'; } catch (e) {}
+
+      previewPane.style.order = '3';
+      previewPane.style.flex = `0 0 ${previewWidth}px`;
+      previewPane.style.width = `${previewWidth}px`;
+      // Anchor preview to the right of the container. Use right:0 as a more
+      // robust fallback in case margins or max-width interfere.
+      previewPane.style.marginLeft = 'auto';
+      previewPane.style.marginRight = '0';
+      previewPane.style.right = '0';
+      previewPane.style.boxSizing = 'border-box';
+      previewPane.style.position = previewPane.style.position || 'relative';
+    }
+
+    // Distribute the editorsWidth between editor panes (left/right or dynamic panes)
+    if (editorPanes.length) {
+      const perPane = Math.floor(editorsWidth / editorPanes.length);
+      editorPanes.forEach((p, idx) => {
+        // Last pane takes remaining pixels to avoid rounding drift
+        const w = idx === editorPanes.length - 1 ? (editorsWidth - perPane * (editorPanes.length - 1)) : perPane;
+        p.style.order = '1';
+        p.style.flex = `0 0 ${w}px`;
+        p.style.width = `${w}px`;
+      });
+    }
+
+    // Keep the splitter in the middle order
+    if (splitterEl) splitterEl.style.order = '2';
+
+    console.debug('workspace splitter applied inline widths', { available, splitterWidth, editorsWidth, previewWidth, editorPanes: editorPanes.length });
+  } catch (e) {
+    console.debug('workspace splitter pointermove error', e);
+  }
 };
 
 const handleSplitterPointerUp = (event) => {
   if (!state.resizingEditor) {
     return;
   }
-
+  console.debug('workspace splitter pointerup', { pointerId: event.pointerId });
   state.resizingEditor = false;
+  // record timestamp so quick clicks that follow a drag can be ignored
+  try { state.lastEditorResizeAt = Date.now(); } catch (e) {}
   if (elements.workspaceSplitter && state.splitterPointerId !== null) {
     try {
       elements.workspaceSplitter.releasePointerCapture(state.splitterPointerId);
@@ -10053,6 +10452,172 @@ const handleSplitterPointerUp = (event) => {
   state.splitterPointerId = null;
   elements.workspaceSplitter?.classList.remove('workspace__splitter--active');
   setEditorRatio(state.editorRatio, true);
+  if (typeof applySplitterLayout === 'function') {
+    applySplitterLayout();
+  }
+  
+  // Remove inline styles from panes to let CSS flex handle responsive resizing
+  try {
+    const previewPane = document.querySelector('.preview-pane');
+    if (previewPane) {
+      previewPane.style.removeProperty('flex');
+      previewPane.style.removeProperty('width');
+      previewPane.style.removeProperty('margin-left');
+      previewPane.style.removeProperty('margin-right');
+      previewPane.style.removeProperty('right');
+      previewPane.style.removeProperty('position');
+      previewPane.style.removeProperty('box-sizing');
+      previewPane.style.removeProperty('order');
+    }
+    // Remove inline styles from editor panes to let CSS flex handle responsive resizing
+    const editorPanes = document.querySelectorAll('.editor-pane');
+    editorPanes.forEach(pane => {
+      // If a pane has a stored fixedWidth from a divider drag, re-apply it
+      try {
+        if (pane.dataset && pane.dataset.fixedWidth) {
+          pane.style.flex = `0 0 ${pane.dataset.fixedWidth}`;
+          pane.style.width = pane.dataset.fixedWidth;
+        } else {
+          pane.style.removeProperty('flex');
+          pane.style.removeProperty('width');
+        }
+      } catch (e) { try { pane.style.removeProperty('flex'); pane.style.removeProperty('width'); } catch (ee) {} }
+      pane.style.removeProperty('order');
+    });
+    if (elements.workspaceSplitter) {
+      elements.workspaceSplitter.style.removeProperty('order');
+    }
+  } catch (e) {
+    console.debug('failed to remove inline styles from panes', e);
+  }
+  
+  // Re-enable split toggle button shortly after pointerup so normal clicks work
+  try {
+    const btn = document.getElementById('toggle-split-button');
+    if (btn) setTimeout(() => { try { btn.disabled = false; } catch (e) {} }, 200);
+  } catch (e) {}
+
+  // Remove the overlay if we added it
+  try {
+    if (state._splitterOverlayAdded) {
+      const ov = document.getElementById('__splitter-drag-overlay');
+      if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+      state._splitterOverlayAdded = false;
+    }
+  } catch (e) {
+    console.debug('failed to remove splitter drag overlay', e);
+  }
+
+  // Restore scrollbars on editor textareas
+  try {
+    elements.editor.style.overflow = '';
+    elements.editor.style.overflowX = '';
+    elements.editorRight.style.overflow = '';
+    elements.editorRight.style.overflowX = '';
+  } catch (e) {}
+
+  // Restore splitter handle visibility
+  try {
+    elements.workspaceSplitter.style.opacity = '';
+  } catch (e) {}
+
+  // Restore scrollbars on editor panes
+  try {
+    const editorPanes = document.querySelectorAll('.editor-pane');
+    editorPanes.forEach(pane => pane.style.overflow = '');
+  } catch (e) {}
+};
+
+// Also ensure the overlay is removed if the pointer capture is lost or a
+// pointercancel occurs
+const handleSplitterPointerCancel = (event) => {
+  if (state._splitterOverlayAdded) {
+    try {
+      const ov = document.getElementById('__splitter-drag-overlay');
+      if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    } catch (e) {}
+    state._splitterOverlayAdded = false;
+  }
+  state.resizingEditor = false;
+  state.splitterPointerId = null;
+  try { const btn = document.getElementById('toggle-split-button'); if (btn) btn.disabled = false; } catch (e) {}
+
+  // Release pointer capture if held
+  if (elements.workspaceSplitter && state.splitterPointerId !== null) {
+    try {
+      elements.workspaceSplitter.releasePointerCapture(state.splitterPointerId);
+    } catch (error) {
+      // ignore
+    }
+  }
+  state.splitterPointerId = null;
+  elements.workspaceSplitter?.classList.remove('workspace__splitter--active');
+
+  // Remove inline styles from panes to let CSS flex handle responsive resizing
+  try {
+    const previewPane = document.querySelector('.preview-pane');
+    if (previewPane) {
+      previewPane.style.removeProperty('flex');
+      previewPane.style.removeProperty('width');
+      previewPane.style.removeProperty('margin-left');
+      previewPane.style.removeProperty('margin-right');
+      previewPane.style.removeProperty('right');
+      previewPane.style.removeProperty('position');
+      previewPane.style.removeProperty('box-sizing');
+      previewPane.style.removeProperty('order');
+    }
+    // Remove inline styles from editor panes to let CSS flex handle responsive resizing
+    const editorPanes = document.querySelectorAll('.editor-pane');
+    editorPanes.forEach(pane => {
+      // If a pane has a stored fixedWidth from a divider drag, re-apply it
+      try {
+        if (pane.dataset && pane.dataset.fixedWidth) {
+          pane.style.flex = `0 0 ${pane.dataset.fixedWidth}`;
+          pane.style.width = pane.dataset.fixedWidth;
+        } else {
+          pane.style.removeProperty('flex');
+          pane.style.removeProperty('width');
+        }
+      } catch (e) { try { pane.style.removeProperty('flex'); pane.style.removeProperty('width'); } catch (ee) {} }
+      pane.style.removeProperty('order');
+    });
+    if (elements.workspaceSplitter) {
+      elements.workspaceSplitter.style.removeProperty('order');
+    }
+  } catch (e) {
+    console.debug('failed to remove inline styles from panes', e);
+  }
+
+  // Apply the current editor ratio to finalize layout
+  setEditorRatio(state.editorRatio, true);
+  if (typeof applySplitterLayout === 'function') {
+    applySplitterLayout();
+  }
+
+  // Re-enable split toggle button shortly after pointercancel so normal clicks work
+  try {
+    const btn = document.getElementById('toggle-split-button');
+    if (btn) setTimeout(() => { try { btn.disabled = false; } catch (e) {} }, 200);
+  } catch (e) {}
+
+  // Restore scrollbars on editor textareas
+  try {
+    elements.editor.style.overflow = '';
+    elements.editor.style.overflowX = '';
+    elements.editorRight.style.overflow = '';
+    elements.editorRight.style.overflowX = '';
+  } catch (e) {}
+
+  // Restore splitter handle visibility
+  try {
+    elements.workspaceSplitter.style.opacity = '';
+  } catch (e) {}
+
+  // Restore scrollbars on editor panes
+  try {
+    const editorPanes = document.querySelectorAll('.editor-pane');
+    editorPanes.forEach(pane => pane.style.overflow = '');
+  } catch (e) {}
 };
 
 const handleSplitterKeyDown = (event) => {
@@ -10069,11 +10634,11 @@ const handleSplitterKeyDown = (event) => {
       break;
     case 'Home':
       event.preventDefault();
-      setEditorRatio(minEditorRatio, true);
+      setEditorRatio(MIN_EDITOR_RATIO, true);
       break;
     case 'End':
       event.preventDefault();
-      setEditorRatio(maxEditorRatio, true);
+      setEditorRatio(MAX_EDITOR_RATIO, true);
       break;
     case 'Enter':
     case ' ':
@@ -10087,20 +10652,45 @@ const handleSplitterKeyDown = (event) => {
 
 const setSidebarWidth = (width) => {
   const minWidth = 200;
-  const maxWidth = 500;
+  const maxWidth = window.innerWidth;
   const clampedWidth = Math.max(minWidth, Math.min(maxWidth, width));
   
   state.sidebarWidth = clampedWidth;
   document.documentElement.style.setProperty('--sidebar-width', `${clampedWidth}px`);
   
+  // Recalculate splitter layout since workspace width changed
+  // If a sidebar resize is in progress, defer recalculating the splitter
+  // layout until the resize finishes. Running applySplitterLayout() while
+  // dragging can override inline widths and cause editor panes to snap to
+  // the minimum width. Only apply the layout when not actively resizing.
+  if (!state.resizingSidebar && typeof applySplitterLayout === 'function') {
+    applySplitterLayout();
+  }
+  
   // Save to storage
   writeStorage(storageKeys.sidebarWidth, String(clampedWidth));
 };
+
+// Test helpers (exposed so Playwright/E2E can call them when pointer
+// event simulation is unreliable in headless/automation environments).
+try {
+  if (typeof window !== 'undefined') {
+    window.__nta_test_setSidebarWidth = (w) => { try { setSidebarWidth(w); return true; } catch (e) { return false; } };
+    window.__nta_test_getSidebarWidth = () => { try { return parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width')) || null; } catch (e) { return null; } };
+  }
+} catch (e) {}
 
 const handleSidebarResizePointerDown = (event) => {
   if (!elements.sidebarResizeHandle) {
     return;
   }
+
+  // Defensive cleanup: remove any stale splitter overlay that could block
+  // pointer events on the sidebar handle (leftover from a previous drag).
+  try {
+    const stale = document.getElementById('__splitter-drag-overlay');
+    if (stale && stale.parentNode) stale.parentNode.removeChild(stale);
+  } catch (e) {}
 
   if (event.pointerType === 'mouse' && event.button !== 0) {
     return;
@@ -10108,9 +10698,66 @@ const handleSidebarResizePointerDown = (event) => {
 
   event.preventDefault();
   state.resizingSidebar = true;
+  console.debug('sidebar pointerdown', { pointerId: event.pointerId, clientX: event.clientX, pointerType: event.pointerType });
   state.sidebarResizePointerId = event.pointerId;
   elements.sidebarResizeHandle.setPointerCapture(event.pointerId);
   document.body.style.cursor = 'col-resize';
+  
+  // Capture initial position and width for smooth resizing
+  state.sidebarResizeStartX = event.clientX;
+  state.sidebarResizeStartWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width')) || 260;
+  
+  // Disable the split toggle button while resizing so clicks don't create panes
+  try {
+    const btn = document.getElementById('toggle-split-button');
+    if (btn) btn.disabled = true;
+  } catch (e) { }
+
+  // Hide scrollbars on editor textareas during drag to prevent visual artifacts
+  try {
+    elements.editor.style.overflow = 'hidden';
+    elements.editor.style.overflowX = 'hidden';
+    elements.editorRight.style.overflow = 'hidden';
+    elements.editorRight.style.overflowX = 'hidden';
+  } catch (e) {}
+
+  // Hide the sidebar resize handle during drag to prevent visual artifacts
+  try {
+    elements.sidebarResizeHandle.style.opacity = '0';
+  } catch (e) {}
+
+  // Hide scrollbars on editor panes during drag to prevent visual artifacts
+  try {
+    const editorPanes = document.querySelectorAll('.editor-pane');
+    editorPanes.forEach(pane => pane.style.overflow = 'hidden');
+  } catch (e) {}
+
+  // Create a transparent overlay to capture pointer and click events while
+  // the user is dragging the sidebar resize handle. This prevents accidental
+  // clicks (for example on the toggle-split-button) from being delivered
+  // during or immediately after the drag.
+  try {
+    if (!document.getElementById('__sidebar-drag-overlay')) {
+      const overlay = document.createElement('div');
+      overlay.id = '__sidebar-drag-overlay';
+      overlay.style.position = 'fixed';
+      overlay.style.left = '0';
+      overlay.style.top = '0';
+      overlay.style.right = '0';
+      overlay.style.bottom = '0';
+      overlay.style.zIndex = '2147483646'; // very high but below any devtools overlay
+      overlay.style.background = 'transparent';
+      overlay.style.cursor = 'col-resize';
+      overlay.style.pointerEvents = 'auto';
+      // Prevent any default interactions
+      overlay.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); ev.preventDefault(); });
+      overlay.addEventListener('click', (ev) => { ev.stopPropagation(); ev.preventDefault(); });
+      document.body.appendChild(overlay);
+      state._sidebarOverlayAdded = true;
+    }
+  } catch (e) {
+    console.debug('failed to add sidebar drag overlay', e);
+  }
 };
 
 const handleSidebarResizePointerMove = (event) => {
@@ -10118,7 +10765,9 @@ const handleSidebarResizePointerMove = (event) => {
     return;
   }
 
-  setSidebarWidth(event.clientX);
+  const delta = event.clientX - state.sidebarResizeStartX;
+  const newWidth = state.sidebarResizeStartWidth + delta;
+  setSidebarWidth(newWidth);
 };
 
 const handleSidebarResizePointerUp = (event) => {
@@ -10136,9 +10785,104 @@ const handleSidebarResizePointerUp = (event) => {
   }
   state.sidebarResizePointerId = null;
   document.body.style.cursor = '';
+  // record timestamp so quick clicks that follow a drag can be ignored
+  try { state.lastEditorResizeAt = Date.now(); } catch (e) {}
+  // Re-enable split toggle button shortly after pointerup so normal clicks work
+  try {
+    const btn = document.getElementById('toggle-split-button');
+    if (btn) setTimeout(() => { try { btn.disabled = false; } catch (e) {} }, 200);
+  } catch (e) {}
+
+  // Remove the overlay if we added it
+  try {
+    if (state._sidebarOverlayAdded) {
+      const ov = document.getElementById('__sidebar-drag-overlay');
+      if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+      state._sidebarOverlayAdded = false;
+    }
+  } catch (e) {
+    console.debug('failed to remove sidebar drag overlay', e);
+  }
+
+  // Restore scrollbars on editor textareas
+  try {
+    elements.editor.style.overflow = '';
+    elements.editor.style.overflowX = '';
+    elements.editorRight.style.overflow = '';
+    elements.editorRight.style.overflowX = '';
+  } catch (e) {}
+
+  // Restore sidebar resize handle visibility
+  try {
+    elements.sidebarResizeHandle.style.opacity = '';
+  } catch (e) {}
+
+  // Restore scrollbars on editor panes
+  try {
+    const editorPanes = document.querySelectorAll('.editor-pane');
+    editorPanes.forEach(pane => pane.style.overflow = '');
+  } catch (e) {}
+
+  // Now that sidebar resize has finished, recalculate editor/preview
+  // layout to ensure widths are consistent with the new workspace size.
+  try {
+    if (typeof applySplitterLayout === 'function') applySplitterLayout();
+  } catch (e) {}
 };
 
-// Hashtag panel resize functions
+// Also ensure the overlay is removed if the pointer capture is lost or a
+// pointercancel occurs
+const handleSidebarResizePointerCancel = (event) => {
+  // Mirror the cleanup performed on pointerup so we don't leave the
+  // application in a partially-resized state which prevents subsequent
+  // sidebar drags from working.
+  try {
+    // Release pointer capture if we have it
+    if (elements.sidebarResizeHandle && state.sidebarResizePointerId !== null) {
+      try { elements.sidebarResizeHandle.releasePointerCapture(state.sidebarResizePointerId); } catch (e) { }
+    }
+  } catch (e) { }
+
+  // Reset resize flags
+  state.resizingSidebar = false;
+  state.sidebarResizePointerId = null;
+
+  // Restore cursor
+  try { document.body.style.cursor = ''; } catch (e) { }
+
+  // Restore scrollbars on editor textareas and panes
+  try {
+    elements.editor.style.overflow = '';
+    elements.editor.style.overflowX = '';
+    elements.editorRight.style.overflow = '';
+    elements.editorRight.style.overflowX = '';
+  } catch (e) { }
+  try {
+    const editorPanes = document.querySelectorAll('.editor-pane');
+    editorPanes.forEach(pane => pane.style.overflow = '');
+  } catch (e) { }
+
+  // Restore sidebar handle visibility
+  try { if (elements.sidebarResizeHandle) elements.sidebarResizeHandle.style.opacity = ''; } catch (e) { }
+
+  // Remove overlay if present
+  if (state._sidebarOverlayAdded) {
+    try {
+      const ov = document.getElementById('__sidebar-drag-overlay');
+      if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    } catch (e) { }
+    state._sidebarOverlayAdded = false;
+  }
+
+  // Re-enable split toggle button shortly after cancel
+  try {
+    const btn = document.getElementById('toggle-split-button');
+    if (btn) setTimeout(() => { try { btn.disabled = false; } catch (e) {} }, 200);
+  } catch (e) {}
+
+  // Recalculate layout to leave the app in a consistent state
+  try { if (typeof applySplitterLayout === 'function') applySplitterLayout(); } catch (e) {}
+};
 const setHashtagPanelHeight = (height) => {
   const minHeight = 150;
   const maxHeight = 600;
@@ -11438,7 +12182,6 @@ const applyWikiSuggestion = (index) => {
       // swallow errors and fall back to closing suggestions
     }
     state.wikiSuggest.suppress = true;
-    closeWikiSuggestions();
     return true;
   }
 
@@ -12711,72 +13454,10 @@ const handleGlobalShortcuts = (event) => {
   } else if (key === 'e') {
     event.preventDefault();
     event.stopPropagation();
-    // Open the export dropdown via the open helper so we can focus the preferred option
-    openExportDropdown();
-
-    // Remember current focus and selection so we can restore it if user presses Escape
-    const prevFocused = document.activeElement;
-    let prevSelection = null;
-    try {
-      if (prevFocused && (prevFocused.tagName === 'TEXTAREA' || prevFocused.tagName === 'INPUT')) {
-        prevSelection = { start: prevFocused.selectionStart, end: prevFocused.selectionEnd };
-      }
-    } catch (e) {}
-
-    // Move keyboard focus away from the editor and onto the preferred export option
-    setTimeout(() => {
-      try {
-        // Blur whatever currently has focus (e.g., editor textarea)
-        if (document.activeElement && typeof document.activeElement.blur === 'function') {
-          document.activeElement.blur();
-        }
-
-        const preferred = readStorage(storageKeys.defaultExportFormat) || elements.defaultExportFormatSelect?.value || '';
-        const map = { pdf: 'export-pdf-option', html: 'export-html-option', docx: 'export-docx-option', epub: 'export-epub-option' };
-        const prefId = map[('' + preferred).toLowerCase()];
-        let target = null;
-        if (prefId) target = document.getElementById(prefId);
-        // fallback to first button in the menu
-        if (!target) target = document.querySelector('#export-dropdown-menu button');
-        if (target) {
-          try { target.setAttribute('tabindex', '0'); } catch (e) {}
-          try { target.focus(); } catch (e) {}
-
-          // Install a one-time keydown listener so pressing Enter immediately after Cmd+E
-          // activates the preferred export option instead of inserting text in the editor.
-          const onKey = (ev) => {
-            if (ev.key === 'Enter' || ev.key === 'Return') {
-              try { ev.preventDefault(); ev.stopPropagation(); } catch (e) {}
-              try { target.click(); } catch (e) {}
-              try { closeExportDropdown(); } catch (e) {}
-              window.removeEventListener('keydown', onKey, true);
-              window.removeEventListener('keydown', onEsc, true);
-            }
-          };
-          const onEsc = (ev) => {
-            if (ev.key === 'Escape') {
-              try { ev.preventDefault(); ev.stopPropagation(); } catch (e) {}
-              try { closeExportDropdown(); } catch (e) {}
-              // Restore previous focus and selection if possible
-              try {
-                if (prevFocused && typeof prevFocused.focus === 'function') {
-                  prevFocused.focus();
-                  if (prevSelection && typeof prevFocused.setSelectionRange === 'function') {
-                    try { prevFocused.setSelectionRange(prevSelection.start, prevSelection.end); } catch (ee) {}
-                  }
-                }
-              } catch (ee) {}
-              window.removeEventListener('keydown', onKey, true);
-              window.removeEventListener('keydown', onEsc, true);
-            }
-          };
-          window.addEventListener('keydown', onKey, true);
-          window.addEventListener('keydown', onEsc, true);
-        }
-      } catch (e) {
-        // ignore
-      }
-    }, 50);
+    // Directly export using the default format from settings
+    const defaultFormat = localStorage.getItem('defaultExportFormat') || 
+                         (elements.defaultExportFormatSelect?.value) || 'pdf';
+    handleExport(defaultFormat);
   } else if (key === 'l') {
   // Use current editor selection for CMD+L functionality (math WYSIWYG toggle)
   const hasSelection = activeEditorEl && activeEditorEl.selectionStart !== activeEditorEl.selectionEnd;
@@ -12790,19 +13471,18 @@ const handleGlobalShortcuts = (event) => {
   } else if (key === 't') {
     event.preventDefault();
     generateTableOfContents();
-  } else if (key === 'i') {
-    // Cmd/Ctrl+I toggles inline chat when Shift is held; otherwise toggle preview scroll sync
+  } else if (key === 'y') {
     event.preventDefault();
-    if (event.shiftKey) {
-      toggleInlineChat();
-    } else {
-      // Toggle preview scroll sync
-      state.previewScrollSync = !state.previewScrollSync;
-      try {
-        setStatus(`Preview scroll sync ${state.previewScrollSync ? 'enabled' : 'disabled'}.`, true);
-      } catch (e) {}
-      try { applyPreviewScrollSync(state.previewScrollSync); } catch (e) {}
-    }
+    // Toggle preview scroll sync
+    state.previewScrollSync = !state.previewScrollSync;
+    try {
+      setStatus(`Preview scroll sync ${state.previewScrollSync ? 'enabled' : 'disabled'}.`, true);
+    } catch (e) {}
+    try { applyPreviewScrollSync(state.previewScrollSync); } catch (e) {}
+  } else if (key === 'i') {
+    console.log("Opening inline chat");
+    event.preventDefault();
+    toggleInlineChat();
   } else if (key === 'f') {
     if (isOtherEditableTarget) {
       return;
@@ -14910,10 +15590,51 @@ const initialize = () => {
     setSplitVisible(visible);
     toggleSplitBtn.addEventListener('click', (e) => {
       e.preventDefault();
-  // Debug prints removed
+      // Ignore split toggles if a resize is in progress (prevents accidental
+      // creation of a new pane when the user finishes dragging the splitter).
+      const now = Date.now();
+      if (state.resizingEditor || state.resizingSidebar || state.resizingHashtagPanel) {
+        try { console.debug('toggle-split-button click ignored due to active resize'); } catch (e) {}
+        return;
+      }
+      // If a resize just finished within the last 300ms, ignore this click to
+      // avoid accidental pane creation from click events fired after pointerup.
+      if (state.lastEditorResizeAt && (now - state.lastEditorResizeAt) < 300) {
+        try { console.debug('toggle-split-button click ignored due to recent resize'); } catch (e) {}
+        return;
+      }
+
       // Create a new dynamic pane with a default label
       const paneId = createEditorPane(null, ``);
-  // Debug prints removed
+    });
+  }
+
+  // Close button for left editor pane (newly added in index.html)
+  const closeLeftBtn = document.getElementById('close-left-editor');
+  if (closeLeftBtn) {
+    closeLeftBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      try {
+        // Hide left pane (persist preference)
+        localStorage.setItem(storageKeys.editorLeftVisible, 'false');
+        const leftPane = document.querySelector('.editor-pane--left');
+        if (leftPane) {
+          leftPane.hidden = true;
+          try { leftPane.style.display = 'none'; } catch (ee) {}
+        }
+        // If right editor exists, focus it, otherwise create a dynamic pane
+        const rightTa = document.getElementById('note-editor-right');
+        if (rightTa) {
+          rightTa.focus();
+          setActiveEditorPane('right');
+        } else {
+          // create a new pane on the right and focus
+          const id = createEditorPane(null, '');
+          const ta = document.getElementById(`note-editor-${id}`);
+          if (ta) ta.focus();
+        }
+        updateEditorPaneVisuals();
+      } catch (err) { }
     });
   }
 
@@ -15565,12 +16286,9 @@ const initialize = () => {
   };
 
   const renderEditorMathOverlay = (selectionOnly = false, editorEl = null) => {
-    console.log('renderEditorMathOverlay called:', { selectionOnly, editorEl, activeSelections: activeSelections.length });
-    console.log('Active selections:', activeSelections);
     const editor = resolveEditorElement(editorEl);
     const mathOverlay = getOverlayForEditor(editor);
     if (!mathOverlay || !editor) {
-      console.log('No overlay or editor found');
       return;
     }
     // use original content if masked, otherwise current editor value
@@ -15589,7 +16307,6 @@ const initialize = () => {
     
     // Build mirror content: use overlay segments that include block math, inline math, and headings
     const segments = buildOverlaySegments(content, offset);
-    console.log('Built segments:', segments.length, segments.map(s => ({ type: s.type, text: s.text?.substring(0, 20), start: s.start, end: s.end })));
     // debug: show segments when troubleshooting
     if (window.__debugMathOverlay) {
   // Debug prints removed
@@ -15601,7 +16318,6 @@ const initialize = () => {
       const isInSelection = !selectionOnly || activeSelections.some(sel => 
         seg.start < sel.end && seg.end > sel.start
       );
-      console.log('Segment:', { type: seg.type, start: seg.start, end: seg.end, text: seg.text?.substring(0, 20), isInSelection });
       
       if (seg.type === 'text') {
         const span = document.createElement('span');
@@ -17286,6 +18002,11 @@ const initialize = () => {
   elements.borderThicknessSlider?.addEventListener('input', handleBorderThicknessChange);
   elements.resetBorderThicknessButton?.addEventListener('click', resetBorderThickness);
   
+  // Default export format change listener
+  elements.defaultExportFormatSelect?.addEventListener('change', (event) => {
+    localStorage.setItem('defaultExportFormat', event.target.value);
+  });
+  
   // Unified component settings event listeners
   elements.componentSelector?.addEventListener('change', handleComponentSelectionChange);
   elements.componentUseGlobalBg?.addEventListener('change', handleComponentGlobalToggle);
@@ -17367,8 +18088,8 @@ const initialize = () => {
   if (elements.workspaceSplitter) {
     elements.workspaceSplitter.addEventListener('pointerdown', handleSplitterPointerDown);
     elements.workspaceSplitter.addEventListener('pointermove', handleSplitterPointerMove);
-    elements.workspaceSplitter.addEventListener('pointerup', handleSplitterPointerUp);
-    elements.workspaceSplitter.addEventListener('pointercancel', handleSplitterPointerUp);
+  elements.workspaceSplitter.addEventListener('pointerup', handleSplitterPointerUp);
+  elements.workspaceSplitter.addEventListener('pointercancel', handleSplitterPointerCancel);
     elements.workspaceSplitter.addEventListener('keydown', handleSplitterKeyDown);
     elements.workspaceSplitter.addEventListener('dblclick', () => setEditorRatio(0.5, true));
   }
@@ -17377,7 +18098,7 @@ const initialize = () => {
     elements.sidebarResizeHandle.addEventListener('pointerdown', handleSidebarResizePointerDown);
     elements.sidebarResizeHandle.addEventListener('pointermove', handleSidebarResizePointerMove);
     elements.sidebarResizeHandle.addEventListener('pointerup', handleSidebarResizePointerUp);
-    elements.sidebarResizeHandle.addEventListener('pointercancel', handleSidebarResizePointerUp);
+    elements.sidebarResizeHandle.addEventListener('pointercancel', handleSidebarResizePointerCancel);
     elements.sidebarResizeHandle.addEventListener('dblclick', () => setSidebarWidth(260));
   }
 
@@ -17431,6 +18152,16 @@ const initialize = () => {
   window.addEventListener('pointerup', handleHashtagPanelResizeEnd);
   window.addEventListener('beforeunload', clearPdfCache);
   window.addEventListener('resize', handleEditorSearchResize);
+  if (typeof applySplitterLayout === 'function') {
+    window.addEventListener('resize', applySplitterLayout);
+  }
+  // Clamp sidebar width on window resize to prevent overflow
+  window.addEventListener('resize', () => {
+    try {
+      const currentWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width') || '260');
+      setSidebarWidth(currentWidth);
+    } catch (e) {}
+  });
 
   // Set up workspace file system watcher
   if (window.api?.onWorkspaceChanged) {
@@ -17462,6 +18193,12 @@ const initialize = () => {
   updateEditorSearchCount();
   renderEditorSearchHighlights();
   syncEditorSearchHighlightScroll();
+
+  // Initialize default export format from localStorage
+  const savedFormat = localStorage.getItem('defaultExportFormat');
+  if (savedFormat && elements.defaultExportFormatSelect) {
+    elements.defaultExportFormatSelect.value = savedFormat;
+  }
 };
 
 // Auto-resize iframe functionality
@@ -18502,6 +19239,44 @@ function initializeNewAdvancedSettings() {
     
     elements.defaultFileExtensionSelect.addEventListener('change', (e) => {
       writeStorage('NTA.defaultFileExtension', e.target.value);
+    });
+  }
+  
+  // Default export format select
+  if (elements.defaultExportFormatSelect) {
+    const savedFormat = readStorage(storageKeys.defaultExportFormat) || 'pdf';
+    elements.defaultExportFormatSelect.value = savedFormat;
+
+    elements.defaultExportFormatSelect.addEventListener('change', (e) => {
+      writeStorage(storageKeys.defaultExportFormat, e.target.value);
+    });
+  }
+  
+  // Cmd+E direct export toggle
+  if (elements.cmdEDirectExportToggle) {
+    // Support legacy key 'cmdEDirectExport' (no NTA. prefix) so users upgrading
+    // don't lose their preference. Prefer the new namespaced key when present.
+    const savedDirectExport = readStorage(storageKeys.cmdEDirectExport);
+    if (savedDirectExport === null) {
+      // check legacy key in localStorage directly
+      try {
+        const legacy = window.localStorage?.getItem('cmdEDirectExport');
+        if (legacy !== null && typeof legacy !== 'undefined') {
+          // migrate to new key (store boolean)
+          writeStorage(storageKeys.cmdEDirectExport, legacy === 'true');``
+          elements.cmdEDirectExportToggle.checked = legacy !== 'false';
+        } else {
+          elements.cmdEDirectExportToggle.checked = true; // default
+        }
+      } catch (e) {
+        elements.cmdEDirectExportToggle.checked = true;
+      }
+    } else {
+      elements.cmdEDirectExportToggle.checked = ('' + savedDirectExport === 'true');
+    }
+
+    elements.cmdEDirectExportToggle.addEventListener('change', (e) => {
+      writeStorage(storageKeys.cmdEDirectExport, e.target.checked);
     });
   }
   
@@ -20351,9 +21126,6 @@ function applyBorderThickness(thickness) {
     .sidebar, .workspace__content, .status-bar, .settings-modal__content {
       border-width: ${thickness}px !important;
     }
-    .sidebar-resize-handle {
-      width: ${Math.max(1, thickness)}px !important;
-    }
   `;
   
   document.head.appendChild(style);
@@ -21966,10 +22738,40 @@ function saveKeybindings() {
 }
 
 function handleKeybinding(e) {
-  // Check custom keybindings first
+  // Export with default format: Cmd/Ctrl+E (check this first to override custom keybindings)
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+    e.preventDefault();
+    // Read namespaced setting first; fallback to legacy 'cmdEDirectExport' key
+    let directExportVal = readStorage(storageKeys.cmdEDirectExport);
+    if (directExportVal === null) {
+      try { directExportVal = window.localStorage?.getItem('cmdEDirectExport'); } catch (e) { directExportVal = null; }
+    }
+    // Normalize to boolean: default true when key not present
+    const directExportEnabled = directExportVal === null ? true : ('' + directExportVal !== 'false'); // Default to true
+
+    try { console.warn('Cmd+E handler: directExportEnabled =', directExportEnabled); } catch (e) {}
+
+    if (directExportEnabled) {
+      try { console.warn('Cmd+E action: performing direct export'); } catch (e) {}
+      const defaultFormat = readStorage(storageKeys.defaultExportFormat) || 'pdf';
+      handleExport(defaultFormat);
+    } else {
+      try { console.warn('Cmd+E action: opening export dropdown'); } catch (e) {}
+      // Open export dropdown
+      const exportButton = document.getElementById('export-dropdown-button');
+      if (exportButton) {
+        exportButton.click();
+      }
+    }
+    return;
+  }
+
+  // Check custom keybindings
   const keyCombo = getKeyCombo(e);
   for (const kb of _keybindings || []) {
     if (kb.keys === keyCombo) {
+      // Skip custom keybindings for Cmd+E to ensure the checkbox controls it
+      if (keyCombo === 'Cmd+E') continue;
       e.preventDefault();
       executeKeybindingAction(kb.action, e);
       return;
@@ -22001,8 +22803,6 @@ function handleKeybinding(e) {
     return;
   }
 }
-
-// Initialize accessibility features when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initializeAccessibility);
 } else {
@@ -22093,8 +22893,9 @@ try {
     module.exports.__test__.renderLatexPreview = typeof renderLatexPreview === 'function' ? renderLatexPreview : null;
     module.exports.__test__.openNoteById = typeof openNoteById === 'function' ? openNoteById : null;
     module.exports.__test__.updateFileMetadataUI = typeof updateFileMetadataUI === 'function' ? updateFileMetadataUI : null;
-  module.exports.__test__.applyWikiSuggestion = typeof applyWikiSuggestion === 'function' ? applyWikiSuggestion : null;
-  module.exports.__test__.updateWikiSuggestions = typeof updateWikiSuggestions === 'function' ? updateWikiSuggestions : null;
+    module.exports.__test__.applyWikiSuggestion = typeof applyWikiSuggestion === 'function' ? applyWikiSuggestion : null;
+    module.exports.__test__.updateWikiSuggestions = typeof updateWikiSuggestions === 'function' ? updateWikiSuggestions : null;
+    module.exports.__test__.handleLatexEnvironmentAutoComplete = typeof handleLatexEnvironmentAutoComplete === 'function' ? handleLatexEnvironmentAutoComplete : null;
   }
 } catch (e) { /* ignore in browsers */ }
 

@@ -252,6 +252,13 @@ body.platform-linux {
 /* Adjust app layout for tab bar */
 .app-shell {
   height: calc(100vh - var(--title-bar-height) - 35px);
+  position: relative; /* anchor absolute children like the sidebar resize handle */
+}
+
+/* Ensure the workspace doesn't produce unexpected scrollbars when the
+   sidebar-resize-handle is visible; editor panes handle their own scrolling. */
+.workspace {
+  overflow: hidden;
 }
 
 /* Windows-specific scrollbar styling */
@@ -591,6 +598,9 @@ body {
 
 /* Editor math live-preview overlay */
 .editor-pane { position: relative; }
+/* Make sure editor panes manage their own scrolling and don't show a vertical
+  scrollbar in the middle of the layout due to adjacent absolute elements. */
+.editor-pane { overflow: hidden; }
 .editor-math-overlay {
   position: absolute;
   inset: 0 0 0 0;
@@ -796,24 +806,52 @@ textarea {
 }
 
 .sidebar-resize-handle {
-  flex: 0 0 12px; /* Larger hover area */
+  /* Improve hit targeting and stacking so the handle reliably receives
+     pointer events even when other panes create stacking contexts. Center
+     the interactive area on the sidebar/workspace boundary and expose a
+     thin visible indicator so users can grab the lit line easily. */
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* Keep a reasonably large interactive width but center it on the exact
+     boundary so the visible line (1px) sits precisely between panes. */
+  width: 20px; /* interactive width (bigger than visible line) */
+  left: calc(var(--sidebar-width, 260px) - 10px); /* center the 20px handle */
   cursor: col-resize;
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
-  margin-left: -6px; /* Pull 6px into the editor pane */
-  margin-right: -6px; /* Pull 6px into the preview pane */
-  z-index: 10; /* Ensure it's above both panes */
+  transform: translateX(0);
+  pointer-events: auto;
+  z-index: 2147483645; /* very high so it stays above content/scrollbars */
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none; /* prevent touch-driven scrolling artifacts */
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
 }
 
-.sidebar-resize-handle:hover {
-  background: transparent; /* Stay completely invisible on hover */
+/* Thin visual indicator centered inside the interactive hit area. The line
+   itself is 1px wide and doesn't receive pointer events (the parent does). */
+.sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--border);
+  pointer-events: none;
+  opacity: 0.8;
 }
 
-.sidebar-resize-handle:active {
-  background: transparent; /* Stay completely invisible when active */
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle:active::after {
+  background: var(--accent);
+  opacity: 1;
 }
 
 .explorer__header {
@@ -2057,7 +2095,8 @@ button.small {
 .editor-pane {
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  min-width: 200px;
+  flex: 1;
 }
 
 .editor-pane textarea {
@@ -2119,7 +2158,7 @@ button.small {
 
 
 .editor-pane {
-  flex: 0 0 calc(var(--local-editor-ratio) * 100%);
+  flex: 1;
   min-width: clamp(220px, 40vw, 640px);
   display: flex;
   flex-direction: column;
@@ -2153,9 +2192,14 @@ button.small {
 
 .preview-pane {
   /* Fixed-width right sidebar for live preview */
-  flex: 0 0 360px;
-  width: 360px;
-  max-width: 42vw;
+  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  max-width: 60vw;
+  min-width: 0px;
+  margin-left: auto;
+  margin-right: 0;
+  position: relative;
+  right: 0;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--border);
@@ -2171,6 +2215,7 @@ button.small {
   height: 100%;
   min-height: 0;
   align-items: stretch;
+  width: 100%;
 }
 
 .editor-pane {
@@ -2330,15 +2375,41 @@ body[data-theme="dark"] .editor-pane:not(.active) {
   background: transparent;
   margin-left: -6px; /* Pull 6px into the editor pane */
   margin-right: -6px; /* Pull 6px into the preview pane */
-  z-index: 10; /* Ensure it's above both panes */
+  z-index: 2147483646; /* Ensure it's above both panes and editor dividers */
+  pointer-events: auto; /* Ensure splitter receives pointer events */
 }
 
 /* Small divider between the two central editors (visual only) */
 .editors__divider {
-  width: 1px;
-  background: rgba(0,0,0,0.04);
-  margin: 0 6px;
-  align-self: stretch;
+  /* Make divider interactive: larger hit area and higher z-index so it
+     captures pointer events instead of the textarea scrollbar. */
+  flex: 0 0 12px; /* Larger hover area */
+  cursor: col-resize;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  margin-left: -6px;
+  margin-right: -6px;
+  z-index: 1200;
+  pointer-events: auto;
+}
+
+.editors__divider::after {
+  content: "";
+  width: 1px; /* Thin visible line */
+  height: 100%;
+  background: var(--border-strong); /* Use theme-aware border color */
+  opacity: 0.9;
+  transition: background 0.12s ease, width 0.12s ease, transform 0.12s ease;
+  pointer-events: none; /* let the divider capture pointer events, not the pseudo */
+}
+
+.editors__divider:hover::after {
+  background: var(--accent);
+  width: 2px; /* Slightly thicker when hovered */
+  transform: translateX(0);
 }
 
 .preview-pane[tabindex="-1"] {
@@ -2347,6 +2418,7 @@ body[data-theme="dark"] .editor-pane:not(.active) {
 
 .workspace__splitter::after {
   content: "";
+  pointer-events: none; /* don't block pointer events, let the splitter element capture them */
   width: 0px; /* No visible bar */
   height: 0px; /* No visible bar */
   background: transparent; /* Completely invisible */
@@ -2355,8 +2427,9 @@ body[data-theme="dark"] .editor-pane:not(.active) {
 
 .workspace__splitter:hover::after,
 .workspace__splitter.workspace__splitter--active::after {
-  background: transparent; /* Stay invisible even on hover */
-  width: 0px; /* No bar appears */
+  background: var(--accent);
+  width: 2px; /* Thin visible bar on hover */
+  height: 100%;
 }
 
 #note-editor {
@@ -3933,8 +4006,8 @@ iframe.html-embed-iframe {
   border: none;
   color: var(--fg-soft);
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 4px;
+  border-radius: 4px;
   font-size: 14px;
   line-height: 1;
 }
@@ -4230,6 +4303,25 @@ body[data-high-contrast="true"] .keybinding-input:focus {
 
 .latex-preview .katex-display {
   margin: 1em 0;
+  text-align: center;
+}
+
+.latex-preview figure {
+  margin: 1em 0;
+  text-align: center;
+}
+
+.latex-preview figure img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+.latex-preview figcaption {
+  margin-top: 0.5em;
+  font-size: 0.9em;
+  color: var(--fg-soft);
   text-align: center;
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "note-taking-app",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Cross-platform Markdown note taking app with PDF viewing support",
   "main": "src/main.js",
   "homepage": "https://github.com/Maurone7/NTA",
@@ -86,7 +86,8 @@
       "gatekeeperAssess": false,
       "identity": null,
       "entitlements": "assets/entitlements.mac.plist",
-      "entitlementsInherit": "assets/entitlements.mac.plist"
+      "entitlementsInherit": "assets/entitlements.mac.plist",
+      "icon": "assets/NTA logo.png"
     },
     "dmg": {
       "title": "${productName} ${version}",
@@ -123,7 +124,7 @@
         }
       ],
       "artifactName": "${productName}-${version}-${arch}.${ext}",
-      "icon": "assets/icon.ico"
+      "icon": "assets/NTA logo.png"
     },
     "nsis": {
       "oneClick": false,
@@ -133,9 +134,9 @@
       "shortcutName": "NoteTaking App",
       "uninstallDisplayName": "NoteTaking App",
       "license": "LICENSE.txt",
-      "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico",
-      "installerHeaderIcon": "assets/icon.ico",
+      "installerIcon": "assets/NTA logo.png",
+      "uninstallerIcon": "assets/NTA logo.png",
+      "installerHeaderIcon": "assets/NTA logo.png",
       "deleteAppDataOnUninstall": false,
       "perMachine": false,
       "allowElevation": true
