@@ -2,8 +2,6 @@
 
 Eigenvectors: find eigenvalues, then solve
 
-[google](www.google.com)
-
 $$ A−λI=0 $$
 
 ### Lagrange

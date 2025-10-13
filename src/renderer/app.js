@@ -404,91 +404,17 @@ function wrapSelection(before, after) {
 
 // Prompt the user for a URL and insert a markdown link using the current
 // selection as the link text (or the URL if nothing is selected).
-function insertLinkAtSelection() {
-  const edt = getActiveEditorInstance();
-  if (!edt || !edt.isPresent()) return;
-
-  const textarea = edt.el;
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  const selectedText = textarea.value.substring(start, end);
-
-  // Ask the user for a URL. Use a sensible default but allow cancelling.
-  let url = window.prompt('Enter URL for link:', 'https://');
-  if (url === null) return; // user cancelled
-  url = String(url).trim();
-  if (!url) return;
-
-  // If user entered a bare 'www.' style URL, prepend https:// for convenience.
-  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(url) && url.startsWith('www.')) {
-    url = 'https://' + url;
-  }
-
-  const label = selectedText && selectedText.length ? selectedText : url;
-  const replacement = `[${label}](${url})`;
-
-  // Try to use setRangeText for a clean insertion, fall back to rebuilding value
-  try {
-    textarea.setRangeText(replacement);
-  } catch (e) {
-    const v = textarea.value;
-    textarea.value = v.slice(0, start) + replacement + v.slice(end);
-  }
-
-  // Position the selection to the URL portion so the user can quickly edit it
-  try {
-    const urlPosInReplacement = replacement.indexOf('(') + 1; // position inside the (
-    const urlStart = start + urlPosInReplacement;
-    const urlEnd = urlStart + url.length;
-    textarea.selectionStart = urlStart;
-    textarea.selectionEnd = urlEnd;
-  } catch (e) {
-    // fallback: place caret at end of inserted text
-    try { textarea.selectionStart = textarea.selectionEnd = start + replacement.length; } catch (ee) {}
-  }
-
-  textarea.dispatchEvent(new Event('input', { bubbles: true }));
-  try { textarea.focus({ preventScroll: false }); } catch (e) { textarea.focus(); }
+// autolink implementation moved to a small module so tests can import it.
+try {
+  // In the renderer we can require the helper; in browser-like bundles this
+  // will be replaced by bundling or simply ignored.
+  var { autolinkPlainUrlsInTextarea: _autolinkImpl } = require('./autolink');
+  function autolinkPlainUrlsInTextarea(textarea) { return _autolinkImpl(textarea); }
+} catch (e) {
+  // If require isn't available (e.g., strict browser runtime during dev),
+  // keep a no-op fallback to avoid breaking initialization.
+  function autolinkPlainUrlsInTextarea() { /* noop when module not available */ }
 }
-
-const readStorage = (key) => {
-  try {
-    return window.localStorage?.getItem(key) ?? null;
-  } catch (error) {
-  // Debug prints removed
-    return null;
-  }
-};
-
-const writeStorage = (key, value) => {
-  try {
-    window.localStorage?.setItem(key, value);
-  } catch (error) {
-  // Debug prints removed
-  }
-};
-
-// Autosave timer management
-let autosaveTimer = null;
-function startAutosave(intervalSeconds) {
-  stopAutosave();
-  if (!intervalSeconds || intervalSeconds <= 0) return;
-  autosaveTimer = setInterval(() => {
-    // indicate autosave in UI if helper exists
-    try { if (typeof updateAutosaveIndicatorGlobal === 'function') updateAutosaveIndicatorGlobal(true); } catch (e) {}
-    // call persistNotes if available
-  try { if (typeof persistNotes === 'function') persistNotes(); } catch (e) { }
-    // turn off indicator after small delay
-    try { if (typeof updateAutosaveIndicatorGlobal === 'function') setTimeout(() => updateAutosaveIndicatorGlobal(false), 800); } catch (e) {}
-  }, Math.max(1000, intervalSeconds * 1000));
-}
-function stopAutosave() {
-  if (autosaveTimer) { clearInterval(autosaveTimer); autosaveTimer = null; }
-}
-
-// Apply editor-level settings to a textarea element (spellcheck, soft wrap)
-function applyEditorSettingsToEl(ta) {
-  try {
     const spell = readStorage(storageKeys.editorSpellcheck);
     const softwrap = readStorage(storageKeys.editorSoftWrap);
     if (ta && typeof ta.setAttribute === 'function') {
@@ -8840,6 +8766,18 @@ const handleEditorInput = (event, opts = {}) => {
   // Handle different editable note types
   if (note.type === 'markdown' || note.type === 'latex') {
     note.content = event.target.value;
+    // Auto-convert plain URLs into markdown links: [host](url)
+    // Only run autolink on paste operations (immediate) — otherwise defer
+    // conversion until the user finishes typing (Space/Enter handled in keyup).
+    try {
+      if (event && typeof event.inputType === 'string' && /paste/i.test(event.inputType)) {
+        if (typeof event?.target?.value === 'string' && /(?:https?:\/\/|www\.)/i.test(event.target.value)) {
+          autolinkPlainUrlsInTextarea(event.target);
+          // keep note.content in sync after modifications
+          note.content = event.target.value;
+        }
+      }
+    } catch (e) { /* ignore */ }
     note.updatedAt = new Date().toISOString();
     note.dirty = true;
     refreshBlockIndexForNote(note);
@@ -8897,6 +8835,95 @@ const handleEditorInput = (event, opts = {}) => {
     }
   }
 };
+
+// Convert plain URLs in a textarea into markdown links using the host as label.
+// This is conservative: it avoids replacing URLs that are already inside
+// parentheses or immediately preceded by '(' or ']' to reduce false-positives.
+function autolinkPlainUrlsInTextarea(textarea) {
+  try {
+    if (!textarea || typeof textarea.value !== 'string') return;
+    let v = textarea.value;
+  if (!/(?:https?:\/\/|www\.)/i.test(v)) return;
+
+  // Match either scheme-prefixed URLs or bare www. URLs
+  const urlRe = /\b(?:https?:\/\/|www\.)[^\s<>()]+/gi;
+    let match;
+    let delta = 0;
+    const originalSelectionStart = textarea.selectionStart;
+    const originalSelectionEnd = textarea.selectionEnd;
+
+    while ((match = urlRe.exec(v)) !== null) {
+      const url = match[0];
+      const idx = match.index;
+      // Check surrounding chars to avoid URLs already in links or parentheses
+      const beforeChar = v[idx - 1] || '';
+      const afterChar = v[idx + url.length] || '';
+      if (beforeChar === '(' || beforeChar === ']' || afterChar === ')' || afterChar === ']') {
+        continue;
+      }
+
+      // Avoid transforming if this URL is already part of a markdown link like [text](url)
+      // Simple heuristic: look back up to 30 chars for a pattern like ']( '
+      const lookback = Math.max(0, idx - 60);
+      const contextBefore = v.slice(lookback, idx + url.length + 2);
+      if (/\[[^\]]*\]\($/m.test(contextBefore) || /\[[^\]]+\]\([^)]*$/m.test(contextBefore)) {
+        continue;
+      }
+
+      // Build a label using the URL host (strip leading www.).
+      // If the URL is a bare 'www.' address, avoid using the URL constructor.
+      let label = url;
+      try {
+        if (/^www\./i.test(url)) {
+          const m = url.match(/^(?:www\.)?([^\/\:?#]+)/i);
+          label = (m && m[1]) ? m[1].replace(/^www\./i, '') : url;
+        } else {
+          const u = new URL(url);
+          label = (u.hostname || url).replace(/^www\./i, '');
+        }
+      } catch (e) {
+        // Fallback: try to extract host-like part without throwing
+        const m = url.match(/^(?:https?:\/\/)?(?:www\.)?([^\/\:?#]+)/i);
+        label = (m && m[1]) ? m[1].replace(/^www\./i, '') : url;
+      }
+
+      const replacement = `[${label}](${url})`;
+      const before = v.slice(0, idx);
+      const after = v.slice(idx + url.length);
+      v = before + replacement + after;
+
+      // Adjust regex lastIndex to account for the new text
+      urlRe.lastIndex = idx + replacement.length;
+    }
+
+    if (v !== textarea.value) {
+      // Preserve caret relative position by shifting by the net length delta
+      try {
+        const oldLen = textarea.value.length;
+        const newLen = v.length;
+        const delta = newLen - oldLen;
+        const desiredStart = Math.max(0, Math.min(originalSelectionStart + delta, newLen));
+        const desiredEnd = Math.max(0, Math.min(originalSelectionEnd + delta, newLen));
+        textarea.value = v;
+        try {
+          textarea.selectionStart = desiredStart;
+          textarea.selectionEnd = desiredEnd;
+        } catch (e) { /* ignore selection restore errors */ }
+      } catch (e) {
+        // Fallback: simple replace and clamp caret
+        textarea.value = v;
+        try {
+          const newLen = textarea.value.length;
+          textarea.selectionStart = Math.min(originalSelectionStart, newLen);
+          textarea.selectionEnd = Math.min(originalSelectionEnd, newLen);
+        } catch (e) { /* ignore selection restore errors */ }
+      }
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  } catch (e) {
+    // swallow errors to avoid breaking typing
+  }
+}
 
 const handleEditor2Drop = (event) => {
   // Prevent default and stop other listeners from handling this internal drop
@@ -10112,6 +10139,25 @@ const handleEditorKeyup = (event) => {
     const end = textarea2.selectionEnd;
     // Note: activeSelections is managed by toggleMathWysiwyg, this is just for reference
   }
+  
+  // Run autolink when the user finishes typing a token: Space or Enter
+  try {
+    if ([' ', 'Spacebar', 'Enter'].includes(event.key)) {
+      const targetTextarea = event?.target && event.target.tagName === 'TEXTAREA' ? event.target : getActiveEditorInstance().el;
+      const pane = (targetTextarea === elements.editorRight) ? 'right' : 'left';
+      const paneNoteId = state.editorPanes?.[pane]?.noteId || state.activeNoteId;
+      const note = paneNoteId ? state.notes.get(paneNoteId) : getActiveNote();
+      if (note && (note.type === 'markdown' || note.type === 'latex')) {
+        try {
+          if (typeof targetTextarea.value === 'string' && /(?:https?:\/\/|www\.)/i.test(targetTextarea.value)) {
+            autolinkPlainUrlsInTextarea(targetTextarea);
+            // Keep note content in sync
+            note.content = targetTextarea.value;
+          }
+        } catch (e) { /* ignore */ }
+      }
+    }
+  } catch (e) { /* ignore */ }
 };
 
 // Lightweight click handler for the editors to refresh suggestions, ensure the
