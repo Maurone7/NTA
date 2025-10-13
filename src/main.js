@@ -1243,6 +1243,10 @@ performFallbackUpdate = async function() {
         mimeType = getVideoMimeType(absolutePath);
       } else if (isHtmlFile(absolutePath)) {
         mimeType = getHtmlMimeType(absolutePath);
+      } else if (path.extname(absolutePath).toLowerCase() === '.pdf') {
+        // PDFs should be returned with the proper mime type so renderer
+        // can treat them as data:application/pdf;base64,... resources.
+        mimeType = 'application/pdf';
       } else {
         // For other files, try to determine mime type or default
         mimeType = 'application/octet-stream';

@@ -4,7 +4,7 @@ const path = require('path');
 
 function makeWindow() {
   const domHtml = `<!doctype html><html><body>
-    <section class="editor-pane editor-pane--left" data-pane-id="left"><textarea id="note-editor-left"></textarea></section>
+    <section class="editor-pane editor-pane--left" data-pane-id="left"><textarea id="note-editor"></textarea></section>
     <section class="editor-pane editor-pane--right" data-pane-id="right"><textarea id="note-editor-right"></textarea></section>
     <div id="workspace-content">
       <div id="preview"></div>
@@ -72,9 +72,9 @@ describe('DOM: notebook pane', function() {
 
       // Ensure a pane viewer was appended
       const root = document.querySelector('.editor-pane[data-pane-id="left"]');
-      const viewer = root.querySelector('.nb-pane-viewer');
+      const viewer = root.querySelector('.notebook-viewer');
       assert(viewer, 'Expected a notebook pane viewer to exist');
-      const editBtn = viewer.querySelector('.nb-edit-toggle');
+      const editBtn = viewer.querySelector('.edit-raw-button');
       assert(editBtn, 'Edit raw button should be present');
       assert(editBtn.textContent.includes('Edit') || editBtn.textContent.includes('Edit raw'), 'Edit button text present');
     } finally {
@@ -96,8 +96,8 @@ describe('DOM: notebook pane', function() {
       hooks.openNoteInPane(nb.id, 'left', { activate: true });
 
       const root = document.querySelector('.editor-pane[data-pane-id="left"]');
-      const viewer = root.querySelector('.nb-pane-viewer');
-      const editBtn = viewer.querySelector('.nb-edit-toggle');
+      const viewer = root.querySelector('.notebook-viewer');
+      const editBtn = viewer.querySelector('.edit-raw-button');
       const saveBtn = viewer.querySelector('.nb-save-btn');
       const cancelBtn = viewer.querySelector('.nb-cancel-btn');
 
@@ -111,16 +111,16 @@ describe('DOM: notebook pane', function() {
       // Modify first textarea and click Save
       const editor = root.querySelector('.notebook-editor');
       const ta = editor.querySelector('textarea');
-      ta.value = 'updated text';
+      ta.value = JSON.stringify({ metadata: {}, cells: [{ index: 0, type: 'markdown', source: 'updated text', outputs: [] }] });
 
       // Click save (it is async). Simulate click and wait a tick.
       saveBtn.click();
       await new Promise(r => setTimeout(r, 20));
 
       // After save, viewer should be recreated and Edit visible again
-      const newViewer = root.querySelector('.nb-pane-viewer');
+      const newViewer = root.querySelector('.notebook-viewer');
       assert(newViewer, 'Viewer should be present after Save');
-      const newEdit = newViewer.querySelector('.nb-edit-toggle');
+      const newEdit = newViewer.querySelector('.edit-raw-button');
       const newSave = newViewer.querySelector('.nb-save-btn');
       const newCancel = newViewer.querySelector('.nb-cancel-btn');
       assert(newEdit && (newEdit.style.display === '' || newEdit.style.display === 'inline-block' || newEdit.style.display === 'block'), 'Edit should be visible after save');
@@ -149,8 +149,8 @@ describe('DOM: notebook pane', function() {
       hooks.openNoteInPane(nb.id, 'left', { activate: true });
 
       const root = document.querySelector('.editor-pane[data-pane-id="left"]');
-      const viewer = root.querySelector('.nb-pane-viewer');
-      const editBtn = viewer.querySelector('.nb-edit-toggle');
+      const viewer = root.querySelector('.notebook-viewer');
+      const editBtn = viewer.querySelector('.edit-raw-button');
       const cancelBtn = viewer.querySelector('.nb-cancel-btn');
 
       editBtn.click();
@@ -162,7 +162,7 @@ describe('DOM: notebook pane', function() {
       cancelBtn.click();
 
       // Viewer should be restored and in-memory unchanged
-      const restored = root.querySelector('.nb-pane-viewer');
+      const restored = root.querySelector('.notebook-viewer');
       assert(restored, 'Viewer restored after cancel');
       const noteAfter = hooks.state.notes.get(nb.id);
       assert(noteAfter.notebook.cells[0].source === 'original', 'Notebook should not be changed after cancel');
@@ -187,8 +187,8 @@ describe('DOM: notebook pane', function() {
       hooks.openNoteInPane(nb.id, 'left', { activate: true });
 
       const root = document.querySelector('.editor-pane[data-pane-id="left"]');
-      const viewer = root.querySelector('.nb-pane-viewer');
-      const editBtn = viewer.querySelector('.nb-edit-toggle');
+      const viewer = root.querySelector('.notebook-viewer');
+      const editBtn = viewer.querySelector('.edit-raw-button');
       editBtn.click();
       const editor = root.querySelector('.notebook-editor');
       const ta = editor.querySelector('textarea');

@@ -77,12 +77,12 @@ describe('DOM: updateEditorPaneVisuals', function() {
 
     try {
       // Ensure initial state
-      testHooks.state.activeEditorPane = 'pane-1';
+      testHooks.state.activeEditorPane = 'left';
 
       // Call the visual updater
       testHooks.updateEditorPaneVisuals();
 
-      const dynamic = document.querySelector('.editor-pane--dynamic');
+      const dynamic = document.querySelector('.editor-pane--left');
       assert(dynamic.classList.contains('active'), 'Dynamic pane should have .active when matched');
 
       // Switch active to right

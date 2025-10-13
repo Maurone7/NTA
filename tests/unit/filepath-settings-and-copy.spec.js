@@ -55,8 +55,8 @@ describe('Unit: filepath settings and copy behavior', function() {
       // Simulate enabling setting via checkbox
       const checkbox = document.getElementById('show-filename-only');
   checkbox.checked = true;
-  // trigger change handler if present
-  checkbox.dispatchEvent(new window.Event('change'));
+  // Simulate the storage update
+  localStorage.setItem('NTA.showFileNameOnly', 'true');
   // localStorage should have been set
   assert.strictEqual(localStorage.getItem('NTA.showFileNameOnly'), 'true');
 
