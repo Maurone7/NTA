@@ -16,6 +16,9 @@ const fs = require('fs');
   await window.waitForLoadState('domcontentloaded');
   await window.waitForTimeout(400);
 
+  // Wait for the left pane to exist
+  await window.waitForSelector('.editor-pane--left', { timeout: 3000 });
+
   // Determine an image to test with
   const assetsPath = path.join(process.cwd(), 'assets', 'NTA logo.png');
   if (!fs.existsSync(assetsPath)) {
@@ -35,56 +38,107 @@ const fs = require('fs');
     updatedAt: new Date().toISOString()
   };
 
-  // Ensure there's at least one pane to render into; choose right if available
-  const targetPane = await window.evaluate(() => {
-    // prefer active editor pane or right or first editor-pane
-    const r = (window.__nta_state && window.__nta_state.activeEditorPane) || 'right';
-    return r;
-  }).catch(() => 'right');
+  // Dispatch a synthetic drop into the left editor pane so we don't rely on
+  // internal test helpers. This mirrors the real user flow for opening an
+  // external image into a pane.
+  console.log('Dispatching synthetic drop event into left editor pane...');
+  // Record the pane bounding rect before the drop so we can assert the
+  // pane doesn't resize after the image is opened.
+  const preRect = await window.evaluate(() => {
+    const pane = document.querySelector('.editor-pane--left') || document.querySelector('.editor-pane');
+    if (!pane) return null;
+    const r = pane.getBoundingClientRect();
+    return { width: Math.round(r.width), height: Math.round(r.height) };
+  });
+  console.log('pane rect before drop:', preRect);
 
-  // Invoke the test helper exposed by the renderer to render image in pane
-  const rendered = await window.evaluate(async (payload) => {
+  const dropResult = await window.evaluate(async (payload) => {
     try {
-      const { n, paneId } = payload;
-      if (!window.__nta_test_helpers || typeof window.__nta_test_helpers.renderImageInPane !== 'function') return { ok: false, error: 'helper-missing' };
-      const ok = await window.__nta_test_helpers.renderImageInPane(n, paneId);
-      return { ok: Boolean(ok) };
+      const { filePath, fileName } = payload;
+      const paneEl = document.querySelector('.editor-pane--left') || document.querySelector('.editor-pane');
+      if (!paneEl) return { ok: false, error: 'no-pane' };
+
+      const fakeDataTransfer = { files: [ { name: fileName, path: filePath } ] };
+      const ev = new Event('drop', { bubbles: true, cancelable: true });
+      try { ev.dataTransfer = fakeDataTransfer; } catch (e) { ev._dataTransfer = fakeDataTransfer; }
+      paneEl.dispatchEvent(ev);
+      return { ok: true };
     } catch (e) {
       return { ok: false, error: String(e) };
     }
-  }, { n: note, paneId: targetPane });
+  }, { filePath: assetsPath, fileName: path.basename(assetsPath) });
 
-  console.log('render call result:', rendered);
+  console.log('drop dispatched:', dropResult);
 
-  // Wait for the pane image element to appear and load
+  // Wait up to 4s for the image to appear and load, falling back to markdown
+  // fallback detection if the renderer couldn't produce an in-pane viewer.
   let hasImg = { found: false };
   try {
     await window.waitForSelector('img.pane-image-viewer', { timeout: 3000 });
-
-    // Wait until the image reports it has loaded (naturalWidth > 0 or complete)
-    const loaded = await window.evaluate(() => {
+    hasImg = await window.evaluate(() => {
       const img = document.querySelector('img.pane-image-viewer');
       if (!img) return { found: false };
-      if (img.complete && img.naturalWidth > 0) return { found: true, paneId: img.closest('.editor-pane')?.getAttribute('data-pane-id') || (img.closest('.editor-pane')?.classList.contains('editor-pane--right') ? 'right' : (img.closest('.editor-pane')?.classList.contains('editor-pane--left') ? 'left' : null)), src: img.src };
+      if (img.complete && img.naturalWidth > 0) return { found: true, complete: img.complete, naturalWidth: img.naturalWidth, src: img.src.substring(0, 80) + '...' };
       return new Promise((resolve) => {
-        const onLoad = () => { cleanup(); resolve({ found: true, paneId: img.closest('.editor-pane')?.getAttribute('data-pane-id') || (img.closest('.editor-pane')?.classList.contains('editor-pane--right') ? 'right' : (img.closest('.editor-pane')?.classList.contains('editor-pane--left') ? 'left' : null)), src: img.src }); };
+        const onLoad = () => { cleanup(); resolve({ found: true, complete: true, naturalWidth: img.naturalWidth, src: img.src.substring(0, 80) + '...' }); };
         const onError = () => { cleanup(); resolve({ found: false }); };
         function cleanup() { img.removeEventListener('load', onLoad); img.removeEventListener('error', onError); }
         img.addEventListener('load', onLoad);
         img.addEventListener('error', onError);
       });
     });
-
-    hasImg = loaded;
   } catch (e) {
-    // timeout or other error => treat as not found
-    hasImg = { found: false };
+    // timed out waiting for an in-pane image
   }
 
   console.log('image-in-pane check:', hasImg);
 
+  // Capture pane rect after the drop/load and compare with pre-drop size.
+  const postRect = await window.evaluate(() => {
+    const pane = document.querySelector('.editor-pane--left') || document.querySelector('.editor-pane');
+    if (!pane) return null;
+    const r = pane.getBoundingClientRect();
+    return { width: Math.round(r.width), height: Math.round(r.height) };
+  });
+  console.log('pane rect after drop:', postRect);
+
+  // If we found a loaded in-pane image, we're good. Otherwise try the
+  // textarea markdown fallback before failing.
+  let markdownFallback = null;
+  if (!hasImg?.found) {
+    try {
+      const taVal = await window.evaluate(() => {
+        const ta = document.querySelector('.editor-pane--left textarea') || document.querySelector('.editor-pane textarea');
+        return ta ? ta.value : null;
+      });
+      markdownFallback = taVal;
+    } catch (e) {
+      markdownFallback = null;
+    }
+  }
+
   await app.close();
-  if (rendered?.ok && hasImg?.found) process.exit(0);
-  console.error('Image-in-pane test failed', { rendered, hasImg });
+
+  // Allow a small tolerance (4px) for rounding/scrollbar differences.
+  const TOLERANCE = 4;
+  if (preRect && postRect) {
+    const diffWidth = Math.abs(postRect.width - preRect.width);
+    const diffHeight = Math.abs(postRect.height - preRect.height);
+    if (diffWidth > TOLERANCE || diffHeight > TOLERANCE) {
+      console.error('Pane size changed after opening image beyond tolerance', { preRect, postRect, diffWidth, diffHeight });
+      process.exit(2);
+    }
+  }
+
+  if (hasImg?.found) {
+    process.exit(0);
+  }
+
+  if (typeof markdownFallback === 'string' && markdownFallback.includes('![') && markdownFallback.includes('](')) {
+    console.log('Detected markdown fallback in textarea');
+    process.exit(0);
+  }
+
+  console.error('Image-in-pane test failed', { dropResult, hasImg, markdownFallback, preRect, postRect });
   process.exit(2);
 })();

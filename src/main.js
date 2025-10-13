@@ -406,6 +406,9 @@ const createMainWindow = () => {
     mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
       const levels = ['debug', 'info', 'warn', 'error'];
       const lvl = levels[level] ?? `level-${level}`;
+      try {
+        console.log(`[Renderer:${lvl}] ${message} (${sourceId}:${line})`);
+      } catch (e) { /* ignore logging errors */ }
     });
   } catch (err) {
     // Older/newer electron versions may not emit console-message; ignore if unsupported
@@ -413,8 +416,12 @@ const createMainWindow = () => {
 
   // Also listen for the 'console' event if available (newer electron versions)
   try {
+    // Newer Electron versions emit a 'console' event with richer args; forward them too.
     mainWindow.webContents.on('console', (event, level, ...args) => {
-      // Level may be 'log', 'warn', 'error', etc.
+      try {
+        // level is typically a string like 'log', 'warn', 'error'
+        console.log(`[Renderer:${level}]`, ...args);
+      } catch (e) { /* ignore */ }
     });
   } catch (err) {
     // ignore if not supported

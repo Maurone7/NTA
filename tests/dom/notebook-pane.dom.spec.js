@@ -64,6 +64,7 @@ describe('DOM: notebook pane', function() {
     const app = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'));
     const hooks = app.__test__;
     if (hooks.initialize) hooks.initialize();
+    if (hooks.reinitializeEditorInstances) hooks.reinitializeEditorInstances();
 
     try {
       const nb = { id: 'nb1', type: 'notebook', title: 'nb1', absolutePath: '/tmp/nb1.ipynb', notebook: { metadata: {}, cells: [{ index: 0, type: 'markdown', source: '# hi', outputs: [] }] } };
@@ -89,6 +90,7 @@ describe('DOM: notebook pane', function() {
     const app = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'));
     const hooks = app.__test__;
     if (hooks.initialize) hooks.initialize();
+    if (hooks.reinitializeEditorInstances) hooks.reinitializeEditorInstances();
 
     try {
       const nb = { id: 'nb2', type: 'notebook', title: 'nb2', absolutePath: '/tmp/nb2.ipynb', notebook: { metadata: {}, cells: [{ index: 0, type: 'markdown', source: 'hello', outputs: [] }] } };
@@ -142,6 +144,7 @@ describe('DOM: notebook pane', function() {
     const app = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'));
     const hooks = app.__test__;
     if (hooks.initialize) hooks.initialize();
+    if (hooks.reinitializeEditorInstances) hooks.reinitializeEditorInstances();
 
     try {
       const nb = { id: 'nb3', type: 'notebook', title: 'nb3', absolutePath: '/tmp/nb3.ipynb', notebook: { metadata: {}, cells: [{ index: 0, type: 'markdown', source: 'original', outputs: [] }] } };
@@ -178,6 +181,7 @@ describe('DOM: notebook pane', function() {
     const app = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'));
     const hooks = app.__test__;
     if (hooks.initialize) hooks.initialize();
+    if (hooks.reinitializeEditorInstances) hooks.reinitializeEditorInstances();
 
     try {
       // Create a notebook with a long markdown cell so scrolling is possible

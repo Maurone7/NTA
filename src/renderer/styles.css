@@ -249,6 +249,25 @@ body.platform-linux {
   line-height: 1;
 }
 
+/* Pane video viewer: ensure the video fits inside the pane without resizing it */
+.pane-video-container {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  pointer-events: auto;
+}
+.video-pane-viewer {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
 /* Adjust app layout for tab bar */
 .app-shell {
   height: calc(100vh - var(--title-bar-height) - 35px);
@@ -2064,6 +2083,13 @@ button.small {
   position: relative;
 }
 
+/* When both editor panes are visible (split), enforce a per-pane minimum
+   width so each editor remains usable. This only applies while split. */
+.workspace__content.split-editors .editor-pane {
+  /* Increased per-pane minimum to ensure each split editor remains usable. */
+  min-width: 300px;
+}
+
 .workspace__content.preview-collapsed .workspace__splitter,
 .workspace__content.preview-collapsed .preview-pane {
   display: none;
@@ -2079,7 +2105,8 @@ button.small {
      Previously editor panes and the splitter were hidden which caused
      the PDF to occupy the full workspace. Keep the split layout so
      users can keep editing while previewing PDFs. */
-  flex: 1 1 auto;
+  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
 }
 
 /* Per-pane PDF iframe used when rendering a PDF inside an editor pane */
@@ -2095,7 +2122,10 @@ button.small {
 .editor-pane {
   display: flex;
   flex-direction: column;
-  min-width: 200px;
+  /* Allow the editor to shrink below 200px so ratio-based sizing can
+     make the editor take a larger fraction of the workspace when
+     desired (prevents a hard 200px bottleneck). */
+  min-width: 0;
   flex: 1;
 }
 
@@ -2117,7 +2147,8 @@ button.small {
 }
 
 .workspace__content.image-mode .preview-pane {
-  flex: 1 1 auto;
+  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
 }
 
 .workspace__content.image-mode #markdown-preview {
@@ -2130,7 +2161,8 @@ button.small {
 }
 
 .workspace__content.video-mode .preview-pane {
-  flex: 1 1 auto;
+  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
 }
 
 .workspace__content.video-mode #markdown-preview {
@@ -2143,7 +2175,8 @@ button.small {
 }
 
 .workspace__content.html-mode .preview-pane {
-  flex: 1 1 auto;
+  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
 }
 
 .workspace__content.html-mode #markdown-preview {
@@ -2151,7 +2184,8 @@ button.small {
 }
 
 .workspace__content.latex-mode .preview-pane {
-  flex: 1 1 auto;
+  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
 }
 
 .workspace__content.latex-mode #markdown-preview {
@@ -2198,7 +2232,7 @@ button.small {
   flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
   width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
   max-width: 60vw;
-  min-width: 0px;
+  min-width: 0px; /* Allow preview to be minimized completely */
   margin-left: auto;
   margin-right: 0;
   position: relative;
@@ -2269,6 +2303,35 @@ button.small {
   z-index: 1;
   overflow-y: auto;
   min-height: 0;
+}
+
+/* Container used when rendering an image inside an editor pane. The
+   container fills the available pane space (flex:1) and centers the
+   image. The image itself is constrained with max-width/max-height
+   and object-fit: contain so it never forces the pane to resize. */
+.editor-pane .pane-image-container {
+  /* Position absolutely so the container does not contribute to the
+     flex layout measurements of the editor pane and thus cannot force
+     the pane to resize when the image loads. The textarea remains in
+     the normal flow (and is hidden when an image is shown). */
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden; /* clip image rather than grow the pane */
+  padding: 16px; /* visual padding; image sizing accounts for this */
+  box-sizing: border-box;
+  z-index: 10; /* render above the textarea but below actions/badges */
+}
+
+.editor-pane .pane-image-viewer {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
 }
 
 /* Minimal visual for showing a faux gutter and padding when line numbers enabled */
@@ -2369,15 +2432,15 @@ body[data-theme="dark"] .editor-pane:not(.active) {
 }
 
 .workspace__splitter {
-  flex: 0 0 12px; /* Larger hover area */
+  flex: 0 0 24px; /* Larger hover area */
   cursor: col-resize;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
-  margin-left: -6px; /* Pull 6px into the editor pane */
-  margin-right: -6px; /* Pull 6px into the preview pane */
+  margin-left: -12px; /* Pull 6px into the editor pane */
+  margin-right: -12px; /* Pull 6px into the preview pane */
   z-index: 2147483646; /* Ensure it's above both panes and editor dividers */
   pointer-events: auto; /* Ensure splitter receives pointer events */
 }
@@ -2564,6 +2627,11 @@ body[data-theme="dark"] .editor-pane:not(.active) {
   flex: 1;
   overflow-y: auto; /* Re-enable scrolling for editor content */
   padding: 24px;
+  min-width: 0;
+}
+
+#markdown-preview {
+  min-width: 0;
 }
 
 .code-viewer,

@@ -337,7 +337,10 @@ const storageKeys = {
   editorSpellcheck: 'NTA.editorSpellcheck',
   editorSoftWrap: 'NTA.editorSoftWrap',
   defaultExportFormat: 'NTA.defaultExportFormat',
-  cmdEDirectExport: 'NTA.cmdEDirectExport'
+  cmdEDirectExport: 'NTA.cmdEDirectExport',
+  hashtagPanelMinimized: 'NTA.hashtagPanelMinimized',
+  hashtagPanelHeight: 'NTA.hashtagPanelHeight',
+  hashtagPanelPrevHeight: 'NTA.hashtagPanelPrevHeight'
 };
 
 // ...existing code...
@@ -370,7 +373,7 @@ function executeKeybindingAction(action, event) {
       break;
     case 'link':
       event.preventDefault();
-      wrapSelection('[', '](url)');
+      try { insertLinkAtSelection(); } catch (e) { /* ignore */ }
       break;
   }
 }
@@ -397,6 +400,55 @@ function wrapSelection(before, after) {
   const newCursorPos = start + before.length + selectedText.length;
   try { edt.setSelectionRange(newCursorPos, newCursorPos); } catch (e) {}
   try { edt.focus({ preventScroll: false }); } catch (e) { edt.focus(); }
+}
+
+// Prompt the user for a URL and insert a markdown link using the current
+// selection as the link text (or the URL if nothing is selected).
+function insertLinkAtSelection() {
+  const edt = getActiveEditorInstance();
+  if (!edt || !edt.isPresent()) return;
+
+  const textarea = edt.el;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const selectedText = textarea.value.substring(start, end);
+
+  // Ask the user for a URL. Use a sensible default but allow cancelling.
+  let url = window.prompt('Enter URL for link:', 'https://');
+  if (url === null) return; // user cancelled
+  url = String(url).trim();
+  if (!url) return;
+
+  // If user entered a bare 'www.' style URL, prepend https:// for convenience.
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(url) && url.startsWith('www.')) {
+    url = 'https://' + url;
+  }
+
+  const label = selectedText && selectedText.length ? selectedText : url;
+  const replacement = `[${label}](${url})`;
+
+  // Try to use setRangeText for a clean insertion, fall back to rebuilding value
+  try {
+    textarea.setRangeText(replacement);
+  } catch (e) {
+    const v = textarea.value;
+    textarea.value = v.slice(0, start) + replacement + v.slice(end);
+  }
+
+  // Position the selection to the URL portion so the user can quickly edit it
+  try {
+    const urlPosInReplacement = replacement.indexOf('(') + 1; // position inside the (
+    const urlStart = start + urlPosInReplacement;
+    const urlEnd = urlStart + url.length;
+    textarea.selectionStart = urlStart;
+    textarea.selectionEnd = urlEnd;
+  } catch (e) {
+    // fallback: place caret at end of inserted text
+    try { textarea.selectionStart = textarea.selectionEnd = start + replacement.length; } catch (ee) {}
+  }
+
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  try { textarea.focus({ preventScroll: false }); } catch (e) { textarea.focus(); }
 }
 
 const readStorage = (key) => {
@@ -679,6 +731,40 @@ const persistPreviewCollapsed = (collapsed) => {
 
 const initialPreviewCollapsed = getPersistedPreviewCollapsed();
 
+const getPersistedHashtagPanelMinimized = () => readStorage(storageKeys.hashtagPanelMinimized) === 'true';
+
+const getPersistedHashtagPanelHeight = () => {
+  const saved = readStorage(storageKeys.hashtagPanelHeight);
+  if (saved) {
+    const height = parseInt(saved, 10);
+    if (!isNaN(height) && height >= 100 && height <= 800) {
+      return height;
+    }
+  }
+  return 300; // default height
+};
+
+const getPersistedHashtagPanelPrevHeight = () => {
+  const saved = readStorage(storageKeys.hashtagPanelPrevHeight);
+  if (saved) {
+    const height = parseInt(saved, 10);
+    if (!isNaN(height) && height >= 100 && height <= 800) {
+      return height;
+    }
+  }
+  return 300; // default height
+};
+
+const initialHashtagPanelMinimized = getPersistedHashtagPanelMinimized();
+const initialHashtagPanelHeight = getPersistedHashtagPanelHeight();
+const initialHashtagPanelPrevHeight = getPersistedHashtagPanelPrevHeight();
+
+// Editor ratio bounds used for workspace splitter (left/right editor vs preview)
+// Widened bounds so the editor area can take more of the workspace and the
+// preview (right sidebar) can be made much smaller when desired.
+const minEditorRatio = 0.29; // minimum fraction allocated to editor area
+const maxEditorRatio = 0.95; // maximum fraction allocated to editor area
+
 const state = {
   notes: new Map(),
   tree: null,
@@ -690,11 +776,21 @@ const state = {
   sidebarWidth: initialSidebarWidth,
   resizingSidebar: false,
   sidebarResizePointerId: null,
-  hashtagPanelHeight: 300, // Default height for hashtag panel
+  hashtagPanelHeight: initialHashtagPanelHeight, // Default height for hashtag panel
+  hashtagPanelPrevHeight: initialHashtagPanelPrevHeight, // Previous height before minimization
   resizingHashtagPanel: false,
   hashtagResizePointerId: null,
   initialMouseY: null, // Store initial mouse Y position for resize
   initialHashtagHeight: null, // Store initial hashtag height for resize
+  hashtagPanelMinimized: initialHashtagPanelMinimized, // Whether the hashtag panel is minimized
+  // Sidebar drag helpers to avoid the handle "jumping" when the interactive
+  // hit area is wider than the visible line. We store the pointer offset
+  // relative to the current sidebar boundary when dragging starts and
+  // subtract it from subsequent clientX values.
+  initialMouseX: null,
+  initialSidebarWidth: null,
+  sidebarDragOffset: null,
+  sidebarDragAppLeft: null,
   saveTimer: null,
   saving: false,
   currentFolder: null,
@@ -717,6 +813,7 @@ const state = {
   renamingNoteId: null,
   sidebarCollapsed: initialSidebarCollapsed,
   previewCollapsed: initialPreviewCollapsed,
+  previewScrollSync: false,
   previewSourceBlocks: new Map(),
   previewHighlightTimer: null,
   previewHighlightedElement: null,
@@ -1044,7 +1141,7 @@ class Pane {
     try { this.root.addEventListener('dragover', handleEditorDragOver, { passive: false }); } catch (e) {}
     try { this.root.addEventListener('dragenter', handleEditorDragEnter, { passive: false }); } catch (e) {}
     try { this.root.addEventListener('dragleave', handleEditorDragLeave, { passive: false }); } catch (e) {}
-    try { this.root.addEventListener('drop', handleEditor2Drop, true); } catch (e) {}
+  try { this.root.addEventListener('drop', handleEditor2Drop, true); } catch (e) {}
 
     // close button behavior
     if (this.actions) {
@@ -1064,6 +1161,9 @@ class Pane {
 
   replaceWithDynamic() {
     try {
+      // If a drag/drop is active, avoid removing/replacing panes which can
+      // be triggered inadvertently while the user is dragging files.
+      if (state && state._isDropping) return;
       // Remove the static root from the DOM
       if (this.root && this.root.parentNode) this.root.remove();
 
@@ -1139,18 +1239,22 @@ class Pane {
       if (existingPdf) existingPdf.remove();
       const existingNb = this.root.querySelector('.notebook-viewer');
       if (existingNb) existingNb.remove();
+      const existingVideo = this.root.querySelector('.video-pane-viewer');
+      if (existingVideo) existingVideo.remove();
+      const existingHtml = this.root.querySelector('.html-pane-viewer');
+      if (existingHtml) existingHtml.remove();
       const ta = this.root.querySelector('textarea');
       if (ta) ta.hidden = false;
     } catch (e) { /* ignore */ }
   }
 
   async loadNote(note) {
-    console.log('[DEBUG loadNote] loading note:', note?.id, note?.type, note?.title);
     if (!note) return false;
     // route to existing renderers (keeps existing behavior)
     if (note.type === 'pdf') return await renderPdfInPane(note, this.id);
     if (note.type === 'image') return await renderImageInPane(note, this.id);
     if (note.type === 'video') return await renderVideoInPane(note, this.id);
+    if (note.type === 'html') return await renderHtmlInPane(note, this.id);
     if (note.type === 'notebook') return await renderNotebookInPane(note, this.id);
     // fallback: set editor textarea value
     try { if (this.editor && this.editor.el) this.editor.el.value = note.content || ''; } catch (e) {}
@@ -1162,6 +1266,36 @@ class Pane {
 const panes = {};
 // Editor instances map kept for backward compat; values point to Pane.editor
 const editorInstances = {};
+
+// Reinitialize editor instances based on current DOM (for tests)
+function reinitializeEditorInstances() {
+  // Clear existing instances
+  Object.keys(editorInstances).forEach(key => {
+    delete editorInstances[key];
+  });
+  Object.keys(panes).forEach(key => {
+    delete panes[key];
+  });
+
+  // Recreate left/right panes if DOM exists
+  const leftRootEl = document.querySelector('.editor-pane--left');
+  if (leftRootEl) {
+    panes.left = new Pane('left', { label: 'Left', dynamic: false, rootEl: leftRootEl });
+    editorInstances.left = panes.left.editor;
+  } else {
+    panes.left = null;
+    editorInstances.left = null;
+  }
+
+  const rightRootEl = document.querySelector('.editor-pane--right');
+  if (rightRootEl) {
+    panes.right = new Pane('right', { label: 'Right', dynamic: false, rootEl: rightRootEl });
+    editorInstances.right = panes.right.editor;
+  } else {
+    panes.right = null;
+    editorInstances.right = null;
+  }
+}
 
 // Create left/right Pane instances only if the static DOM roots exist.
 // If a static root was removed (user closed left/right), do not recreate a
@@ -2348,8 +2482,29 @@ const clearPaneViewer = (paneId) => {
     if (existingPdf) existingPdf.remove();
     const existingNb = root.querySelector('.notebook-viewer');
     if (existingNb) existingNb.remove();
+  const existingVideo = root.querySelector('.video-pane-viewer');
+  if (existingVideo) existingVideo.remove();
+  const existingHtml = root.querySelector('.html-pane-viewer');
+  if (existingHtml) existingHtml.remove();
+    // Remove any image container previously added and restore pane sizing
+    const existingImg = root.querySelector('.pane-image-container');
+    if (existingImg) existingImg.remove();
+    // (No pane minWidth restoration — do not lock pane size when showing images)
     const ta = root.querySelector('textarea');
-    if (ta) ta.hidden = false;
+    if (ta) {
+      try {
+        // restore visibility/pointer events and original hidden state
+        ta.style.visibility = '';
+        ta.style.pointerEvents = '';
+        ta.removeAttribute('aria-hidden');
+        if (ta.dataset._origHidden !== undefined) {
+          if (ta.dataset._origHidden === '1') ta.hidden = true; else ta.hidden = false;
+          delete ta.dataset._origHidden;
+        } else {
+          ta.hidden = false;
+        }
+      } catch (e) { try { ta.hidden = false; } catch (e2) {} }
+    }
   } catch (e) { /* ignore */ }
 };
 
@@ -2357,6 +2512,25 @@ const renderNotebookInPane = (note, paneId) => {
   if (!note || note.type !== 'notebook' || !paneId) return false;
   const root = getPaneRootElement(paneId);
   if (!root) return false;
+
+  // If the pane has a textarea/editor, prefer showing the raw notebook JSON
+  // in the editor instead of creating a separate notebook viewer. This
+  // ensures the user sees the ipynb source in the pane.
+  try {
+    const ta = root.querySelector('textarea');
+    if (ta) {
+      ta.hidden = false;
+      ta.disabled = false;
+      if (typeof note.content === 'string' && note.content.trim()) {
+        ta.value = note.content;
+      } else if (note.notebook) {
+        try { ta.value = JSON.stringify(note.notebook, null, 2); } catch (e) { ta.value = ''; }
+      } else {
+        ta.value = '';
+      }
+      return true;
+    }
+  } catch (e) { /* ignore */ }
 
   // Clear existing pane viewer
   clearPaneViewer(paneId);
@@ -2440,6 +2614,107 @@ const renderNotebookInPane = (note, paneId) => {
   return true;
 };
 
+// Render a video (mp4/webm/ogg) inside a pane
+const renderVideoInPane = async (note, paneId) => {
+  if (!note || note.type !== 'video' || !paneId) return false;
+  const root = getPaneRootElement(paneId);
+  if (!root) return false;
+
+  clearPaneViewer(paneId);
+  const ta = root.querySelector('textarea');
+  if (ta) ta.hidden = true;
+
+  const rawSrc = note.absolutePath ?? note.storedPath ?? '';
+  if (!rawSrc) {
+    if (ta) ta.hidden = false;
+    return false;
+  }
+
+  try {
+    const payload = { src: rawSrc, notePath: note.absolutePath ?? null, folderPath: note.folderPath ?? state.currentFolder ?? null };
+    const result = await window.api.resolveResource(payload);
+    const value = result?.value ?? null;
+    if (!value) {
+      if (ta) ta.hidden = false;
+      return false;
+    }
+
+    const container = document.createElement('div');
+    container.className = 'pane-video-container';
+    // Ensure the container fills the pane and lets the CSS sizing apply
+    try { container.style.position = 'absolute'; container.style.inset = '0'; } catch (e) {}
+
+    const video = document.createElement('video');
+    video.className = 'video-pane-viewer';
+    video.controls = true;
+    video.alt = note.title ?? rawSrc;
+    // Ensure the video element respects pane bounds
+    try {
+      video.style.maxWidth = '100%';
+      video.style.maxHeight = '100%';
+      video.style.objectFit = 'contain';
+      video.style.display = 'block';
+    } catch (e) {}
+    // Assign source after attachment
+    container.appendChild(video);
+    root.appendChild(container);
+    video.src = value;
+
+    // Wait for metadata to ensure playable
+    await new Promise((resolve) => {
+      const onLoaded = () => { resolve(true); };
+      const onError = () => { resolve(false); };
+      video.addEventListener('loadedmetadata', onLoaded, { once: true });
+      video.addEventListener('error', onError, { once: true });
+      // If already loaded
+      try { if (video.readyState >= 1) onLoaded(); } catch (e) {}
+    });
+
+    return true;
+  } catch (e) {
+    if (ta) ta.hidden = false;
+    return false;
+  }
+};
+
+// Render an HTML file inside a pane via iframe
+const renderHtmlInPane = async (note, paneId) => {
+  if (!note || note.type !== 'html' || !paneId) return false;
+  const root = getPaneRootElement(paneId);
+  if (!root) return false;
+
+  clearPaneViewer(paneId);
+  const ta = root.querySelector('textarea');
+  if (ta) ta.hidden = true;
+
+  const rawSrc = note.absolutePath ?? note.storedPath ?? '';
+  if (!rawSrc) {
+    if (ta) ta.hidden = false;
+    return false;
+  }
+
+  try {
+    const payload = { src: rawSrc, notePath: note.absolutePath ?? null, folderPath: note.folderPath ?? state.currentFolder ?? null };
+    const result = await window.api.resolveResource(payload);
+    const value = result?.value ?? null;
+    if (!value) {
+      if (ta) ta.hidden = false;
+      return false;
+    }
+
+    const iframe = document.createElement('iframe');
+    iframe.className = 'html-pane-viewer';
+    iframe.src = value;
+    iframe.title = note.title ?? 'HTML Preview';
+    iframe.sandbox = 'allow-scripts allow-forms allow-popups';
+    root.appendChild(iframe);
+    return true;
+  } catch (e) {
+    if (ta) ta.hidden = false;
+    return false;
+  }
+};
+
 const createNotebookEditor = (note, paneId) => {
   const editor = document.createElement('div');
   editor.className = 'notebook-editor';
@@ -2455,6 +2730,16 @@ const renderPdfInPane = async (note, paneId) => {
   if (!note || note.type !== 'pdf' || !paneId) return false;
   const root = getPaneRootElement(paneId);
   if (!root) return false;
+
+  // If another render is already in progress for this pane, assume it will
+  // produce the viewer and avoid starting a second render. This prevents a
+  // race where two concurrent calls both clear then append an iframe.
+  try {
+    if (root.dataset && root.dataset._pdfRendering === '1') {
+      return true;
+    }
+    root.dataset._pdfRendering = '1';
+  } catch (e) { /* ignore */ }
 
   // Remove any global PDF preview to avoid duplicates
   try { elements.pdfViewer?.classList.remove('visible'); elements.pdfViewer?.removeAttribute('src'); } catch (e) {}
@@ -2480,8 +2765,9 @@ const renderPdfInPane = async (note, paneId) => {
     }
 
     if (!resource || !resource.value) {
-  // Debug prints removed
+      // Debug prints removed
       if (ta) ta.hidden = false;
+      try { if (root && root.dataset) delete root.dataset._pdfRendering; } catch (e) {}
       return false;
     }
 
@@ -2495,10 +2781,12 @@ const renderPdfInPane = async (note, paneId) => {
     iframe.title = note.title ?? 'PDF Preview';
     // Insert after the textarea so it occupies the editor pane area
     root.appendChild(iframe);
+    try { if (root && root.dataset) delete root.dataset._pdfRendering; } catch (e) {}
     return true;
   } catch (error) {
   // Debug prints removed
     if (ta) ta.hidden = false;
+    try { if (root && root.dataset) delete root.dataset._pdfRendering; } catch (e) {}
     return false;
   }
 };
@@ -2511,10 +2799,18 @@ const renderImageInPane = async (note, paneId) => {
   const root = getPaneRootElement(paneId);
   if (!root) return false;
 
-  // Clear any existing per-pane viewers and hide textarea
+  // Clear any existing per-pane viewers and hide textarea visually while
+  // keeping it in the layout so the pane size is preserved.
   clearPaneViewer(paneId);
   const ta = root.querySelector('textarea');
-  if (ta) ta.hidden = true;
+  try {
+    if (ta) {
+      ta.dataset._origHidden = ta.hidden ? '1' : '0';
+      ta.style.visibility = 'hidden';
+      ta.style.pointerEvents = 'none';
+      ta.setAttribute('aria-hidden', 'true');
+    }
+  } catch (e) { /* ignore */ }
 
   const rawSrc = note.absolutePath ?? note.storedPath ?? '';
   if (!rawSrc) {
@@ -2523,50 +2819,105 @@ const renderImageInPane = async (note, paneId) => {
   }
 
   try {
-    const payload = { src: rawSrc, notePath: note.absolutePath ?? null, folderPath: note.folderPath ?? state.currentFolder ?? null };
-    console.log('[DEBUG renderImageInPane] payload:', payload);
-    const result = await window.api.resolveResource(payload);
-    console.log('[DEBUG renderImageInPane] result:', result);
-    const value = result?.value ?? null;
+  const payload = { src: rawSrc, notePath: note.absolutePath ?? null, folderPath: note.folderPath ?? state.currentFolder ?? null };
+  const result = await window.api.resolveResource(payload);
+  const value = result?.value ?? null;
     if (!value) {
-      console.log('[DEBUG renderImageInPane] no value, restoring textarea');
       if (ta) ta.hidden = false;
       return false;
     }
 
-    // Create an image element for the pane
-    const img = document.createElement('img');
-    img.className = 'pane-image-viewer';
-    img.alt = note.title ?? rawSrc;
-    img.loading = 'lazy';
-    img.src = value;
-    img.style.maxWidth = '100%';
-    img.style.height = 'auto';
-    // Temporary debug: add red outline to make image visible
-    img.style.outline = '2px solid red';
+  // Create a container and image element for the pane. The container
+  // ensures the image is constrained to the pane's available area and
+  // doesn't cause the pane to resize when the image has large dimensions.
+  const container = document.createElement('div');
+  container.className = 'pane-image-container';
 
-    // Add load/error listeners for debugging
-    img.addEventListener('load', () => console.log('[DEBUG renderImageInPane] image loaded'));
-    img.addEventListener('error', (e) => console.log('[DEBUG renderImageInPane] image error:', e));
+  const img = document.createElement('img');
+  img.className = 'pane-image-viewer';
+  img.alt = note.title ?? rawSrc;
+  // Ensure the image loads immediately (tests and some browsers may defer lazy images)
+  img.loading = 'eager';
 
-    // Append to pane root
-    root.appendChild(img);
-    console.log('[DEBUG renderImageInPane] image appended to pane', paneId);
+  // Append container (which is flex and sized by CSS) then the image
+  container.appendChild(img);
+  root.appendChild(container);
+  // Assign the src after attachment so load events fire reliably
+  img.src = value;
+
+    // Return only when the image has loaded (or failed) so callers can observe
+    // whether the in-pane render succeeded. Use a timeout to avoid hanging.
+    const waitForLoad = (timeoutMs = 5000) => new Promise((resolve) => {
+      let settled = false;
+      const onLoad = () => {
+        if (settled) return;
+        settled = true;
+        try { img.dataset.loaded = 'true'; } catch (e) {}
+        resolve(true);
+      };
+      const onError = () => {
+        if (settled) return;
+        settled = true;
+        try { img.remove(); } catch (e) {}
+        resolve(false);
+      };
+      const onTimeout = () => {
+        if (settled) return;
+        settled = true;
+        // keep the element but mark as not loaded
+        resolve(false);
+      };
+
+      img.addEventListener('load', onLoad);
+      img.addEventListener('error', onError);
+      setTimeout(onTimeout, timeoutMs);
+
+      // If image already complete (cached) evaluate immediately
+      try {
+        if (img.complete && img.naturalWidth > 0) {
+          onLoad();
+        }
+      } catch (e) { /* ignore */ }
+    });
+
+    const loadedOk = await waitForLoad(5000);
+    if (!loadedOk) {
+      if (ta) ta.hidden = false;
+      return false;
+    }
+
+    // If we successfully rendered an external or unmapped image, register
+    // the lightweight note in application state and map it to this pane so
+    // other parts of the renderer that clear unmapped panes don't remove it.
+    try {
+      if (note && note.id) {
+        try {
+          if (!state.notes.has(note.id)) {
+            // store a minimal representation so UI logic can reason about it
+            state.notes.set(note.id, {
+              id: note.id,
+              title: note.title || note.id,
+              type: 'image',
+              absolutePath: note.absolutePath || note.storedPath || '',
+              folderPath: note.folderPath || ''
+            });
+          }
+          state.editorPanes = state.editorPanes || {};
+          state.editorPanes[paneId] = state.editorPanes[paneId] || {};
+          state.editorPanes[paneId].noteId = note.id;
+          try { localStorage.setItem(storageKeys.editorPanes, JSON.stringify(state.editorPanes)); } catch (e) { /* ignore */ }
+        } catch (e) { /* ignore */ }
+      }
+    } catch (e) { /* ignore */ }
+
     return true;
   } catch (e) {
-    console.log('[DEBUG renderImageInPane] exception:', e);
     if (ta) ta.hidden = false;
     return false;
   }
 };
 
-// Expose some helpers for end-to-end tests (non-production use).
-try {
-  if (typeof window !== 'undefined') {
-    window.__nta_test_helpers = window.__nta_test_helpers || {};
-    window.__nta_test_helpers.renderImageInPane = renderImageInPane;
-  }
-} catch (e) { /* ignore */ }
+// Test helpers intentionally not exposed in production build.
 
 const clearPdfCache = () => {
   for (const resource of pdfCache.values()) {
@@ -3486,6 +3837,28 @@ const applyEditorRatio = () => {
     return;
   }
   elements.workspaceContent.style.setProperty('--local-editor-ratio', state.editorRatio.toString());
+
+  // Diagnostic: compute expected preview width and compare to actual
+  try {
+    const bounds = elements.workspaceContent.getBoundingClientRect();
+    const previewEl = document.querySelector('.preview-pane');
+    const editorEl = document.querySelector('.editor-pane');
+    if (bounds && previewEl) {
+      // Account for splitter width (12px) in the available space
+      const availableWidth = bounds.width - 12;
+      const expectedPreviewPx = Math.round((1 - state.editorRatio) * availableWidth);
+      const rect = previewEl.getBoundingClientRect();
+      const actualPreviewPx = Math.round(rect.width);
+      const cs = getComputedStyle(previewEl);
+      const compWidth = cs.width;
+      const boxSizing = cs.boxSizing;
+      const paddingLeft = parseFloat(cs.paddingLeft) || 0;
+      const paddingRight = parseFloat(cs.paddingRight) || 0;
+      const borderLeft = parseFloat(cs.borderLeftWidth) || 0;
+      const borderRight = parseFloat(cs.borderRightWidth) || 0;
+      console.log(`[applyEditorRatio] expected:${expectedPreviewPx}px actual:${actualPreviewPx}px bounds:${Math.round(bounds.width)}px ratio:${state.editorRatio} cssWidth:${compWidth} boxSizing:${boxSizing} pad:${paddingLeft + paddingRight}px border:${borderLeft + borderRight}px`);
+    }
+  } catch (e) { /* ignore diagnostics errors */ }
 };
 
 const applySidebarCollapsed = (collapsed) => {
@@ -3580,6 +3953,53 @@ const togglePreviewCollapsed = () => {
   setStatus(statusMessage, true);
 };
 
+// Persist hashtag panel settings
+const persistHashtagPanelSettings = () => {
+  if (typeof window !== 'undefined' && window.NTA) {
+    window.NTA.hashtagPanelHeight = state.hashtagPanelHeight;
+    window.NTA.hashtagPanelMinimized = state.hashtagPanelMinimized || false;
+    window.NTA.hashtagPanelPrevHeight = state.hashtagPanelPrevHeight || state.hashtagPanelHeight;
+    try {
+      localStorage.setItem(storageKeys.hashtagPanelHeight, String(state.hashtagPanelHeight));
+      localStorage.setItem(storageKeys.hashtagPanelMinimized, String(state.hashtagPanelMinimized || false));
+      localStorage.setItem(storageKeys.hashtagPanelPrevHeight, String(state.hashtagPanelPrevHeight || state.hashtagPanelHeight));
+    } catch (e) {}
+  }
+};
+
+const applyHashtagPanelMinimized = (minimized) => {
+  state.hashtagPanelMinimized = minimized;
+  
+  const hashtagContainer = document.querySelector('.hashtag-container');
+  if (hashtagContainer) {
+    hashtagContainer.classList.toggle('hashtag-minimized', minimized);
+  }
+  
+  const toggleButton = document.getElementById('toggle-hashtag-minimize');
+  if (toggleButton) {
+    const icon = toggleButton.querySelector('.icon') || toggleButton;
+    icon.textContent = minimized ? '▴' : '▾'; // Up arrow when minimized, down arrow when expanded
+    toggleButton.setAttribute('aria-pressed', minimized ? 'true' : 'false');
+    toggleButton.setAttribute('title', minimized ? 'Restore hashtags' : 'Minimize hashtags');
+  }
+  
+  persistHashtagPanelSettings();
+};
+
+const toggleHashtagPanelMinimized = () => {
+  const nextMinimized = !state.hashtagPanelMinimized;
+  if (nextMinimized) {
+    // Save current height before minimizing
+    state.hashtagPanelPrevHeight = state.hashtagPanelHeight;
+  } else {
+    // Restore previous height when expanding
+    state.hashtagPanelHeight = state.hashtagPanelPrevHeight || 300;
+  }
+  applyHashtagPanelMinimized(nextMinimized);
+  // Persist the state (this will be handled by the existing persist function)
+  setStatus(nextMinimized ? 'Hashtags minimized.' : 'Hashtags restored.', true);
+};
+
 // dual editor support removed
 
 // Export dropdown functions
@@ -3666,16 +4086,22 @@ const setEditorRatio = (ratio, announce = false) => {
   }
 };
 
-const updateEditorRatioFromPointer = (clientX) => {
+const updateEditorRatioFromPointer = (clientX, fixedBounds = null) => {
   if (!elements.workspaceContent) {
     return;
   }
 
-  const bounds = elements.workspaceContent.getBoundingClientRect();
-  if (!bounds.width) {
+  const bounds = fixedBounds || elements.workspaceContent.getBoundingClientRect();
+  if (!bounds || !bounds.width) {
     return;
   }
-  const ratio = (clientX - bounds.left) / bounds.width;
+  // Compute a ratio but enforce an absolute minimum preview width in pixels
+  const rawRatio = (clientX - bounds.left) / bounds.width;
+  // Minimum preview width in pixels
+  const minPreviewPx = 20;
+  // Convert to maximum editor ratio that still leaves minPreviewPx for preview
+  const maxEditorDueToPreviewPx = 1 - (minPreviewPx / bounds.width);
+  const ratio = clamp(rawRatio, minEditorRatio, Math.min(maxEditorRatio, maxEditorDueToPreviewPx));
   setEditorRatio(ratio, false);
 };
 
@@ -3936,12 +4362,20 @@ const handleTreeNodeDragEnd = (event) => {
 
 // Drop handlers for editors
 const handleEditorDragOver = (event) => {
-  event.preventDefault();
-  event.dataTransfer.dropEffect = 'copy';
+  // Only handle if there are files being dragged
+  if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    try { state._isDropping = true; } catch (e) {}
+  }
 };
 
 const handleEditorDragEnter = (event) => {
-  try { event.preventDefault(); } catch (e) {}
+  // Only handle if there are files being dragged
+  if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+    try { event.preventDefault(); } catch (e) {}
+    try { state._isDropping = true; } catch (e) {}
+  }
   // Intentionally do not add a highlight when entering a pane. Clear any
   // existing highlights to avoid stale visuals — we don't want the dashed
   // drop target to appear while the pointer is over a pane.
@@ -3959,12 +4393,12 @@ const handleEditorDragLeave = (event) => {
     if (!paneRoot || !paneRoot.contains || (related && !paneRoot.contains(related))) {
       try { document.querySelectorAll('.editor-drop-target').forEach(el => el.classList.remove('editor-drop-target')); } catch (e) {}
     }
+    try { state._isDropping = false; } catch (e) {}
   } catch (e) { /* ignore */ }
 };
 
 // Handle external file drops into editors
 const handleExternalFileDrop = (event, files) => {
-  console.log('[DEBUG handleExternalFileDrop] called with files:', files);
   // Determine pane id
   let paneId = null;
   try {
@@ -4018,21 +4452,14 @@ const handleExternalFileDrop = (event, files) => {
       // Attempt to render in-pane; if the async renderer fails, fall back to
       // inserting a markdown image link so the drop always produces visible
       // output rather than leaving the pane blank.
-      console.log('[DEBUG handleExternalFileDrop] attempting to render image in pane', paneId, 'for file', fileName);
       try {
         Promise.resolve(renderImageInPane(imageNote, paneId)).then((ok) => {
-          console.log('[DEBUG handleExternalFileDrop] renderImageInPane result:', ok);
-          if (!ok) {
-            console.log('[DEBUG handleExternalFileDrop] inserting markdown fallback');
-            insertMarkdownContent(`![${fileName}](${filePath})\n\n`);
-          }
-        }).catch((e) => {
-          console.log('[DEBUG handleExternalFileDrop] renderImageInPane exception:', e);
+          if (!ok) insertMarkdownContent(`![${fileName}](${filePath})\n\n`);
+        }).catch(() => {
           insertMarkdownContent(`![${fileName}](${filePath})\n\n`);
         });
       } catch (e) {
         // Defensive: synchronous errors (shouldn't normally happen)
-        console.log('[DEBUG handleExternalFileDrop] synchronous exception:', e);
         insertMarkdownContent(`![${fileName}](${filePath})\n\n`);
       }
     } else if (['mp4', 'webm', 'ogg', 'avi', 'mov'].includes(fileExt)) {
@@ -4079,6 +4506,125 @@ const handleExternalFileDrop = (event, files) => {
       } catch (e) {
         insertMarkdownContent(`[${fileName}](${filePath})\n\n`);
       }
+    } else if (fileExt === 'html' || fileExt === 'htm') {
+      // HTML - open in iframe pane
+      const htmlNote = {
+        id: `external-html-${Date.now()}-${Math.random()}`,
+        title: fileName,
+        type: 'html',
+        absolutePath: filePath,
+        folderPath: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      try {
+        // Attempt to resolve the file and read its raw text so the pane
+        // editor can display the HTML source and the central preview can
+        // render the program output.
+        (async () => {
+          try {
+            const payload = { src: filePath, notePath: filePath, folderPath: null };
+            const res = await window.api.resolveResource(payload);
+            const url = res?.value ?? null;
+            if (!url) throw new Error('resolve failed');
+            let txt = null;
+            if (typeof url === 'string' && url.startsWith('data:')) {
+              // decode data URL (support base64)
+              const comma = url.indexOf(',');
+              const header = url.substring(5, comma);
+              const payload = url.substring(comma + 1);
+              const isBase64 = header.indexOf(';base64') !== -1;
+              if (isBase64) {
+                try {
+                  const bin = atob(payload);
+                  const len = bin.length;
+                  const bytes = new Uint8Array(len);
+                  for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+                  try { txt = new TextDecoder('utf-8').decode(bytes); } catch (e) { txt = '' + bin; }
+                } catch (e) { txt = null; }
+              } else {
+                try { txt = decodeURIComponent(payload); } catch (e) { txt = payload; }
+              }
+            } else {
+              // fallback: fetch remote/data URL when allowed
+              try { txt = await (await fetch(url)).text(); } catch (e) { txt = null; }
+            }
+            if (txt !== null) {
+              htmlNote.content = txt;
+            }
+            // Register note and open in pane so textarea shows raw HTML
+            const nn = normalizeNote(htmlNote);
+            state.notes.set(nn.id, nn);
+            openNoteInPane(nn.id, paneId, { activate: true });
+          } catch (err) {
+            insertMarkdownContent(`[${fileName}](${filePath})\n\n`);
+          }
+        })();
+      } catch (e) {
+        insertMarkdownContent(`[${fileName}](${filePath})\n\n`);
+      }
+    } else if (fileExt === 'ipynb') {
+      // Jupyter Notebook - open in notebook pane
+      const nbNote = {
+        id: `external-nb-${Date.now()}-${Math.random()}`,
+        title: fileName,
+        type: 'notebook',
+        absolutePath: filePath,
+        folderPath: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      try {
+        (async () => {
+          try {
+            const payload = { src: filePath, notePath: filePath, folderPath: null };
+            const res = await window.api.resolveResource(payload);
+            const url = res?.value ?? null;
+            if (!url) throw new Error('resolve failed');
+            let txt = null;
+            if (typeof url === 'string' && url.startsWith('data:')) {
+              // decode data URL (support base64)
+              const comma = url.indexOf(',');
+              const header = url.substring(5, comma);
+              const payload = url.substring(comma + 1);
+              const isBase64 = header.indexOf(';base64') !== -1;
+              if (isBase64) {
+                try {
+                  const bin = atob(payload);
+                  const len = bin.length;
+                  const bytes = new Uint8Array(len);
+                  for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+                  try { txt = new TextDecoder('utf-8').decode(bytes); } catch (e) { txt = '' + bin; }
+                } catch (e) { txt = null; }
+              } else {
+                try { txt = decodeURIComponent(payload); } catch (e) { txt = payload; }
+              }
+            } else {
+              // fallback: fetch remote/data URL when allowed
+              try { txt = await (await fetch(url)).text(); } catch (e) { txt = null; }
+            }
+            if (txt !== null) {
+              // Try to parse notebook JSON; if parsing fails, fall back to raw text
+              try {
+                const nb = JSON.parse(txt);
+                nbNote.notebook = nb;
+                nbNote.content = JSON.stringify(nb, null, 2);
+              } catch (pe) {
+                nbNote.content = txt;
+              }
+            }
+            const nn = normalizeNote(nbNote);
+            state.notes.set(nn.id, nn);
+            openNoteInPane(nn.id, paneId, { activate: true });
+          } catch (err) {
+            insertMarkdownContent(`[${fileName}](${filePath})\n\n`);
+          }
+        })();
+      } catch (e) {
+        insertMarkdownContent(`[${fileName}](${filePath})\n\n`);
+      }
     } else {
       // Other files - insert as markdown content
       let markdownContent = '';
@@ -4118,7 +4664,6 @@ const handleExternalFileDrop = (event, files) => {
 };
 
 const handleEditor1Drop = (event) => {
-  console.log('[DEBUG handleEditor1Drop] drop event fired, files:', event.dataTransfer?.files);
   // If an earlier capture-phase handler already routed this drop, skip
   try { if (event && event._nta_handled) { return; } } catch (e) {}
   // Prevent other drop handlers from also processing this internal note drop
@@ -4140,11 +4685,7 @@ const handleEditor1Drop = (event) => {
   }
 
   const noteId = event.dataTransfer?.getData ? event.dataTransfer.getData('text/noteId') : null;
-  console.log('[DEBUG handleEditor1Drop] noteId from dataTransfer:', noteId);
-  if (!noteId || !state.notes.has(noteId)) {
-    console.log('[DEBUG handleEditor1Drop] no noteId or note not found');
-    return;
-  }
+  if (!noteId || !state.notes.has(noteId)) return;
 
   // Determine pane id: prefer data-pane-id, textarea id, or right-pane class
   let paneId = null;
@@ -4819,7 +5360,6 @@ const setActiveEditorPane = (pane) => {
 // Open a note in a given pane (left or right). Ensures tab exists, activates pane/tab,
 // persists per-pane mapping, and updates UI. Reused by drag/drop and other flows.
 const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => {
-  console.log('[DEBUG openNoteInPane] opening noteId:', noteId, 'in pane:', pane);
   // Debug prints removed
   if (!noteId || !state.notes.has(noteId)) return null;
   // If requested pane doesn't exist, default to 'left'
@@ -4857,12 +5397,177 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
         inst.el.disabled = false;
         inst.el.value = paneNote.content ?? '';
       } else if (paneNote.type === 'notebook') {
-        // Render notebook viewer in the pane
+        // For notebooks, create a visual notebook viewer for testing
         try { clearPaneViewer(pane); } catch (e) {}
-        inst.el.hidden = true;
-        inst.el.disabled = true;
-        inst.el.value = '';
-        renderNotebookInPane(paneNote, pane);
+        if (inst) inst.el.hidden = true; // Hide the textarea if it exists
+
+        // Create notebook viewer
+        const paneRoot = document.querySelector(`.editor-pane[data-pane-id="${pane}"]`);
+        if (paneRoot) {
+          // Create or update notebook viewer
+          let viewer = paneRoot.querySelector('.notebook-viewer');
+          if (!viewer) {
+            viewer = document.createElement('div');
+            viewer.className = 'notebook-viewer';
+            paneRoot.appendChild(viewer);
+          }
+
+          // Clear existing content
+          viewer.innerHTML = '';
+
+          const editBtn = document.createElement('button');
+          editBtn.className = 'edit-raw-button';
+          editBtn.textContent = 'Edit raw';
+          viewer.appendChild(editBtn);
+
+          // Add save/cancel buttons (initially hidden)
+          const saveBtn = document.createElement('button');
+          saveBtn.className = 'nb-save-btn';
+          saveBtn.textContent = 'Save';
+          saveBtn.style.display = 'none';
+          viewer.appendChild(saveBtn);
+
+          const cancelBtn = document.createElement('button');
+          cancelBtn.className = 'nb-cancel-btn';
+          cancelBtn.textContent = 'Cancel';
+          cancelBtn.style.display = 'none';
+          viewer.appendChild(cancelBtn);
+
+          // Add notebook content display
+          const content = document.createElement('div');
+          content.className = 'notebook-content';
+          if (paneNote.notebook && paneNote.notebook.cells) {
+            content.textContent = paneNote.notebook.cells.map(cell => cell.source || '').join('\n');
+          }
+          viewer.appendChild(content);
+
+          // Add click handlers for testing
+          editBtn.addEventListener('click', () => {
+            // Hide edit button, show save/cancel
+            editBtn.style.display = 'none';
+            saveBtn.style.display = 'inline-block';
+            cancelBtn.style.display = 'inline-block';
+
+            // Replace content with textarea
+            const editor = document.createElement('div');
+            editor.className = 'notebook-editor';
+
+            const ta = document.createElement('textarea');
+            ta.value = JSON.stringify(paneNote.notebook, null, 2);
+            editor.appendChild(ta);
+
+            viewer.replaceChild(editor, content);
+          });
+
+          saveBtn.addEventListener('click', () => {
+            // Hide save/cancel, show edit
+            saveBtn.style.display = 'none';
+            cancelBtn.style.display = 'none';
+            editBtn.style.display = 'inline-block';
+
+            // Get the edited content and update the note
+            const editor = viewer.querySelector('.notebook-editor');
+            const ta = editor.querySelector('textarea');
+            try {
+              const updatedNotebook = JSON.parse(ta.value);
+              paneNote.notebook = updatedNotebook;
+              state.notes.set(paneNote.id, paneNote);
+            } catch (e) {
+              // Invalid JSON, keep original
+            }
+
+            // Replace editor with content display
+            const newContent = document.createElement('div');
+            newContent.className = 'notebook-content';
+            if (paneNote.notebook && paneNote.notebook.cells) {
+              newContent.textContent = paneNote.notebook.cells.map(cell => cell.source || '').join('\n');
+            }
+            viewer.replaceChild(newContent, editor);
+          });
+
+          cancelBtn.addEventListener('click', () => {
+            // Hide save/cancel, show edit
+            saveBtn.style.display = 'none';
+            cancelBtn.style.display = 'none';
+            editBtn.style.display = 'inline-block';
+
+            // Replace editor with original content display
+            const newContent = document.createElement('div');
+            newContent.className = 'notebook-content';
+            if (paneNote.notebook && paneNote.notebook.cells) {
+              newContent.textContent = paneNote.notebook.cells.map(cell => cell.source || '').join('\n');
+            }
+            const editor = viewer.querySelector('.notebook-editor');
+            if (editor) {
+              viewer.replaceChild(newContent, editor);
+            }
+          });
+        }
+
+        // Also populate textarea for compatibility
+        if (inst) inst.el.value = paneNote.content ?? (paneNote.notebook ? JSON.stringify(paneNote.notebook, null, 2) : '');
+        // Trigger preview render for notebook
+        try { renderNotebookPreview(paneNote); } catch (e) {}
+      } else if (paneNote.type === 'html') {
+        // For HTML files, populate the editor with the raw HTML source so
+        // the user can edit it in the pane. The central preview will render
+        // the program output via renderHtmlPreview.
+        try { clearPaneViewer(pane); } catch (e) {}
+        inst.el.hidden = false;
+        inst.el.disabled = false;
+        try {
+          // If the note has no content but has an absolutePath, try to read it now
+          if ((!paneNote.content || !paneNote.content.length) && paneNote.absolutePath) {
+            (async () => {
+              try {
+                const payload = { src: paneNote.absolutePath, notePath: paneNote.absolutePath, folderPath: paneNote.folderPath ?? null };
+                const res = await window.api.resolveResource(payload);
+                const url = res?.value ?? null;
+                if (url) {
+                  try {
+                    let txt = null;
+                    if (typeof url === 'string' && url.startsWith('data:')) {
+                      // decode data URL (support base64)
+                      const comma = url.indexOf(',');
+                      const header = url.substring(5, comma);
+                      const payload = url.substring(comma + 1);
+                      const isBase64 = header.indexOf(';base64') !== -1;
+                      if (isBase64) {
+                        try {
+                          const bin = atob(payload);
+                          const len = bin.length;
+                          const bytes = new Uint8Array(len);
+                          for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+                          try { txt = new TextDecoder('utf-8').decode(bytes); } catch (e) { txt = '' + bin; }
+                        } catch (e) { txt = null; }
+                      } else {
+                        try { txt = decodeURIComponent(payload); } catch (e) { txt = payload; }
+                      }
+                    } else {
+                      // fallback: fetch remote/data URL when allowed
+                      try { txt = await (await fetch(url)).text(); } catch (e) { txt = null; }
+                    }
+
+                    if (txt !== null) {
+                      paneNote.content = txt;
+                      try { state.notes.set(paneNote.id, paneNote); } catch (e) {}
+                      // Update textarea if this code runs after initial set
+                      try { inst.el.value = paneNote.content ?? inst.el.value; } catch (e) {}
+                    } else {
+                      // Could not obtain text from url
+                    }
+                  } catch (fe) {
+                    // Fetch failed
+                  }
+                }
+              } catch (err) {
+                // Resolve resource failed
+              }
+            })();
+          }
+          inst.el.value = paneNote.content ?? '';
+        } catch (e) {}
+        try { renderHtmlPreview(paneNote); } catch (e) {}
       } else if (paneNote.type === 'image') {
         // Render image viewer in the pane
         try { clearPaneViewer(pane); } catch (e) {}
@@ -4878,7 +5583,7 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
         inst.el.value = '';
         renderPdfInPane(paneNote, pane);
       } else if (paneNote.type === 'video') {
-        // Render video viewer in the pane
+        // Videos: render only inside the pane viewer (do not populate textarea).
         try { clearPaneViewer(pane); } catch (e) {}
         inst.el.hidden = true;
         inst.el.disabled = true;
@@ -4932,8 +5637,17 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
     setActiveTab(existingTab.id);
     renderWorkspaceTree();
     if (paneNote.type === 'pdf') {
-      // Render the PDF inside the target pane.
-      void renderPdfInPane(paneNote, pane);
+      // Render the PDF inside the target pane, but only if there's no
+      // existing per-pane PDF viewer already present. Some code paths above
+      // may have already called renderPdfInPane; avoid duplicating the
+      // iframe by checking for an existing .pdf-pane-viewer element first.
+      try {
+        const root = getPaneRootElement(pane);
+        const already = root && root.querySelector && root.querySelector('.pdf-pane-viewer');
+        if (!already) {
+          void renderPdfInPane(paneNote, pane);
+        }
+      } catch (e) { try { void renderPdfInPane(paneNote, pane); } catch (e2) {} }
       // Do NOT change the global preview (keep last markdown preview visible).
     } else {
       // For markdown and other non-PDF types, update the main preview area.
@@ -6124,8 +6838,21 @@ const renderHtmlPreview = async (note) => {
       return;
     }
 
-    const value = result?.value ?? null;
-    if (value && elements.htmlViewerFrame) {
+    // Prefer the note.content (raw HTML source) when available so the user
+    // edits shown in the pane textarea are rendered in the preview via srcdoc.
+    const rawHtml = note.content ?? null;
+    const value = rawHtml ? null : (result?.value ?? null);
+    if (rawHtml && elements.htmlViewerFrame) {
+      try {
+        elements.htmlViewerFrame.removeAttribute('src');
+        elements.htmlViewerFrame.srcdoc = rawHtml;
+      } catch (e) {
+        elements.htmlViewerError.textContent = 'Unable to render HTML preview from source.';
+        elements.htmlViewerError.hidden = false;
+      }
+      if (elements.htmlViewerError) elements.htmlViewerError.hidden = true;
+      setStatus('HTML ready.', true);
+    } else if (value && elements.htmlViewerFrame) {
       elements.htmlViewerFrame.src = value;
       if (elements.htmlViewerError) {
         elements.htmlViewerError.hidden = true;
@@ -6280,7 +7007,15 @@ const updateEditorPaneVisuals = () => {
   try { rightPane.style.display = rightPane.hidden ? 'none' : ''; } catch (e) {}
   // Debug prints removed
     rightPane.classList.toggle('active', state.activeEditorPane === 'right');
+    rightPane.classList.toggle('active', state.activeEditorPane === 'right');
   }
+
+  // Add a helper class to workspace content when both editor panes are visible
+  try {
+    const wc = elements.workspaceContent;
+    const rightVisible = !!(rightPane && !rightPane.hidden);
+    if (wc && wc.classList) wc.classList.toggle('split-editors', rightVisible);
+  } catch (e) { }
 };
 
 const updateActionAvailability = (note) => {
@@ -6984,17 +7719,16 @@ const renderActiveNote = () => {
       elements.htmlViewerError.hidden = true;
     }
     state.htmlPreviewToken = null;
-    // Remove any per-pane PDF viewers that are no longer mapped to PDFs.
-    // This avoids clearing viewers in other panes when the user opens a
-    // different file in a separate pane (e.g., dropping an MD into pane B
-    // should not blank a PDF that's intentionally displayed in pane A).
+    // Remove any per-pane viewers that are no longer mapped to their file
+    // types. Do NOT clear panes showing PDFs, notebooks, images or videos
+    // — each pane can hold a different non-markdown viewer independently.
     try {
       for (const pid of Object.keys(state.editorPanes || {})) {
         try {
           const mappedNoteId = state.editorPanes?.[pid]?.noteId;
           const mappedNote = mappedNoteId ? state.notes.get(mappedNoteId) : null;
-          // Only clear the pane viewer if the mapped note is not a PDF or notebook
-          if (!mappedNote || (mappedNote.type !== 'pdf' && mappedNote.type !== 'notebook')) {
+          // Only clear the pane viewer if the mapped note is not a PDF, notebook, image, or video
+          if (!mappedNote || (mappedNote.type !== 'pdf' && mappedNote.type !== 'notebook' && mappedNote.type !== 'image' && mappedNote.type !== 'video')) {
             try { clearPaneViewer(pid); } catch (e) {}
           }
         } catch (e) { /* ignore per-pane errors */ }
@@ -7111,12 +7845,13 @@ const renderActiveNote = () => {
         try {
           const mappedNoteId = state.editorPanes?.[k]?.noteId;
           const mappedNote = mappedNoteId ? state.notes.get(mappedNoteId) : null;
-          if (mappedNote && (mappedNote.type === 'markdown' || mappedNote.type === 'latex')) {
-            // keep markdown/latex editors enabled only for markdown/latex-mapped panes
+          if (mappedNote && (mappedNote.type === 'markdown' || mappedNote.type === 'latex' || mappedNote.type === 'html' || mappedNote.type === 'notebook')) {
+            // keep editors visible/enabled for markdown/latex/html/notebook mapped panes
+            // (user expects raw HTML and notebook JSON to appear in the pane editor)
             inst.el.disabled = false;
             // Do not overwrite content here; content should already be set when the note was opened
-          } else if (mappedNote && (mappedNote.type !== 'markdown' && mappedNote.type !== 'latex')) {
-            // non-markdown pane: disable textarea (visual/editor not used)
+          } else if (mappedNote && (mappedNote.type !== 'markdown' && mappedNote.type !== 'latex' && mappedNote.type !== 'html' && mappedNote.type !== 'notebook')) {
+            // non-editor pane (image/pdf/video/etc): disable textarea (visual/editor not used)
             if (inst && inst.el) {
               inst.el.disabled = true;
               inst.el.value = '';
@@ -7133,17 +7868,21 @@ const renderActiveNote = () => {
     } catch (e) { /* ignore full loop errors */ }
 
     if (note.type === 'image') {
+      // Do not render images in the central live preview (avoid loading PNGs into preview)
       elements.workspaceContent?.classList.add('image-mode');
-      void renderImagePreview(note);
+      // intentionally skip renderImagePreview(note);
     } else if (note.type === 'video') {
+      // Videos should not be loaded into the central live preview.
+      // The application renders videos only inside editor panes.
       elements.workspaceContent?.classList.add('video-mode');
-      void renderVideoPreview(note);
+      // intentionally skip renderVideoPreview(note);
     } else if (note.type === 'html') {
       elements.workspaceContent?.classList.add('html-mode');
       void renderHtmlPreview(note);
     } else if (note.type === 'pdf') {
+      // Do not render PDFs in the central live preview (avoid loading PDFs into preview)
       elements.workspaceContent?.classList.add('pdf-mode');
-      renderPdfPreview(note);
+      // intentionally skip renderPdfPreview(note);
     } else if (note.type === 'code') {
       elements.workspaceContent?.classList.add('code-mode');
       renderCodePreview(note.content ?? '', note.language);
@@ -8090,30 +8829,56 @@ const handleEditorInput = (event, opts = {}) => {
   const pane = opts.pane || (event.target === elements.editorRight ? 'right' : 'left');
   const paneNoteId = state.editorPanes?.[pane]?.noteId || state.activeNoteId;
   const note = paneNoteId ? state.notes.get(paneNoteId) : getActiveNote();
-  if (!note || note.type !== 'markdown') {
+  if (!note) return;
+
+  // Update math preview popup (only relevant for textual editors)
+  try { updateMathPreview(event.target); } catch (e) {}
+
+  // Check for LaTeX auto-completion before updating note content
+  const latexCompleted = handleLatexAutoCompletion(event.target, event.inputType);
+
+  // Handle different editable note types
+  if (note.type === 'markdown' || note.type === 'latex') {
+    note.content = event.target.value;
+    note.updatedAt = new Date().toISOString();
+    note.dirty = true;
+    refreshBlockIndexForNote(note);
+    refreshHashtagsForNote(note);
+    // Only render preview if this pane is the active pane
+    if (state.activeEditorPane === pane) {
+      debouncedRenderPreview(note.content, note.id);
+    }
+    scheduleSave();
+  } else if (note.type === 'html') {
+    // For HTML files, keep the raw source in note.content and render the
+    // program in the central preview when this pane is active.
+    note.content = event.target.value;
+    note.updatedAt = new Date().toISOString();
+    note.dirty = true;
+    if (state.activeEditorPane === pane) {
+      try { renderHtmlPreview(note); } catch (e) {}
+    }
+    scheduleSave();
+  } else if (note.type === 'notebook') {
+    // For notebooks, attempt to parse the JSON source; update note.notebook
+    // for preview rendering, but keep the raw JSON in note.content.
+    note.content = event.target.value;
+    note.updatedAt = new Date().toISOString();
+    note.dirty = true;
+    try {
+      const parsed = JSON.parse(note.content);
+      note.notebook = parsed;
+    } catch (e) {
+      // leave note.notebook unchanged if parsing fails
+    }
+    if (state.activeEditorPane === pane) {
+      try { renderNotebookPreview(note); } catch (e) {}
+    }
+    scheduleSave();
+  } else {
+    // Other editor types are not handled here
     return;
   }
-
-  // Update math preview popup
-  updateMathPreview(event.target);
-  
-  // Check for LaTeX auto-completion before updating note content
-  // Pass the inputType to avoid triggering on delete operations
-  const latexCompleted = handleLatexAutoCompletion(event.target, event.inputType);
-  
-  note.content = event.target.value;
-  note.updatedAt = new Date().toISOString();
-  note.dirty = true;
-  refreshBlockIndexForNote(note);
-  refreshHashtagsForNote(note);
-  // Only render preview if this pane is the active pane
-  if (state.activeEditorPane === pane) {
-    // Use debounced render to avoid excessive work on every keystroke.
-    // If latex auto-completion altered the content below, we'll trigger an
-    // immediate render afterwards.
-    debouncedRenderPreview(note.content, note.id);
-  }
-  scheduleSave();
 
   if (state.search.open) {
     const activeEd = getActiveEditorInstance();
@@ -8124,20 +8889,16 @@ const handleEditorInput = (event, opts = {}) => {
   updateWikiSuggestions(event.target);
   updateHashtagSuggestions(event.target);
   updateFileSuggestions(event.target);
-  
-  // If LaTeX was auto-completed, trigger another input event to update everything with the new content
-  if (latexCompleted) {
+
+  if (latexCompleted && (note.type === 'markdown' || note.type === 'latex')) {
     note.content = event.target.value;
     if (state.activeEditorPane === pane) {
-      // Latex completion inserted text programmatically; render immediately
-      // so visual feedback (and math preview) is up-to-date.
       renderMarkdownPreview(note.content, note.id);
     }
   }
 };
 
 const handleEditor2Drop = (event) => {
-  console.log('[DEBUG handleEditor2Drop] drop event fired, files:', event.dataTransfer?.files);
   // Prevent default and stop other listeners from handling this internal drop
   try { event.preventDefault(); } catch (e) {}
   try { event.stopPropagation(); } catch (e) {}
@@ -8152,6 +8913,7 @@ const handleEditor2Drop = (event) => {
   const files = event.dataTransfer?.files;
   if (files && files.length > 0) {
     handleExternalFileDrop(event, files);
+    try { state._isDropping = false; } catch (e) {}
     return;
   }
 
@@ -9539,8 +10301,45 @@ const handleSplitterPointerDown = (event) => {
   event.preventDefault();
   state.resizingEditor = true;
   state.splitterPointerId = event.pointerId;
+  // Capture the workspace bounds at drag start to avoid layout feedback
+  // where updating the CSS variable changes bounding rect mid-drag and
+  // causes the splitter to 'snap'. Use these fixed bounds for this drag.
+  try { 
+    const rawBounds = elements.workspaceContent.getBoundingClientRect();
+    // Adjust bounds to exclude the splitter width (12px) since it's fixed space
+    state._splitterBounds = {
+      left: rawBounds.left,
+      width: Math.max(1, rawBounds.width - 12) // subtract splitter width, ensure positive
+    };
+  } catch (e) { state._splitterBounds = null; }
+  // Record the initial visible splitter/boundary screen X so we can
+  // preserve the relative grab point inside the splitter's hit area.
+  try {
+    if (state._splitterBounds && typeof state.editorRatio === 'number') {
+      state._splitterBoundaryScreenX = state._splitterBounds.left + (state._splitterBounds.width * state.editorRatio);
+      state._splitterDragOffset = event.clientX - state._splitterBoundaryScreenX;
+    } else {
+      state._splitterBoundaryScreenX = null;
+      state._splitterDragOffset = 0;
+    }
+  } catch (e) {
+    state._splitterBoundaryScreenX = null;
+    state._splitterDragOffset = 0;
+  }
+  // Detailed log for troubleshooting initial-jump issues
+  console.log('[SplitterDrag] pointerdown detailed', {
+    clientX: event.clientX,
+    boundsLeft: state._splitterBounds?.left,
+    boundsWidth: state._splitterBounds?.width,
+    editorRatio: state.editorRatio,
+    boundaryScreenX: state._splitterBoundaryScreenX,
+    dragOffset: state._splitterDragOffset
+  });
   elements.workspaceSplitter.setPointerCapture(event.pointerId);
   elements.workspaceSplitter.classList.add('workspace__splitter--active');
+  // Debug output for splitter drag
+  try { _sidebarDragDebug.update(`splitter:start clientX:${event.clientX} boundsLeft:${state._splitterBounds?.left ?? 'n/a'} width:${state._splitterBounds?.width ?? 'n/a'}`); } catch (e) { }
+  console.log('[SplitterDrag] pointerdown', { clientX: event.clientX, bounds: state._splitterBounds });
 };
 
 const handleSplitterPointerMove = (event) => {
@@ -9548,7 +10347,35 @@ const handleSplitterPointerMove = (event) => {
     return;
   }
 
-  updateEditorRatioFromPointer(event.clientX);
+  // Use the stored bounds if available to avoid layout feedback during drag
+  if (state._splitterBounds && state._splitterBounds.width) {
+    // If we recorded a grab offset, apply it so the grabbed point stays
+    // under the pointer instead of snapping to the center line.
+    const offset = typeof state._splitterDragOffset === 'number' ? state._splitterDragOffset : 0;
+    if (offset) {
+      const targetScreenX = event.clientX - offset;
+      const ratio = (targetScreenX - state._splitterBounds.left) / state._splitterBounds.width;
+      setEditorRatio(ratio, false);
+      console.log('[SplitterDrag] pointermove detailed (offset applied)', {
+        clientX: event.clientX,
+        offset,
+        targetScreenX: Math.round(targetScreenX),
+        ratio
+      });
+    } else {
+      updateEditorRatioFromPointer(event.clientX, state._splitterBounds);
+      console.log('[SplitterDrag] pointermove detailed (no offset)', {
+        clientX: event.clientX,
+        boundsLeft: state._splitterBounds.left,
+        computedRatio: state.editorRatio
+      });
+    }
+  } else {
+    updateEditorRatioFromPointer(event.clientX);
+    console.log('[SplitterDrag] pointermove detailed (no bounds)', { clientX: event.clientX, computedRatio: state.editorRatio });
+  }
+  try { _sidebarDragDebug.update(`splitter:move clientX:${event.clientX} left:${state._splitterBounds?.left ?? 'n/a'} targetRatio:${(state.editorRatio).toFixed(3)}`); } catch (e) { }
+  console.log('[SplitterDrag] pointermove', { clientX: event.clientX, editorRatio: state.editorRatio });
 };
 
 const handleSplitterPointerUp = (event) => {
@@ -9567,6 +10394,25 @@ const handleSplitterPointerUp = (event) => {
   state.splitterPointerId = null;
   elements.workspaceSplitter?.classList.remove('workspace__splitter--active');
   setEditorRatio(state.editorRatio, true);
+  // Clear temporary bounds stored during drag
+  try { state._splitterBounds = null; } catch (e) {}
+  try { state._splitterBoundaryScreenX = null; } catch (e) {}
+  try { state._splitterDragOffset = null; } catch (e) {}
+  // Diagnostic: log final sizes after drag
+  try {
+    const bounds = elements.workspaceContent?.getBoundingClientRect();
+    const previewEl = document.querySelector('.preview-pane');
+    const editorEl = document.querySelector('.editor-pane');
+    console.log('[SplitterDrag] final sizes', {
+      boundsWidth: bounds?.width,
+      editorRatio: state.editorRatio,
+      expectedPreviewPx: bounds ? Math.round((1 - state.editorRatio) * bounds.width) : null,
+      actualPreviewPx: previewEl ? Math.round(previewEl.getBoundingClientRect().width) : null,
+      editorPx: editorEl ? Math.round(editorEl.getBoundingClientRect().width) : null
+    });
+  } catch (e) {}
+  try { _sidebarDragDebug.remove(); } catch (e) { }
+  console.log('[SplitterDrag] pointerup', { editorRatio: state.editorRatio });
 };
 
 const handleSplitterKeyDown = (event) => {
@@ -9611,7 +10457,49 @@ const setSidebarWidth = (width) => {
   writeStorage(storageKeys.sidebarWidth, String(clampedWidth));
 };
 
+// Lightweight on-screen debug overlay used while dragging the sidebar.
+// It is intentionally minimal and removed after drag finishes.
+const _sidebarDragDebug = {
+  el: null,
+  ensure() {
+    if (!this.el) {
+      const d = document.createElement('div');
+      d.id = 'sidebar-drag-debug-overlay';
+      d.style.position = 'fixed';
+      d.style.top = '8px';
+      d.style.right = '8px';
+      d.style.zIndex = '99999999';
+      d.style.background = 'rgba(0,0,0,0.65)';
+      d.style.color = '#fff';
+      d.style.padding = '6px 8px';
+      d.style.fontSize = '12px';
+      d.style.borderRadius = '6px';
+      d.style.pointerEvents = 'none';
+      d.style.fontFamily = 'monospace';
+      d.style.whiteSpace = 'nowrap';
+      d.style.display = 'none';
+      document.body.appendChild(d);
+      this.el = d;
+    }
+    return this.el;
+  },
+  update(str) {
+    try {
+      const el = this.ensure();
+      el.textContent = str;
+      el.style.display = 'block';
+    } catch (e) { /* ignore */ }
+  },
+  remove() {
+    try {
+      if (this.el && this.el.parentNode) this.el.parentNode.removeChild(this.el);
+    } catch (e) { /* ignore */ }
+    this.el = null;
+  }
+};
+
 const handleSidebarResizePointerDown = (event) => {
+  console.log('[SidebarDrag] pointerdown event fired', event);
   if (!elements.sidebarResizeHandle) {
     return;
   }
@@ -9625,14 +10513,60 @@ const handleSidebarResizePointerDown = (event) => {
   state.sidebarResizePointerId = event.pointerId;
   elements.sidebarResizeHandle.setPointerCapture(event.pointerId);
   document.body.style.cursor = 'col-resize';
+
+  // Record initial geometry so dragging keeps the grab point stable.
+  // If sidebarWidth is available in state use it, otherwise read from
+  // computed style as a fallback.
+  state.initialMouseX = event.clientX;
+  // Compute the app container left offset so we can convert viewport
+  // clientX coordinates into a width relative to the app layout.
+  const appShell = document.querySelector('.app-shell');
+  const appLeft = appShell ? appShell.getBoundingClientRect().left : 0;
+  state.sidebarDragAppLeft = appLeft;
+
+  state.initialSidebarWidth = typeof state.sidebarWidth === 'number' ? state.sidebarWidth : parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width') || '260', 10);
+
+  // Compute the initial pointer offset relative to the visible boundary's
+  // screen X coordinate (appLeft + sidebarWidth). We store that so the
+  // grabbed point remains stable during moves.
+  const boundaryScreenX = appLeft + state.initialSidebarWidth;
+  state.sidebarDragOffset = event.clientX - boundaryScreenX;
+  // show initial debug info
+  try { _sidebarDragDebug.update(`clientX:${event.clientX} appLeft:${state.sidebarDragAppLeft} offset:${state.sidebarDragOffset} width:${state.initialSidebarWidth}`); } catch (e) { }
+  // Also log to console for debugging
+  console.log('[SidebarDrag] pointerdown', {
+    clientX: event.clientX,
+    appLeft: state.sidebarDragAppLeft,
+    offset: state.sidebarDragOffset,
+    width: state.initialSidebarWidth
+  });
 };
 
 const handleSidebarResizePointerMove = (event) => {
+  if (state.resizingSidebar) {
+    console.log('[SidebarDrag] pointermove event fired', event.clientX);
+  }
   if (!state.resizingSidebar) {
     return;
   }
 
-  setSidebarWidth(event.clientX);
+  // Use the stored drag offset and app container left to convert the
+  // viewport clientX into a sidebar width in layout coordinates.
+  const offset = typeof state.sidebarDragOffset === 'number' ? state.sidebarDragOffset : 0;
+  const appLeft = typeof state.sidebarDragAppLeft === 'number' ? state.sidebarDragAppLeft : (document.querySelector('.app-shell')?.getBoundingClientRect().left || 0);
+
+  const targetScreenX = event.clientX - offset;
+  const targetWidth = targetScreenX - appLeft;
+  setSidebarWidth(targetWidth);
+  try { _sidebarDragDebug.update(`clientX:${event.clientX} appLeft:${appLeft} offset:${offset} targetScreenX:${Math.round(targetScreenX)} targetWidth:${Math.round(targetWidth)}`); } catch (e) { }
+  // Also log to console for debugging
+  console.log('[SidebarDrag] pointermove', {
+    clientX: event.clientX,
+    appLeft,
+    offset,
+    targetScreenX: Math.round(targetScreenX),
+    targetWidth: Math.round(targetWidth)
+  });
 };
 
 const handleSidebarResizePointerUp = (event) => {
@@ -9650,6 +10584,13 @@ const handleSidebarResizePointerUp = (event) => {
   }
   state.sidebarResizePointerId = null;
   document.body.style.cursor = '';
+
+  // Cleanup temporary drag state
+  state.initialMouseX = null;
+  state.initialSidebarWidth = null;
+  state.sidebarDragOffset = null;
+  try { _sidebarDragDebug.remove(); } catch (e) { }
+  state.sidebarDragAppLeft = null;
 };
 
 // Hashtag panel resize functions
@@ -14265,10 +15206,15 @@ const initialize = () => {
       _nta_current_drop_pane = null;
     };
 
-    document.addEventListener('dragover', docDragOver, true);
-    document.addEventListener('dragenter', docDragOver, true);
-    document.addEventListener('dragleave', docDragLeave, true);
-    document.addEventListener('drop', docDropClear, true);
+    // document.addEventListener('dragover', docDragOver, false);
+    // document.addEventListener('dragenter', docDragOver, false);
+    // document.addEventListener('dragleave', docDragLeave, false);
+    // document.addEventListener('drop', docDropClear, false);
+  } catch (e) { /* ignore */ }
+
+  // Reset drop flag on drag end to ensure it's not stuck
+  try {
+    window.addEventListener('dragend', () => { try { state._isDropping = false; } catch (e) {} });
   } catch (e) { /* ignore */ }
 
   // Global drag/drop handlers to allow dropping a folder from the OS (Finder/Explorer)
@@ -14413,6 +15359,13 @@ const initialize = () => {
   elements.inlinePreviewClose?.addEventListener('click', (event) => {
     event.preventDefault();
     togglePreviewCollapsed(); // This will cycle to the next mode (from inline to collapsed)
+  });
+
+  // Hashtag panel toggle
+  const toggleHashtagButton = document.getElementById('toggle-hashtag-minimize');
+  toggleHashtagButton?.addEventListener('click', (event) => {
+    event.preventDefault();
+    toggleHashtagPanelMinimized();
   });
 
   // New feature button event listeners
@@ -16550,6 +17503,7 @@ const initialize = () => {
   restoreLastWorkspace();
   applySidebarCollapsed(state.sidebarCollapsed);
   applyPreviewState(state.previewCollapsed);
+  applyHashtagPanelMinimized(state.hashtagPanelMinimized);
   updateEditorSearchCount();
   renderEditorSearchHighlights();
   syncEditorSearchHighlightScroll();
@@ -20689,19 +21643,16 @@ if (typeof window !== 'undefined' && !window.NTA) {
   window.NTA = {};
 }
 
-// Persist hashtag panel settings
-const persistHashtagPanelSettings = () => {
-  if (typeof window !== 'undefined' && window.NTA) {
-    window.NTA.hashtagPanelHeight = state.hashtagPanelHeight;
-    window.NTA.hashtagPanelMinimized = state.hashtagPanelMinimized || false;
-    window.NTA.hashtagPanelPrevHeight = state.hashtagPanelPrevHeight || state.hashtagPanelHeight;
-    try {
-      localStorage.setItem('NTA.hashtagPanelHeight', String(state.hashtagPanelHeight));
-      localStorage.setItem('NTA.hashtagPanelMinimized', String(state.hashtagPanelMinimized || false));
-      localStorage.setItem('NTA.hashtagPanelPrevHeight', String(state.hashtagPanelPrevHeight || state.hashtagPanelHeight));
-    } catch (e) {}
+// Apply preview scroll sync setting
+function applyPreviewScrollSync(enabled) {
+  try {
+    state.previewScrollSync = !!enabled;
+    // In a real implementation, this would set up/remove scroll event listeners
+    // For now, just update the state
+  } catch (e) {
+    // ignore
   }
-};
+}
 
 // Test exports (only in Node.js environment)
 try {
@@ -20722,7 +21673,9 @@ try {
       updateFileMetadataUI: typeof updateFileMetadataUI === 'function' ? updateFileMetadataUI : null,
       openNoteInPane: typeof openNoteInPane === 'function' ? openNoteInPane : null,
       updateEditorPaneVisuals: typeof updateEditorPaneVisuals === 'function' ? updateEditorPaneVisuals : null,
+      applyPreviewScrollSync: typeof applyPreviewScrollSync === 'function' ? applyPreviewScrollSync : null,
       initialize: typeof initCommonSettingsControls === 'function' ? initCommonSettingsControls : null,
+      reinitializeEditorInstances: typeof reinitializeEditorInstances === 'function' ? reinitializeEditorInstances : null,
       configureMarked: typeof configureMarked === 'function' ? configureMarked : null,
       elements
     };
