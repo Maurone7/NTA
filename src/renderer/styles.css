@@ -2108,9 +2108,12 @@ button.small {
   display: none;
 }
 
-.workspace__content.image-mode .editor-pane,
 .workspace__content.image-mode .workspace__splitter {
-  display: none;
+  /* Keep splitters visible so users can still resize editors when an image
+     is displayed. Previously the rule hid editor panes entirely which
+     prevented per-pane image viewers (appended into editor panes) from
+     being seen. We only hide the central markdown preview elsewhere. */
+  display: flex;
 }
 
 .workspace__content.image-mode .preview-pane {

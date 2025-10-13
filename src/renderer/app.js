@@ -1145,6 +1145,7 @@ class Pane {
   }
 
   async loadNote(note) {
+    console.log('[DEBUG loadNote] loading note:', note?.id, note?.type, note?.title);
     if (!note) return false;
     // route to existing renderers (keeps existing behavior)
     if (note.type === 'pdf') return await renderPdfInPane(note, this.id);
@@ -2501,6 +2502,71 @@ const renderPdfInPane = async (note, paneId) => {
     return false;
   }
 };
+
+// Render an image inside a specific editor pane. This mirrors the global
+// image preview behavior but places the image directly into the pane so
+// users can keep images visible next to editors.
+const renderImageInPane = async (note, paneId) => {
+  if (!note || note.type !== 'image' || !paneId) return false;
+  const root = getPaneRootElement(paneId);
+  if (!root) return false;
+
+  // Clear any existing per-pane viewers and hide textarea
+  clearPaneViewer(paneId);
+  const ta = root.querySelector('textarea');
+  if (ta) ta.hidden = true;
+
+  const rawSrc = note.absolutePath ?? note.storedPath ?? '';
+  if (!rawSrc) {
+    if (ta) ta.hidden = false;
+    return false;
+  }
+
+  try {
+    const payload = { src: rawSrc, notePath: note.absolutePath ?? null, folderPath: note.folderPath ?? state.currentFolder ?? null };
+    console.log('[DEBUG renderImageInPane] payload:', payload);
+    const result = await window.api.resolveResource(payload);
+    console.log('[DEBUG renderImageInPane] result:', result);
+    const value = result?.value ?? null;
+    if (!value) {
+      console.log('[DEBUG renderImageInPane] no value, restoring textarea');
+      if (ta) ta.hidden = false;
+      return false;
+    }
+
+    // Create an image element for the pane
+    const img = document.createElement('img');
+    img.className = 'pane-image-viewer';
+    img.alt = note.title ?? rawSrc;
+    img.loading = 'lazy';
+    img.src = value;
+    img.style.maxWidth = '100%';
+    img.style.height = 'auto';
+    // Temporary debug: add red outline to make image visible
+    img.style.outline = '2px solid red';
+
+    // Add load/error listeners for debugging
+    img.addEventListener('load', () => console.log('[DEBUG renderImageInPane] image loaded'));
+    img.addEventListener('error', (e) => console.log('[DEBUG renderImageInPane] image error:', e));
+
+    // Append to pane root
+    root.appendChild(img);
+    console.log('[DEBUG renderImageInPane] image appended to pane', paneId);
+    return true;
+  } catch (e) {
+    console.log('[DEBUG renderImageInPane] exception:', e);
+    if (ta) ta.hidden = false;
+    return false;
+  }
+};
+
+// Expose some helpers for end-to-end tests (non-production use).
+try {
+  if (typeof window !== 'undefined') {
+    window.__nta_test_helpers = window.__nta_test_helpers || {};
+    window.__nta_test_helpers.renderImageInPane = renderImageInPane;
+  }
+} catch (e) { /* ignore */ }
 
 const clearPdfCache = () => {
   for (const resource of pdfCache.values()) {
@@ -3898,6 +3964,7 @@ const handleEditorDragLeave = (event) => {
 
 // Handle external file drops into editors
 const handleExternalFileDrop = (event, files) => {
+  console.log('[DEBUG handleExternalFileDrop] called with files:', files);
   // Determine pane id
   let paneId = null;
   try {
@@ -3937,64 +4004,79 @@ const handleExternalFileDrop = (event, files) => {
     // Handle different file types
     if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(fileExt)) {
       // Image - open in image viewer
+      // Create a note-like object for the image
+      const imageNote = {
+        id: `external-image-${Date.now()}-${Math.random()}`,
+        title: fileName,
+        type: 'image',
+        absolutePath: filePath,
+        folderPath: '', // external file
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      // Attempt to render in-pane; if the async renderer fails, fall back to
+      // inserting a markdown image link so the drop always produces visible
+      // output rather than leaving the pane blank.
+      console.log('[DEBUG handleExternalFileDrop] attempting to render image in pane', paneId, 'for file', fileName);
       try {
-        // Create a note-like object for the image
-        const imageNote = {
-          id: `external-image-${Date.now()}-${Math.random()}`,
-          title: fileName,
-          type: 'image',
-          absolutePath: filePath,
-          folderPath: '', // external file
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-        
-        // Open in image viewer for this pane
-        renderImageInPane(imageNote, paneId);
+        Promise.resolve(renderImageInPane(imageNote, paneId)).then((ok) => {
+          console.log('[DEBUG handleExternalFileDrop] renderImageInPane result:', ok);
+          if (!ok) {
+            console.log('[DEBUG handleExternalFileDrop] inserting markdown fallback');
+            insertMarkdownContent(`![${fileName}](${filePath})\n\n`);
+          }
+        }).catch((e) => {
+          console.log('[DEBUG handleExternalFileDrop] renderImageInPane exception:', e);
+          insertMarkdownContent(`![${fileName}](${filePath})\n\n`);
+        });
       } catch (e) {
-  // Debug prints removed
-        // Fallback to inserting markdown
+        // Defensive: synchronous errors (shouldn't normally happen)
+        console.log('[DEBUG handleExternalFileDrop] synchronous exception:', e);
         insertMarkdownContent(`![${fileName}](${filePath})\n\n`);
       }
     } else if (['mp4', 'webm', 'ogg', 'avi', 'mov'].includes(fileExt)) {
       // Video - open in video viewer
+      const videoNote = {
+        id: `external-video-${Date.now()}-${Math.random()}`,
+        title: fileName,
+        type: 'video',
+        absolutePath: filePath,
+        folderPath: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
       try {
-        const videoNote = {
-          id: `external-video-${Date.now()}-${Math.random()}`,
-          title: fileName,
-          type: 'video',
-          absolutePath: filePath,
-          folderPath: '',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-        
-        renderVideoInPane(videoNote, paneId);
+        Promise.resolve(renderVideoInPane(videoNote, paneId)).then((ok) => {
+          if (!ok) {
+            insertMarkdownContent(`<video controls style="max-width: 100%; height: auto;">\n  <source src="${filePath}" type="video/${fileExt === 'mov' ? 'mp4' : fileExt}">\n  Your browser does not support the video tag.\n</video>\n\n`);
+          }
+        }).catch(() => {
+          insertMarkdownContent(`<video controls style="max-width: 100%; height: auto;">\n  <source src="${filePath}" type="video/${fileExt === 'mov' ? 'mp4' : fileExt}">\n  Your browser does not support the video tag.\n</video>\n\n`);
+        });
       } catch (e) {
-  // Debug prints removed
-        // Fallback to inserting HTML
-        insertMarkdownContent(`<video controls style="max-width: 100%; height: auto;">
-  <source src="${filePath}" type="video/${fileExt === 'mov' ? 'mp4' : fileExt}">
-  Your browser does not support the video tag.
-</video>\n\n`);
+        insertMarkdownContent(`<video controls style="max-width: 100%; height: auto;">\n  <source src="${filePath}" type="video/${fileExt === 'mov' ? 'mp4' : fileExt}">\n  Your browser does not support the video tag.\n</video>\n\n`);
       }
     } else if (fileExt === 'pdf') {
       // PDF - open in PDF viewer
+      const pdfNote = {
+        id: `external-pdf-${Date.now()}-${Math.random()}`,
+        title: fileName,
+        type: 'pdf',
+        absolutePath: filePath,
+        folderPath: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
       try {
-        const pdfNote = {
-          id: `external-pdf-${Date.now()}-${Math.random()}`,
-          title: fileName,
-          type: 'pdf',
-          absolutePath: filePath,
-          folderPath: '',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-        
-        renderPdfInPane(pdfNote, paneId);
+        Promise.resolve(renderPdfInPane(pdfNote, paneId)).then((ok) => {
+          if (!ok) insertMarkdownContent(`[${fileName}](${filePath})\n\n`);
+        }).catch(() => {
+          insertMarkdownContent(`[${fileName}](${filePath})\n\n`);
+        });
       } catch (e) {
-  // Debug prints removed
-        // Fallback to inserting link
         insertMarkdownContent(`[${fileName}](${filePath})\n\n`);
       }
     } else {
@@ -4036,6 +4118,7 @@ const handleExternalFileDrop = (event, files) => {
 };
 
 const handleEditor1Drop = (event) => {
+  console.log('[DEBUG handleEditor1Drop] drop event fired, files:', event.dataTransfer?.files);
   // If an earlier capture-phase handler already routed this drop, skip
   try { if (event && event._nta_handled) { return; } } catch (e) {}
   // Prevent other drop handlers from also processing this internal note drop
@@ -4057,7 +4140,11 @@ const handleEditor1Drop = (event) => {
   }
 
   const noteId = event.dataTransfer?.getData ? event.dataTransfer.getData('text/noteId') : null;
-  if (!noteId || !state.notes.has(noteId)) return;
+  console.log('[DEBUG handleEditor1Drop] noteId from dataTransfer:', noteId);
+  if (!noteId || !state.notes.has(noteId)) {
+    console.log('[DEBUG handleEditor1Drop] no noteId or note not found');
+    return;
+  }
 
   // Determine pane id: prefer data-pane-id, textarea id, or right-pane class
   let paneId = null;
@@ -4732,6 +4819,7 @@ const setActiveEditorPane = (pane) => {
 // Open a note in a given pane (left or right). Ensures tab exists, activates pane/tab,
 // persists per-pane mapping, and updates UI. Reused by drag/drop and other flows.
 const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => {
+  console.log('[DEBUG openNoteInPane] opening noteId:', noteId, 'in pane:', pane);
   // Debug prints removed
   if (!noteId || !state.notes.has(noteId)) return null;
   // If requested pane doesn't exist, default to 'left'
@@ -4775,6 +4863,27 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
         inst.el.disabled = true;
         inst.el.value = '';
         renderNotebookInPane(paneNote, pane);
+      } else if (paneNote.type === 'image') {
+        // Render image viewer in the pane
+        try { clearPaneViewer(pane); } catch (e) {}
+        inst.el.hidden = true;
+        inst.el.disabled = true;
+        inst.el.value = '';
+        renderImageInPane(paneNote, pane);
+      } else if (paneNote.type === 'pdf') {
+        // Render PDF viewer in the pane
+        try { clearPaneViewer(pane); } catch (e) {}
+        inst.el.hidden = true;
+        inst.el.disabled = true;
+        inst.el.value = '';
+        renderPdfInPane(paneNote, pane);
+      } else if (paneNote.type === 'video') {
+        // Render video viewer in the pane
+        try { clearPaneViewer(pane); } catch (e) {}
+        inst.el.hidden = true;
+        inst.el.disabled = true;
+        inst.el.value = '';
+        renderVideoInPane(paneNote, pane);
       } else {
         inst.el.disabled = true;
         inst.el.value = '';
@@ -4786,6 +4895,24 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
   if (paneNote.type === 'notebook' && (!editorInstances[pane] || !editorInstances[pane].el)) {
     try { clearPaneViewer(pane); } catch (e) {}
     renderNotebookInPane(paneNote, pane);
+  }
+
+  // Render image viewer even if editor instance not set
+  if (paneNote.type === 'image' && (!editorInstances[pane] || !editorInstances[pane].el)) {
+    try { clearPaneViewer(pane); } catch (e) {}
+    renderImageInPane(paneNote, pane);
+  }
+
+  // Render PDF viewer even if editor instance not set
+  if (paneNote.type === 'pdf' && (!editorInstances[pane] || !editorInstances[pane].el)) {
+    try { clearPaneViewer(pane); } catch (e) {}
+    renderPdfInPane(paneNote, pane);
+  }
+
+  // Render video viewer even if editor instance not set
+  if (paneNote.type === 'video' && (!editorInstances[pane] || !editorInstances[pane].el)) {
+    try { clearPaneViewer(pane); } catch (e) {}
+    renderVideoInPane(paneNote, pane);
   }
 
   // If caller wants the pane to become active, update active pane/tab and preview
@@ -8010,6 +8137,7 @@ const handleEditorInput = (event, opts = {}) => {
 };
 
 const handleEditor2Drop = (event) => {
+  console.log('[DEBUG handleEditor2Drop] drop event fired, files:', event.dataTransfer?.files);
   // Prevent default and stop other listeners from handling this internal drop
   try { event.preventDefault(); } catch (e) {}
   try { event.stopPropagation(); } catch (e) {}
@@ -20575,23 +20703,28 @@ const persistHashtagPanelSettings = () => {
   }
 };
 
-module.exports.__test__ = {
-  parseWikiTarget: typeof parseWikiTarget === 'function' ? parseWikiTarget : null,
-  resolveNoteIdByRelativeTarget: typeof resolveNoteIdByRelativeTarget === 'function' ? resolveNoteIdByRelativeTarget : null,
-  updateWikiSuggestions: typeof updateWikiSuggestions === 'function' ? updateWikiSuggestions : null,
-  applyWikiSuggestion: typeof applyWikiSuggestion === 'function' ? applyWikiSuggestion : null,
-  renderMarkdownPreview: typeof renderMarkdownPreview === 'function' ? renderMarkdownPreview : null,
-  state,
-  getRelativePath: typeof getRelativePath === 'function' ? getRelativePath : null,
-  collectWikiSuggestionItems: typeof collectWikiSuggestionItems === 'function' ? collectWikiSuggestionItems : null,
-  computeWikiSuggestionPosition: typeof computeWikiSuggestionPosition === 'function' ? computeWikiSuggestionPosition : null,
-  renderWikiSuggestions: typeof renderWikiSuggestions === 'function' ? renderWikiSuggestions : null,
-  handleLatexEnvironmentAutoComplete: typeof handleLatexEnvironmentAutoComplete === 'function' ? handleLatexEnvironmentAutoComplete : null,
-  handleGlobalShortcuts: typeof handleGlobalShortcuts === 'function' ? handleGlobalShortcuts : null,
-  updateFileMetadataUI: typeof updateFileMetadataUI === 'function' ? updateFileMetadataUI : null,
-  openNoteInPane: typeof openNoteInPane === 'function' ? openNoteInPane : null,
-  updateEditorPaneVisuals: typeof updateEditorPaneVisuals === 'function' ? updateEditorPaneVisuals : null,
-  initialize: typeof initCommonSettingsControls === 'function' ? initCommonSettingsControls : null,
-  configureMarked: typeof configureMarked === 'function' ? configureMarked : null,
-  elements
-};
+// Test exports (only in Node.js environment)
+try {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports.__test__ = {
+      parseWikiTarget: typeof parseWikiTarget === 'function' ? parseWikiTarget : null,
+      resolveNoteIdByRelativeTarget: typeof resolveNoteIdByRelativeTarget === 'function' ? resolveNoteIdByRelativeTarget : null,
+      updateWikiSuggestions: typeof updateWikiSuggestions === 'function' ? updateWikiSuggestions : null,
+      applyWikiSuggestion: typeof applyWikiSuggestion === 'function' ? applyWikiSuggestion : null,
+      renderMarkdownPreview: typeof renderMarkdownPreview === 'function' ? renderMarkdownPreview : null,
+      state,
+      getRelativePath: typeof getRelativePath === 'function' ? getRelativePath : null,
+      collectWikiSuggestionItems: typeof collectWikiSuggestionItems === 'function' ? collectWikiSuggestionItems : null,
+      computeWikiSuggestionPosition: typeof computeWikiSuggestionPosition === 'function' ? computeWikiSuggestionPosition : null,
+      renderWikiSuggestions: typeof renderWikiSuggestions === 'function' ? renderWikiSuggestions : null,
+      handleLatexEnvironmentAutoComplete: typeof handleLatexEnvironmentAutoComplete === 'function' ? handleLatexEnvironmentAutoComplete : null,
+      handleGlobalShortcuts: typeof handleGlobalShortcuts === 'function' ? handleGlobalShortcuts : null,
+      updateFileMetadataUI: typeof updateFileMetadataUI === 'function' ? updateFileMetadataUI : null,
+      openNoteInPane: typeof openNoteInPane === 'function' ? openNoteInPane : null,
+      updateEditorPaneVisuals: typeof updateEditorPaneVisuals === 'function' ? updateEditorPaneVisuals : null,
+      initialize: typeof initCommonSettingsControls === 'function' ? initCommonSettingsControls : null,
+      configureMarked: typeof configureMarked === 'function' ? configureMarked : null,
+      elements
+    };
+  }
+} catch (e) { /* ignore */ }
