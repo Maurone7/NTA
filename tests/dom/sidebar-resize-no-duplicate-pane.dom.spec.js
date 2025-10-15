@@ -4,6 +4,14 @@ const path = require('path');
 
 describe('DOM: sidebar resize should not create extra editor pane', function() {
   it('does not insert a new editor-pane when resizing the right sidebar', function(done) {
+    // Stub console methods to avoid noise BEFORE creating JSDOM
+    global.console = {
+      debug: () => {},
+      log: () => {},
+      warn: () => {},
+      error: () => {}
+    };
+
     // Create a minimal DOM
     const html = `<html><body>
       <div class="workspace__content">

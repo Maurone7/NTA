@@ -80,6 +80,13 @@ test.describe('Resize Handle Interactions', () => {
 
     expect(finalSidebarWidth).toBeGreaterThan(startSidebarWidth);
 
+    // Dump debug events for diagnostics
+    try {
+      const events = await window.evaluate(() => window.__nta_debug_events || []);
+      // Print to test stdout so Playwright includes them in the report
+      console.log('NTA_DEBUG_EVENTS:', JSON.stringify(events));
+    } catch (e) { console.log('NTA_DEBUG_EVENTS: <error retrieving>'); }
+
     await electronApp.close();
   });
 
@@ -97,9 +104,13 @@ test.describe('Resize Handle Interactions', () => {
       document.documentElement.style.setProperty('--editor-width', '50%');
     });
 
+    // Measure the actual editor pane pixel width instead of relying on
+    // the CSS percent variable (this is more robust across different
+    // test viewport sizes).
     const startEditorWidth = await window.evaluate(() => {
-      const width = getComputedStyle(document.documentElement).getPropertyValue('--editor-width');
-      return width ? parseInt(width) : 50;
+      const el = document.querySelector('.editor-pane');
+      if (!el) return null;
+      return Math.round(el.getBoundingClientRect().width);
     });
 
     // First resize sidebar
@@ -148,12 +159,19 @@ test.describe('Resize Handle Interactions', () => {
     await window.waitForTimeout(200);
 
     const finalEditorWidth = await window.evaluate(() => {
-      const width = getComputedStyle(document.documentElement).getPropertyValue('--editor-width');
-      return width ? parseInt(width) : 50;
+      const el = document.querySelector('.editor-pane');
+      if (!el) return null;
+      return Math.round(el.getBoundingClientRect().width);
     });
 
-    // Should have changed
-    expect(Math.abs(finalEditorWidth - initialEditorWidth)).toBeGreaterThan(10);
+    // Dump debug events for diagnostics (run before assertion so we always capture them)
+    try {
+      const events = await window.evaluate(() => window.__nta_debug_events || []);
+      console.log('NTA_DEBUG_EVENTS:', JSON.stringify(events));
+    } catch (e) { console.log('NTA_DEBUG_EVENTS: <error retrieving>'); }
+
+    // Should have changed by at least 10 pixels
+    expect(Math.abs(finalEditorWidth - startEditorWidth)).toBeGreaterThan(10);
 
     await electronApp.close();
   });

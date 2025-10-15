@@ -14,6 +14,7 @@
   --accent-weak: rgba(76, 110, 245, 0.12);
   --danger: #e03131;
   --editor-ratio: 0.5;
+  --editor-pane-ratio: 0.5;
   --font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-size: 14px;
   font-family: var(--font-family);
@@ -170,10 +171,39 @@ body.platform-linux {
   line-height: 1;
 }
 
-/* Remove any leftover tab bar UI (markup removed from HTML but keep safe) */
+/* Tab bar visible (previously hidden) */
 .tab-bar,
 .tab-bar__new-tab {
-  display: none !important;
+  display: flex !important;
+  align-items: center;
+}
+
+/* Per-pane tab bar (placed inside each editor pane) */
+.pane-tab-bar {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  gap: 8px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+.pane-tab-bar.debug-visual {
+  /* Temporary debug visuals: colored background and dashed outline */
+  background: rgba(0, 128, 255, 0.03) !important;
+  outline: 2px dashed rgba(0, 128, 255, 0.8) !important;
+}
+.pane-tab-bar .tab.debug-visual {
+  background: rgba(0,0,0,0.03) !important;
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.04);
+}
+.pane-tab-bar .tab-bar__tabs { flex: 1; }
+.pane-tab-bar .tab-bar__new-tab { margin-left: 6px; }
+
+/* Explicit highlight for the right-pane tab list to help debugging */
+#tab-bar-tabs-right.debug-visual {
+  background: rgba(255, 0, 0, 0.03) !important;
+  outline: 2px dashed rgba(255,0,0,0.8) !important;
 }
 
 /* Individual Tabs */
@@ -218,6 +248,17 @@ body.platform-linux {
   text-overflow: ellipsis;
   margin-right: 8px;
 }
+
+.tab__close {
+  background: transparent;
+  border: none;
+  color: var(--fg-soft);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.tab__close:hover { background: var(--bg-muted); color: var(--fg); }
+.tab__dirty { font-size: 11px; }
 
 .tab--active .tab__title {
   color: var(--fg);
@@ -557,7 +598,7 @@ body.platform-darwin .update-notification {
   transform: translateY(0);
   pointer-events: auto;
   /* Ensure popup floats above most UI elements */
-  z-index: 2147483646; /* very high but below fullscreen modals (10000) if needed) */
+  z-index: 9000; /* Ensure it's above panes/dividers but below modals */
 }
 
 /* Temporary visual aid for debugging visibility during development.
@@ -809,12 +850,19 @@ textarea {
   display: none;
 }
 
+/* When sidebar is collapsed, hide the resize handle to avoid a stray visible
+   handle left in the UI. The handle is positioned absolutely and would
+   otherwise remain visible even when the explorer is hidden. */
+.app-shell.sidebar-collapsed .sidebar-resize-handle {
+  display: none !important;
+}
+
 .app-shell.sidebar-collapsed .workspace {
   border-left: none;
 }
 
 .explorer {
-  width: var(--sidebar-width, 260px);
+  width: var(--sidebar-width, 200px);
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   display: flex;
@@ -832,10 +880,10 @@ textarea {
   position: absolute;
   top: 0;
   bottom: 0;
-  /* Keep a reasonably large interactive width but center it on the exact
-     boundary so the visible line (1px) sits precisely between panes. */
-  width: 20px; /* interactive width (bigger than visible line) */
-  left: calc(var(--sidebar-width, 260px) - 10px); /* center the 20px handle */
+  /* Keep a reasonably large interactive width but position it so the left edge
+     is on the sidebar/workspace boundary for precise edge alignment. */
+  width: 24px; /* interactive width extending to the right of the boundary - matches workspace splitter */
+  left: calc(var(--sidebar-width, 200px) + 1px); /* position left edge on the visual boundary (accounting for 1px border) */
   cursor: col-resize;
   display: flex;
   align-items: center;
@@ -844,6 +892,8 @@ textarea {
   transform: translateX(0);
   pointer-events: auto;
   z-index: 2147483645; /* very high so it stays above content/scrollbars */
+  /* Ensure the sidebar handle is above the workspace splitter which uses 2147483646 */
+  z-index: 9000;
   -webkit-user-select: none;
   user-select: none;
   touch-action: none; /* prevent touch-driven scrolling artifacts */
@@ -852,25 +902,26 @@ textarea {
   outline: none;
 }
 
-/* Thin visual indicator centered inside the interactive hit area. The line
+/* Thin visual indicator at the left edge of the interactive hit area. The line
    itself is 1px wide and doesn't receive pointer events (the parent does). */
 .sidebar-resize-handle::after {
   content: '';
   position: absolute;
-  left: 50%;
+  left: 0;
   top: 0;
   bottom: 0;
-  width: 1px;
-  transform: translateX(-50%);
+  width: 1px; /* default thin indicator */
   background: var(--border);
   pointer-events: none;
   opacity: 0.8;
+  transition: width 120ms ease, background 120ms ease, opacity 120ms ease;
 }
 
 .sidebar-resize-handle:hover::after,
 .sidebar-resize-handle:active::after {
   background: var(--accent);
   opacity: 1;
+  width: 2px; /* expand to 2px on hover to match workspace splitter */
 }
 
 .explorer__header {
@@ -2034,6 +2085,13 @@ button.small {
   transition: all 0.15s ease;
 }
 
+/* When export controls are disabled use default cursor to avoid showing 'not-allowed' */
+.export-dropdown__button:disabled,
+.export-dropdown__option:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .export-dropdown[data-open="true"] .export-dropdown__menu {
   opacity: 1;
   visibility: visible;
@@ -2084,11 +2142,22 @@ button.small {
 }
 
 /* When both editor panes are visible (split), enforce a per-pane minimum
-   width so each editor remains usable. This only applies while split. */
+   width so each editor remains usable. Lower the minimum so users can
+   shrink panes more aggressively on small screens or narrow windows. */
 .workspace__content.split-editors .editor-pane {
-  /* Increased per-pane minimum to ensure each split editor remains usable. */
-  min-width: 300px;
+  /* Reduced from 300px to allow tighter splits while remaining usable. */
+  min-width: 120px;
 }
+
+.workspace__content.split-editors .editor-pane--left {
+  flex: 0 1 calc(var(--editor-pane-ratio, 0.5) * 100%);
+}
+
+.workspace__content.split-editors .editor-pane--right {
+  flex: 0 1 calc((1 - var(--editor-pane-ratio, 0.5)) * 100%);
+}
+
+
 
 .workspace__content.preview-collapsed .workspace__splitter,
 .workspace__content.preview-collapsed .preview-pane {
@@ -2196,7 +2265,9 @@ button.small {
 
 .editor-pane {
   flex: 1;
-  min-width: clamp(220px, 40vw, 640px);
+  /* Lower the clamp minimum so editor panes can shrink smaller while
+     preserving a reasonable preferred width on wide screens. */
+  min-width: clamp(120px, 40vw, 640px);
   display: flex;
   flex-direction: column;
   border-right: none;
@@ -2233,7 +2304,6 @@ button.small {
   width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
   max-width: 60vw;
   min-width: 0px; /* Allow preview to be minimized completely */
-  margin-left: auto;
   margin-right: 0;
   position: relative;
   right: 0;
@@ -2441,7 +2511,7 @@ body[data-theme="dark"] .editor-pane:not(.active) {
   background: transparent;
   margin-left: -12px; /* Pull 6px into the editor pane */
   margin-right: -12px; /* Pull 6px into the preview pane */
-  z-index: 2147483646; /* Ensure it's above both panes and editor dividers */
+  z-index: 9000; /* Ensure it's above both panes and editor dividers but below modals */
   pointer-events: auto; /* Ensure splitter receives pointer events */
 }
 
@@ -2472,10 +2542,42 @@ body[data-theme="dark"] .editor-pane:not(.active) {
   pointer-events: none; /* let the divider capture pointer events, not the pseudo */
 }
 
-.editors__divider:hover::after {
+.editors__divider:hover::after,
+.editors__divider.editors__divider--active::after {
   background: var(--accent);
-  width: 2px; /* Slightly thicker when hovered */
+  width: 2px; /* Slightly thicker when hovered or active */
   transform: translateX(0);
+}
+
+/* Visual handle for editors divider: centered, larger hit/visual area but pointer events are
+   captured by the divider itself (handle uses pointer-events: none). This makes all dividers
+   look and behave consistently across multiple panes. */
+.editors__divider__handle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 28px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* let the divider element capture pointer events */
+}
+.editors__divider__handle::before {
+  content: "";
+  width: 2px;
+  height: 60%;
+  background: var(--border-strong);
+  border-radius: 2px;
+  opacity: 0.7;
+  transition: background 0.12s ease, width 0.12s ease, opacity 0.12s ease;
+}
+.editors__divider:hover .editors__divider__handle::before,
+.editors__divider.editors__divider--active .editors__divider__handle::before {
+  background: var(--accent);
+  width: 4px;
+  opacity: 1;
 }
 
 .preview-pane[tabindex="-1"] {

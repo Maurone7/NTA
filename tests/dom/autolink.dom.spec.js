@@ -18,47 +18,8 @@ describe('DOM: autolinkPlainUrlsInTextarea', function() {
     delete global.document;
   });
 
-  // Minimal copy of the autolink function's behavior needed for tests.
-  function autolinkPlainUrlsInTextarea(textarea) {
-    if (!textarea || typeof textarea.value !== 'string') return;
-    const oldVal = textarea.value;
-    if (!/(?:https?:\/\/|www\.)/i.test(oldVal)) return;
-    const urlRe = /\b(?:https?:\/\/|www\.)[^\s<>()]+/gi;
-    const out = oldVal.replace(urlRe, (url) => {
-      let label = url;
-      try {
-        if (/^www\./i.test(url)) {
-          const m = url.match(/^(?:www\.)?([^\/\:\?#]+)/i);
-          label = (m && m[1]) ? m[1].replace(/^www\./i, '') : url;
-        } else {
-          const u = new URL(url);
-          label = (u.hostname || url).replace(/^www\./i, '');
-        }
-      } catch (e) {
-        const m = url.match(/^(?:https?:\/\/)?(?:www\.)?([^\/\:\?#]+)/i);
-        label = (m && m[1]) ? m[1].replace(/^www\./i, '') : url;
-      }
-      return `[${label}](${url})`;
-    });
-
-    if (out !== oldVal) {
-      const oldLen = oldVal.length;
-      const newLen = out.length;
-      const delta = newLen - oldLen;
-      // Capture original selection BEFORE mutating value
-      const origStart = textarea.selectionStart || 0;
-      const origEnd = textarea.selectionEnd || 0;
-      textarea.value = out;
-      try {
-        const desiredStart = Math.max(0, Math.min(origStart + delta, newLen));
-        const desiredEnd = Math.max(0, Math.min(origEnd + delta, newLen));
-        textarea.selectionStart = desiredStart;
-        textarea.selectionEnd = desiredEnd;
-      } catch (e) {
-        // ignore
-      }
-    }
-  }
+  // Use the real implementation so the test validates the module directly.
+  const { autolinkPlainUrlsInTextarea } = require('../../src/renderer/autolink');
 
   it('converts bare www URL when followed by space and preserves caret after space', function() {
     const ta = document.getElementById('ta');

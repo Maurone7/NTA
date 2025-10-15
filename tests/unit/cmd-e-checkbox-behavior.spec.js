@@ -13,8 +13,8 @@ describe('Cmd+E export shortcut checkbox behavior', function() {
     // Check that it checks for Cmd+E
     assert(src.includes('} else if (key === \'e\') {'), 'handleGlobalShortcuts should check for key === \'e\'');
 
-    // Check that it reads the cmdEDirectExport setting
-    assert(src.includes('readStorage(storageKeys.cmdEDirectExport)'), 'handleGlobalShortcuts should read cmdEDirectExport setting');
+    // Check that it reads the cmdEDirectExport setting from the element
+    assert(src.includes('elements.cmdEDirectExportToggle?.checked'), 'handleGlobalShortcuts should read cmdEDirectExport setting from element');
 
     // Check that it has conditional logic for direct export vs dropdown
     assert(src.includes('if (directExportEnabled)'), 'handleGlobalShortcuts should have conditional logic based on directExportEnabled');

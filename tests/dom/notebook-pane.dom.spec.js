@@ -3,6 +3,14 @@ const { JSDOM } = require('jsdom');
 const path = require('path');
 
 function makeWindow() {
+  // Stub console methods to avoid noise BEFORE creating JSDOM
+  global.console = {
+    debug: () => {},
+    log: () => {},
+    warn: () => {},
+    error: () => {}
+  };
+
   const domHtml = `<!doctype html><html><body>
     <section class="editor-pane editor-pane--left" data-pane-id="left"><textarea id="note-editor"></textarea></section>
     <section class="editor-pane editor-pane--right" data-pane-id="right"><textarea id="note-editor-right"></textarea></section>

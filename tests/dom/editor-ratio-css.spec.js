@@ -7,6 +7,14 @@ describe('DOM: Editor Ratio CSS Application', function() {
   let window;
 
   before(function() {
+    // Stub console methods to avoid noise BEFORE creating JSDOM
+    global.console = {
+      debug: () => {},
+      log: () => {},
+      warn: () => {},
+      error: () => {}
+    };
+
     // Create a DOM that includes all viewing mode classes
     const html = `<html><body>
       <div class="workspace__content" style="width: 1000px;">

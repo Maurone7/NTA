@@ -3,6 +3,14 @@ const { JSDOM } = require('jsdom');
 const path = require('path');
 
 function makeWindow() {
+  // Stub console methods to avoid noise BEFORE creating JSDOM
+  global.console = {
+    debug: () => {},
+    log: () => {},
+    warn: () => {},
+    error: () => {}
+  };
+
   const domHtml = `<!doctype html><html><body>
     <div class="hashtag-container">
       <div class="hashtag-panel">
@@ -125,18 +133,11 @@ describe('DOM: hashtag panel minimization', function() {
     global.document = window.document;
     global.localStorage = window.localStorage;
     global.MutationObserver = window.MutationObserver;
+    global.testLocalStorageCalls = localStorageCalls;
 
     // Require the module
     const appModule = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'));
     const hooks = appModule.__test__ || {};
-
-    // Override localStorage after module is loaded to track calls
-    const originalSetItem = window.localStorage.setItem;
-    window.localStorage.setItem = function(key, value) {
-      console.log('localStorage.setItem called:', key, value);
-      localStorageCalls.push({ key, value });
-      return originalSetItem.call(this, key, value);
-    };
 
     // Initialize if available
     if (typeof hooks.initialize === 'function') {
@@ -151,30 +152,17 @@ describe('DOM: hashtag panel minimization', function() {
       const clickEvent = new window.MouseEvent('click', { bubbles: true, cancelable: true });
       minimizeBtn.dispatchEvent(clickEvent);
 
-      // Allow any asynchronous event handlers to run
-      setTimeout(() => {
-        try {
-          // Check that localStorage was called to persist the minimized state
-          const minimizeCall = localStorageCalls.find(call => call.key === 'NTA.hashtagPanelMinimized');
-          assert(minimizeCall, 'localStorage.setItem should be called for hashtagPanelMinimized');
-          assert.strictEqual(minimizeCall.value, 'true', 'hashtagPanelMinimized should be persisted as "true"');
+      // Check immediately
+      const minimizeCall = localStorageCalls.find(call => call.key === 'NTA.hashtagPanelMinimized' && call.value === 'true');
+      assert(minimizeCall, 'localStorage.setItem should be called for hashtagPanelMinimized with value "true"');
 
-          done();
-        } catch (err) {
-          done(err);
-        } finally {
-          // cleanup
-          delete global.window;
-          delete global.document;
-          delete global.localStorage;
-          delete global.MutationObserver;
-        }
-      }, 10);
+      done();
     } catch (e) {
       delete global.window;
       delete global.document;
       delete global.localStorage;
       delete global.MutationObserver;
+      delete global.testLocalStorageCalls;
       done(e);
     }
   });

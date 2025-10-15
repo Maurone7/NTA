@@ -4,6 +4,14 @@ const path = require('path');
 
 describe('DOM: sidebar resize pointercancel allows subsequent resizes', function() {
   it('allows a second resize after a pointercancel without creating extra panes', function(done) {
+    // Stub console methods to avoid noise BEFORE creating JSDOM
+    global.console = {
+      debug: () => {},
+      log: () => {},
+      warn: () => {},
+      error: () => {}
+    };
+
     const html = `<html><body>
       <div class="workspace__content">
         <section class="editor-pane editor-pane--left" data-pane-id="left"><textarea id="note-editor"></textarea></section>

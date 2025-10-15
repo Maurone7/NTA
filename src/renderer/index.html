@@ -43,7 +43,7 @@
       </div>
     </div>
 
-    <!-- Tab Bar (removed) -->
+    <!-- per-pane Tab Bars will be rendered inside each editor pane -->
 
     <div class="app-shell">
       <aside class="explorer" aria-label="Workspace explorer">
@@ -249,7 +249,11 @@
           </div>
         </div>
         <div class="workspace__content">
-          <section class="editor-pane editor-pane--left" aria-label="Markdown editor (left)">
+          <section class="editor-pane editor-pane--left" data-pane-id="left" aria-label="Markdown editor (left)">
+            <div class="pane-tab-bar">
+              <div class="tab-bar__tabs" id="tab-bar-tabs-left" role="tablist"></div>
+              <button id="new-tab-button-left" class="tab-bar__new-tab" title="New Tab" aria-label="New Tab">+</button>
+            </div>
             <div class="editor-pane__badge" data-pane="left"></div>
             <div class="editor-pane__actions">
               <button id="close-left-editor" class="icon-button small" type="button" title="Close left editor" aria-label="Close left editor">✕</button>
@@ -324,10 +328,21 @@
               </div>
             </div>
           </section>
-          <!-- Divider between the two central editors -->
-          <div class="editors__divider" aria-hidden="true"></div>
-          <!-- Add right editor pane for side-by-side editing -->
-          <section class="editor-pane editor-pane--right" aria-label="Markdown editor (right)">
+
+          <div
+            id="workspace-splitter"
+            class="workspace__splitter"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize editor and preview"
+            tabindex="0"
+          ></div>
+
+          <section class="editor-pane editor-pane--right" data-pane-id="right" aria-label="Markdown editor (right)" hidden>
+            <div class="pane-tab-bar">
+              <div class="tab-bar__tabs" id="tab-bar-tabs-right" role="tablist"></div>
+              <button id="new-tab-button-right" class="tab-bar__new-tab" title="New Tab" aria-label="New Tab">+</button>
+            </div>
             <div class="editor-pane__badge" data-pane="right"></div>
             <div class="editor-pane__actions">
               <button id="close-right-editor" class="icon-button small" type="button" title="Close right editor" aria-label="Close right editor">✕</button>
@@ -342,16 +357,34 @@
             </div>
             <textarea id="note-editor-right" spellcheck="true" aria-label="Markdown editor (right)"></textarea>
             <div id="editor-math-overlay-right" class="editor-math-overlay" aria-hidden="true" hidden></div>
+            
+            <!-- Math Preview Popup -->
+            <div id="math-preview-popup-right" class="math-preview-popup" hidden>
+              <div class="math-preview-popup__content"></div>
+            </div>
+            
+            <div
+              id="wikilink-suggestions-right"
+              class="wiki-suggest"
+              role="listbox"
+              aria-label="Wiki link suggestions"
+              hidden
+            ></div>
+            <div
+              id="hashtag-suggestions-right"
+              class="wiki-suggest"
+              role="listbox"
+              aria-label="Hashtag suggestions"
+              hidden
+            ></div>
+            <div
+              id="file-suggestions-right"
+              class="wiki-suggest"
+              role="listbox"
+              aria-label="File path suggestions"
+              hidden
+            ></div>
           </section>
-
-          <div
-            id="workspace-splitter"
-            class="workspace__splitter"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize editor and preview"
-            tabindex="0"
-          ></div>
 
           <section class="preview-pane" aria-label="Preview" tabindex="-1">
             <div id="markdown-preview" class="preview-scroll"></div>

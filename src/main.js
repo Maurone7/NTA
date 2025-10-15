@@ -1871,7 +1871,19 @@ ${rootVariables}
   }
   // end bootstrap
   // Create the main window when the app is ready
-  createMainWindow();
+  // During test runs we may want to avoid creating the visible BrowserWindow.
+  // Honor an env var NTA_TEST_SKIP_UI=1 to skip creating the window so tests
+  // that spawn the electron process can run headless without showing UI.
+  try {
+    if (process.env.NTA_TEST_SKIP_UI === '1') {
+      console.log('createMainWindow: Skipped due to NTA_TEST_SKIP_UI=1');
+    } else {
+      createMainWindow();
+    }
+  } catch (e) {
+    // If anything unexpected happens, fall back to creating the window.
+    try { createMainWindow(); } catch (inner) { console.error('Failed to create main window:', inner); }
+  }
 };
 
 
