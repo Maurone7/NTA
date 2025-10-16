@@ -48,6 +48,196 @@ try {
         return true;
       } catch (e) { return false; }
     };
+
+    // Lightweight dev-only instrumentation API (opt-in). Use this to record
+    // pointer events and measured pane widths in the real app or in tests.
+    // Enable by calling `window.__nta_trace.start()` and stop with `stop()`.
+    window.__nta_trace = window.__nta_trace || {
+      enabled: false,
+      events: [],
+      options: {},
+      // push a trace event (internal)
+      _push(ev) {
+        try { if (!this.enabled) return; this.events.push(Object.assign({ t: Date.now() }, ev)); } catch (e) {}
+      },
+      start(opts) {
+        this.enabled = true; this.events = []; this.options = opts || {};
+        window.__nta_debug_push && window.__nta_debug_push({ type: 'trace-start', opts: this.options });
+        this._attachListeners();
+        return true;
+      },
+      stop() {
+        this._detachListeners();
+        this.enabled = false;
+        window.__nta_debug_push && window.__nta_debug_push({ type: 'trace-stop', count: this.events.length });
+        const trace = this.dump();
+        // If an IPC bridge exists (Electron preload exposing window.api.invoke),
+        // attempt to save the trace via main process. This is best-effort and
+        // must not throw in test envs.
+        try {
+          if (window && window.api && typeof window.api.invoke === 'function') {
+            // fire-and-forget; caller can still receive the trace as return value
+            void window.api.invoke('save-trace', trace);
+          }
+        } catch (e) { /* ignore IPC failures in tests */ }
+        return trace;
+      },
+      clear() { this.events = []; },
+      dump() { try { return JSON.parse(JSON.stringify(this.events)); } catch (e) { return this.events; } },
+      // Attach/Detach listeners used internally
+      _attachListeners() {
+        try {
+          if (this._attached) return;
+          // pointerdown: capture initial sizes and which divider (if any)
+          this._onPointerDown = (ev) => {
+            try {
+              const target = ev.target && ev.target.closest ? (ev.target.classList && ev.target.classList.contains('editors__divider') ? ev.target : ev.target.closest('.editors__divider')) : null;
+              const container = target ? (target.parentElement || document) : ((ev.target && ev.target.closest && ev.target.closest('.workspace__content')) || ev.target?.parentElement || document);
+              const left = container && container.querySelector ? container.querySelector('.editor-pane--left') : null;
+              const right = container && container.querySelector ? container.querySelector('.editor-pane--right') : null;
+              try {
+                const containerRect = (container && container.getBoundingClientRect) ? container.getBoundingClientRect() : { width: 0, left: 0 };
+                const leftW = left && left.getBoundingClientRect ? left.getBoundingClientRect().width : 0;
+                const rightW = right && right.getBoundingClientRect ? right.getBoundingClientRect().width : 0;
+                const splitters = Array.from((container || document).querySelectorAll('.editors__divider'));
+                const dividerIndex = target ? splitters.indexOf(target) : -1;
+                const splitterWidth = target && target.getBoundingClientRect ? target.getBoundingClientRect().width : 0;
+                const adjacentLeftWidth = (target && target.previousElementSibling && target.previousElementSibling.getBoundingClientRect) ? Math.round(target.previousElementSibling.getBoundingClientRect().width) : 0;
+                const adjacentRightWidth = (target && target.nextElementSibling && target.nextElementSibling.getBoundingClientRect) ? Math.round(target.nextElementSibling.getBoundingClientRect().width) : 0;
+                const ratio = containerRect.width > 0 ? leftW / containerRect.width : null;
+                const paneCount = container ? (Array.from(container.querySelectorAll('.editor-pane')).length) : 0;
+                const leftExists = !!left;
+                const rightExists = !!right;
+                const leftNodeId = left && left.id ? left.id : null;
+                const leftNodeDataPane = left && left.dataset ? (left.dataset.paneId || null) : null;
+                const leftNodeTag = left && left.tagName ? left.tagName : null;
+                const rightNodeId = right && right.id ? right.id : null;
+                const rightNodeDataPane = right && right.dataset ? (right.dataset.paneId || null) : null;
+                const rightNodeTag = right && right.tagName ? right.tagName : null;
+                // Fallback: if container-query-measured widths are zero, prefer adjacent sibling measurements
+                const measuredLeftWidth = (leftW && leftW > 0) ? leftW : (adjacentLeftWidth || 0);
+                const measuredRightWidth = (rightW && rightW > 0) ? rightW : (adjacentRightWidth || 0);
+                const leftMeasuredFrom = (leftW && leftW > 0) ? 'container' : (adjacentLeftWidth ? 'adjacent' : 'none');
+                const rightMeasuredFrom = (rightW && rightW > 0) ? 'container' : (adjacentRightWidth ? 'adjacent' : 'none');
+                this._push({ event: 'pointerdown', pointerId: ev.pointerId, x: ev.clientX, leftWidth: measuredLeftWidth, rightWidth: measuredRightWidth, containerWidth: containerRect.width, containerLeft: containerRect.left, ratio, dividerIndex, splitterWidth, paneCount, leftExists, rightExists, adjacentLeftWidth, adjacentRightWidth, leftNodeId, leftNodeDataPane, leftNodeTag, rightNodeId, rightNodeDataPane, rightNodeTag, leftMeasuredFrom, rightMeasuredFrom });
+              } catch (err) {
+                this._push({ event: 'pointerdown', pointerId: ev.pointerId, x: ev.clientX });
+              }
+              this._capturing = true;
+            } catch (e) { /* ignore */ }
+          };
+
+          // pointermove: record current sizes and guess nearest divider index
+          this._onPointerMove = (ev) => {
+            try {
+              const container = document.querySelector('.workspace__content') || document;
+              const left = container.querySelector ? container.querySelector('.editor-pane--left') : null;
+              const right = container.querySelector ? container.querySelector('.editor-pane--right') : null;
+              const containerRect = (container && container.getBoundingClientRect) ? container.getBoundingClientRect() : { width: 0, left: 0 };
+              const leftW = left && left.getBoundingClientRect ? left.getBoundingClientRect().width : 0;
+              const rightW = right && right.getBoundingClientRect ? right.getBoundingClientRect().width : 0;
+              const splitters = Array.from((container || document).querySelectorAll('.editors__divider'));
+              let dividerIndex = -1;
+              if (splitters.length) {
+                let minD = Infinity;
+                splitters.forEach((s, idx) => {
+                  try {
+                    const srect = s.getBoundingClientRect();
+                    const center = srect.left + (srect.width || 0) / 2;
+                    const d = Math.abs(center - ev.clientX);
+                    if (d < minD) { minD = d; dividerIndex = idx; }
+                  } catch (e) { }
+                });
+              }
+              const splitterWidth = (splitters[dividerIndex] && splitters[dividerIndex].getBoundingClientRect) ? splitters[dividerIndex].getBoundingClientRect().width : 0;
+                const ratio = containerRect.width > 0 ? leftW / containerRect.width : null;
+                  const paneCount = container ? (Array.from(container.querySelectorAll('.editor-pane')).length) : 0;
+                  const leftExists = !!left;
+                  const rightExists = !!right;
+                  const adjLeft = (splitters[dividerIndex] && splitters[dividerIndex].previousElementSibling && splitters[dividerIndex].previousElementSibling.getBoundingClientRect) ? Math.round(splitters[dividerIndex].previousElementSibling.getBoundingClientRect().width) : 0;
+                  const adjRight = (splitters[dividerIndex] && splitters[dividerIndex].nextElementSibling && splitters[dividerIndex].nextElementSibling.getBoundingClientRect) ? Math.round(splitters[dividerIndex].nextElementSibling.getBoundingClientRect().width) : 0;
+                  const leftNode = left || (splitters[dividerIndex] && splitters[dividerIndex].previousElementSibling) || null;
+                  const rightNode = right || (splitters[dividerIndex] && splitters[dividerIndex].nextElementSibling) || null;
+                  const leftNodeId = leftNode && leftNode.id ? leftNode.id : null;
+                  const leftNodeDataPane = leftNode && leftNode.dataset ? (leftNode.dataset.paneId || null) : null;
+                  const leftNodeTag = leftNode && leftNode.tagName ? leftNode.tagName : null;
+                  const rightNodeId = rightNode && rightNode.id ? rightNode.id : null;
+                  const rightNodeDataPane = rightNode && rightNode.dataset ? (rightNode.dataset.paneId || null) : null;
+                  const rightNodeTag = rightNode && rightNode.tagName ? rightNode.tagName : null;
+                  const measuredLeftWidth = (leftW && leftW > 0) ? leftW : (adjLeft || 0);
+                  const measuredRightWidth = (rightW && rightW > 0) ? rightW : (adjRight || 0);
+                  const leftMeasuredFrom = (leftW && leftW > 0) ? 'container' : (adjLeft ? 'adjacent' : 'none');
+                  const rightMeasuredFrom = (rightW && rightW > 0) ? 'container' : (adjRight ? 'adjacent' : 'none');
+                  this._push({ event: 'pointermove', pointerId: ev.pointerId, x: ev.clientX, leftWidth: measuredLeftWidth, rightWidth: measuredRightWidth, containerWidth: containerRect.width, ratio, dividerIndex, splitterWidth, paneCount, leftExists, rightExists, adjacentLeftWidth: adjLeft, adjacentRightWidth: adjRight, leftNodeId, leftNodeDataPane, leftNodeTag, rightNodeId, rightNodeDataPane, rightNodeTag, leftMeasuredFrom, rightMeasuredFrom });
+            } catch (err) { this._push({ event: 'pointermove', pointerId: ev.pointerId, x: ev.clientX }); }
+          };
+
+          // pointerup: final sizes and reset capturing
+          this._onPointerUp = (ev) => {
+            try {
+              if (!this._capturing) return;
+              const container = document.querySelector('.workspace__content') || document;
+              const left = container.querySelector ? container.querySelector('.editor-pane--left') : null;
+              const right = container.querySelector ? container.querySelector('.editor-pane--right') : null;
+              const containerRect = (container && container.getBoundingClientRect) ? container.getBoundingClientRect() : { width: 0, left: 0 };
+              const leftW = left && left.getBoundingClientRect ? left.getBoundingClientRect().width : 0;
+              const rightW = right && right.getBoundingClientRect ? right.getBoundingClientRect().width : 0;
+              const splitters = Array.from((container || document).querySelectorAll('.editors__divider'));
+              let dividerIndex = -1;
+              if (splitters.length) {
+                let minD = Infinity;
+                splitters.forEach((s, idx) => {
+                  try {
+                    const srect = s.getBoundingClientRect();
+                    const center = srect.left + (srect.width || 0) / 2;
+                    const d = Math.abs(center - ev.clientX);
+                    if (d < minD) { minD = d; dividerIndex = idx; }
+                  } catch (e) { }
+                });
+              }
+              const splitterWidth = (splitters[dividerIndex] && splitters[dividerIndex].getBoundingClientRect) ? splitters[dividerIndex].getBoundingClientRect().width : 0;
+              const ratio = containerRect.width > 0 ? leftW / containerRect.width : null;
+              const paneCount = container ? (Array.from(container.querySelectorAll('.editor-pane')).length) : 0;
+              const leftExists = !!left;
+              const rightExists = !!right;
+              const adjLeft = (splitters[dividerIndex] && splitters[dividerIndex].previousElementSibling && splitters[dividerIndex].previousElementSibling.getBoundingClientRect) ? Math.round(splitters[dividerIndex].previousElementSibling.getBoundingClientRect().width) : 0;
+              const adjRight = (splitters[dividerIndex] && splitters[dividerIndex].nextElementSibling && splitters[dividerIndex].nextElementSibling.getBoundingClientRect) ? Math.round(splitters[dividerIndex].nextElementSibling.getBoundingClientRect().width) : 0;
+              const leftNode = left || (splitters[dividerIndex] && splitters[dividerIndex].previousElementSibling) || null;
+              const rightNode = right || (splitters[dividerIndex] && splitters[dividerIndex].nextElementSibling) || null;
+              const leftNodeId = leftNode && leftNode.id ? leftNode.id : null;
+              const leftNodeDataPane = leftNode && leftNode.dataset ? (leftNode.dataset.paneId || null) : null;
+              const leftNodeTag = leftNode && leftNode.tagName ? leftNode.tagName : null;
+              const rightNodeId = rightNode && rightNode.id ? rightNode.id : null;
+              const rightNodeDataPane = rightNode && rightNode.dataset ? (rightNode.dataset.paneId || null) : null;
+              const rightNodeTag = rightNode && rightNode.tagName ? rightNode.tagName : null;
+              const measuredLeftWidth = (leftW && leftW > 0) ? leftW : (adjLeft || 0);
+              const measuredRightWidth = (rightW && rightW > 0) ? rightW : (adjRight || 0);
+              const leftMeasuredFrom = (leftW && leftW > 0) ? 'container' : (adjLeft ? 'adjacent' : 'none');
+              const rightMeasuredFrom = (rightW && rightW > 0) ? 'container' : (adjRight ? 'adjacent' : 'none');
+              this._push({ event: 'pointerup', pointerId: ev.pointerId, x: ev.clientX, leftWidth: measuredLeftWidth, rightWidth: measuredRightWidth, containerWidth: containerRect.width, ratio, dividerIndex, splitterWidth, paneCount, leftExists, rightExists, adjacentLeftWidth: adjLeft, adjacentRightWidth: adjRight, leftNodeId, leftNodeDataPane, leftNodeTag, rightNodeId, rightNodeDataPane, rightNodeTag, leftMeasuredFrom, rightMeasuredFrom });
+            } catch (err) {
+              this._push({ event: 'pointerup', pointerId: ev.pointerId, x: ev.clientX });
+            } finally {
+              this._capturing = false;
+            }
+          };
+
+          document.addEventListener('pointerdown', this._onPointerDown, true);
+          document.addEventListener('pointermove', this._onPointerMove, true);
+          document.addEventListener('pointerup', this._onPointerUp, true);
+          this._attached = true;
+        } catch (e) { /* best effort */ }
+      },
+      _detachListeners() {
+        try {
+          if (!this._attached) return;
+          document.removeEventListener('pointerdown', this._onPointerDown, true);
+          document.removeEventListener('pointermove', this._onPointerMove, true);
+          document.removeEventListener('pointerup', this._onPointerUp, true);
+          this._attached = false; this._capturing = false;
+        } catch (e) { }
+      }
+    };
   }
 } catch (e) {}
 
@@ -11243,6 +11433,16 @@ const handleEditorSplitterPointerDown = (event) => {
   // Store the active divider being dragged so move/up handlers know which one
   const divider = event.currentTarget || event.target;
   state._activeEditorDivider = divider;
+  try {
+    // record index of this divider among siblings so we can map initial widths
+    const container = divider && divider.parentElement;
+    if (container) {
+      const splitters = Array.from(container.querySelectorAll('.editors__divider')) || [];
+      state._activeDividerIndex = splitters.indexOf(divider);
+    } else {
+      state._activeDividerIndex = -1;
+    }
+  } catch (e) { state._activeDividerIndex = -1; }
   try { console.debug && console.debug('[splitter] active divider', { index: divider?.dataset?.dividerIndex || null }); } catch (e) {}
 
   // Capture the bounds of the container that holds this divider's adjacent panes
@@ -11257,6 +11457,7 @@ const handleEditorSplitterPointerDown = (event) => {
         left: bounds.left,
         width: Math.max(1, bounds.width - 12)
       };
+      console.debug && console.debug('[splitter] pointerdown bounds', { containerLeft: bounds.left, containerWidth: bounds.width, storedWidth: state._editorSplitterBounds.width });
     }
     // store references for potential direct resizing adjustments
     state._activeDividerLeft = leftPane;
@@ -11290,20 +11491,43 @@ const handleEditorSplitterPointerMove = (event) => {
     const leftRect = leftPane.getBoundingClientRect();
     const rightRect = rightPane.getBoundingClientRect();
     const dividerWidth = divider.getBoundingClientRect().width || 12;
-    const combined = leftRect.width + rightRect.width;
 
-    // desired left width relative to leftPane's left edge
+    // For local resizing we should only consider the two adjacent panes' widths.
+    // Use leftRect.left as the origin so desiredLeftPx maps to leftPane's flex-basis.
+    const leftOrigin = leftRect.left || 0;
+    // Prefer measured widths, but if JSDOM or strange layout returns near-zero
+    // sizes, fall back to the initial widths captured at pointerdown for these
+    // two adjacent panes so we don't compute an incorrect available space.
+    let available = Math.max(1, Math.round((leftRect.width || 0) + (rightRect.width || 0)));
+    if (available <= 1) {
+      try {
+        const init = state._editorSplitterInitialWidths || [];
+        const idx = (typeof state._activeDividerIndex === 'number') ? state._activeDividerIndex : -1;
+        if (idx >= 0 && init.length > idx + 1) {
+          const leftInit = init[idx] || 0;
+          const rightInit = init[idx + 1] || 0;
+          const sum = Math.max(1, leftInit + rightInit);
+          if (sum > 1) available = sum;
+        }
+      } catch (e) { /* ignore fallback errors */ }
+    }
+
     const clientX = event.clientX;
-    const leftEdge = leftRect.left;
-    let desiredLeftPx = clientX - leftEdge;
+    console.debug && console.debug('[splitter] pointermove compute', { clientX, leftOrigin, available, dividerWidth });
 
+    let desiredLeftPx = Math.round(clientX - leftOrigin);
     const minPx = 80; // minimum width for a pane
-    const maxPx = Math.max(minPx, combined - minPx);
-    desiredLeftPx = Math.max(minPx, Math.min(maxPx, desiredLeftPx));
+    // Max left is available - minPx (so right has at least minPx)
+    const maxLeftPx = Math.max(minPx, available - minPx);
+    if (!Number.isFinite(desiredLeftPx)) desiredLeftPx = Math.round(available / 2);
+    desiredLeftPx = Math.max(minPx, Math.min(maxLeftPx, desiredLeftPx));
+
+    const rightPx = Math.max(minPx, Math.round(available - desiredLeftPx));
+    console.debug && console.debug('[splitter] pointermove result', { desiredLeftPx, rightPx });
 
     // Apply explicit flex-basis to left and right panes so layout updates immediately
-    leftPane.style.flex = `0 0 ${Math.round(desiredLeftPx)}px`;
-    rightPane.style.flex = `0 0 ${Math.round(Math.max(0, combined - desiredLeftPx))}px`;
+    try { leftPane.style.flex = `0 0 ${desiredLeftPx}px`; } catch (e) {}
+    try { rightPane.style.flex = `0 0 ${rightPx}px`; } catch (e) {}
   } catch (e) { /* ignore styling errors */ }
 };
 
@@ -11342,6 +11566,44 @@ const handleEditorSplitterPointerUp = (event) => {
   try { state._activeDividerLeft = null; } catch (e) {}
   try { state._activeDividerRight = null; } catch (e) {}
   try { state._editorSplitterInitialWidths = null; } catch (e) {}
+  // Defensive normalization: ensure the two adjacent panes have sane final widths
+  try {
+    const divider = state._activeEditorDivider || null;
+    const leftPane = state._activeDividerLeft || (divider ? divider.previousElementSibling : null);
+    const rightPane = state._activeDividerRight || (divider ? divider.nextElementSibling : null);
+    const container = divider ? divider.parentElement : null;
+    if (divider && container && leftPane && rightPane) {
+      try {
+        const dividerW = Math.max(0, divider.getBoundingClientRect().width || 12);
+        const bounds = container.getBoundingClientRect();
+        const totalAvailable = Math.max(1, Math.round(bounds.width - dividerW));
+        const minPx = 80;
+        let leftPx = Math.round(leftPane.getBoundingClientRect().width || 0);
+        let rightPx = Math.round(rightPane.getBoundingClientRect().width || 0);
+
+        // If measured sum differs substantially from available width, rescale proportionally
+        const measuredSum = Math.max(1, leftPx + rightPx);
+        if (Math.abs(measuredSum - totalAvailable) > 2) {
+          const scale = totalAvailable / measuredSum;
+          leftPx = Math.max(minPx, Math.round(leftPx * scale));
+          rightPx = Math.max(minPx, Math.round(totalAvailable - leftPx));
+        }
+
+        // Enforce minPx on both sides, adjusting the other pane if needed
+        if (leftPx < minPx) { leftPx = minPx; rightPx = Math.max(minPx, totalAvailable - leftPx); }
+        if (rightPx < minPx) { rightPx = minPx; leftPx = Math.max(minPx, totalAvailable - rightPx); }
+
+        // Final clamp to totalAvailable
+        if (leftPx + rightPx > totalAvailable) {
+          leftPx = Math.max(minPx, Math.round((leftPx / (leftPx + rightPx)) * totalAvailable));
+          rightPx = Math.max(minPx, totalAvailable - leftPx);
+        }
+
+        leftPane.style.flex = `0 0 ${leftPx}px`;
+        rightPane.style.flex = `0 0 ${rightPx}px`;
+      } catch (e) { /* ignore normalization errors */ }
+    }
+  } catch (e) { /* ignore */ }
 };
 
 const handleEditorSplitterKeyDown = (event) => {
@@ -22842,6 +23104,12 @@ try {
       startAutosave: typeof startAutosave === 'function' ? startAutosave : null,
       stopAutosave: typeof stopAutosave === 'function' ? stopAutosave : null,
       elements
+      ,
+      // Expose editor splitter handlers for tests to call directly when
+      // synthetic DOM events do not trigger the element-bound listeners in JSDOM.
+      handleEditorSplitterPointerDown: typeof handleEditorSplitterPointerDown === 'function' ? handleEditorSplitterPointerDown : null,
+      handleEditorSplitterPointerMove: typeof handleEditorSplitterPointerMove === 'function' ? handleEditorSplitterPointerMove : null,
+      handleEditorSplitterPointerUp: typeof handleEditorSplitterPointerUp === 'function' ? handleEditorSplitterPointerUp : null
     };
   }
 } catch (e) { /* ignore */ }

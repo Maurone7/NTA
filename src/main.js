@@ -243,6 +243,21 @@ ipcMain.handle('debug:readWorkspaceDebugFile', async (_event, filename) => {
   }
 });
 
+// Persist a trace JSON from the renderer. This is used by the dev tracer
+// (window.__nta_trace) when callers want the main process to save traces to disk.
+ipcMain.handle('save-trace', async (_event, trace) => {
+  try {
+    const workspaceDebugDir = path.join(__dirname, '..', '.debug', 'traces');
+    await fsp.mkdir(workspaceDebugDir, { recursive: true });
+    const fileName = `trace-${Date.now()}.json`;
+    const filePath = path.join(workspaceDebugDir, fileName);
+    await fsp.writeFile(filePath, JSON.stringify(trace, null, 2), 'utf8');
+    return { ok: true, file: filePath };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
+
 // Kill the spawned replacer process (reads pid from workspace .debug/nta-replace.pid)
 ipcMain.handle('debug:killWorkspaceReplacer', async () => {
   try {
@@ -399,6 +414,55 @@ const createMainWindow = () => {
         try { console.log('Renderer preload API check scheduling failed:', String(e)); } catch (e) {}
       }
     });
+    
+    // Optional: auto-run a small trace/create+resize sequence when the
+    // NTA_AUTO_TRACE env var is set. Useful for CI or automated repros where
+    // you want the app to open, perform a user-like action, save a trace and exit.
+    if (process.env.NTA_AUTO_TRACE === '1') {
+      mainWindow.webContents.once('did-finish-load', () => {
+        const script = `(async ()=>{
+          try {
+            // start tracer if available
+            try { window.__nta_trace && window.__nta_trace.start({ auto: true }); } catch(e) {}
+            // small delay to allow renderer to finish wiring up dividers/panes
+            await new Promise(r => setTimeout(r, 300));
+            // create a dynamic pane only if there is currently a single visible pane
+            try {
+              if (typeof createEditorPane === 'function') {
+                try {
+                  const panes = Array.from(document.querySelectorAll('.editor-pane')).filter(p => !p.hidden && p.getBoundingClientRect && p.getBoundingClientRect().width > 0);
+                  if (panes.length <= 1) {
+                    createEditorPane(null, 'auto1');
+                  }
+                } catch (e) { /* ignore DOM read errors */ }
+              }
+            } catch(e) {}
+            // perform a simple pointer drag on the first divider
+            try {
+              const divider = document.querySelector('.editors__divider');
+              if (divider) {
+                const pd = new PointerEvent('pointerdown', { bubbles: true, clientX: 500 });
+                divider.dispatchEvent(pd);
+                const pm = new PointerEvent('pointermove', { bubbles: true, clientX: 420 });
+                document.dispatchEvent(pm);
+                const pu = new PointerEvent('pointerup', { bubbles: true, clientX: 420 });
+                document.dispatchEvent(pu);
+              }
+            } catch(e) {}
+            // allow the UI a moment to process the synthetic events, then stop tracer
+            await new Promise(r => setTimeout(r, 200));
+            // stop tracer and attempt to save via preload API
+            let trace = [];
+            try { trace = window.__nta_trace ? window.__nta_trace.stop() : []; } catch(e) {}
+            try { if (window.api && typeof window.api.invoke === 'function') { await window.api.invoke('save-trace', trace); } } catch(e) {}
+          } catch (e) { try { console.error('auto-trace error', e); } catch (ee) {} }
+          return true;
+        })();`;
+        // Fire-and-forget; allow a short grace period then quit
+        mainWindow.webContents.executeJavaScript(script).catch(() => {});
+        setTimeout(() => { try { mainWindow.close(); } catch (e) {} try { app.quit(); } catch (e) {} }, 1500);
+      });
+    }
   } catch (e) {}
 
   // Forward renderer console messages to the main process terminal in development

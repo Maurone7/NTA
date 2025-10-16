@@ -1,0 +1,63 @@
+{
+  "seed": 333,
+  "actions": [
+    {
+      "type": "open",
+      "pane": "left",
+      "id": "n2"
+    },
+    {
+      "type": "open",
+      "pane": "left",
+      "id": "n2"
+    },
+    {
+      "type": "open",
+      "pane": "left",
+      "id": "n1"
+    },
+    {
+      "type": "open",
+      "pane": "right",
+      "id": "n2"
+    },
+    {
+      "type": "open",
+      "pane": "left",
+      "id": "n1"
+    },
+    {
+      "type": "open",
+      "pane": "right",
+      "id": "n1"
+    },
+    {
+      "type": "resize",
+      "x": 464
+    },
+    {
+      "type": "open",
+      "pane": "right",
+      "id": "n2"
+    },
+    {
+      "type": "open",
+      "pane": "left",
+      "id": "n1"
+    },
+    {
+      "type": "resize",
+      "x": 400
+    },
+    {
+      "type": "open",
+      "pane": "right",
+      "id": "n2"
+    },
+    {
+      "type": "open",
+      "pane": "right",
+      "id": "n2"
+    }
+  ]
+}

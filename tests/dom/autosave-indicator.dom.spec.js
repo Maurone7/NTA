@@ -55,8 +55,9 @@ describe('DOM: Autosave indicator updates when toggled or interval changed', fun
       });
     }
 
-    // Load the renderer module
-    const appModule = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'));
+  // Load the renderer module (clear from require cache to avoid cross-test state)
+  try { delete require.cache[require.resolve(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'))]; } catch (e) {}
+  const appModule = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'));
     const hooks = appModule.__test__ || {};
 
     if (typeof hooks.initialize === 'function') {
