@@ -1,0 +1,4646 @@
+:root {
+  color-scheme: light dark;
+  --title-bar-height: 0px; /* Default to 0 for non-mac platforms */
+  --bg: #f7f8fa;
+  --bg-elevated: #ffffff;
+  --bg-sidebar: #eef1f6;
+  --bg-muted: #f0f1f3;
+  --border: rgba(20, 23, 26, 0.08);
+  --border-strong: rgba(20, 23, 26, 0.14);
+  --fg: #1f2933;
+  --fg-soft: rgba(31, 41, 51, 0.72);
+  --accent: #4c6ef5;
+  --accent-dim: #3b5bdb;
+  --accent-weak: rgba(76, 110, 245, 0.12);
+  --danger: #e03131;
+  --editor-ratio: 0.5;
+  --editor-pane-ratio: 0.5;
+  --font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-size: 14px;
+  font-family: var(--font-family);
+}
+
+/* High Contrast Mode */
+body[data-high-contrast="true"] {
+  --bg: #000000;
+  --bg-elevated: #000000;
+  --bg-sidebar: #000000;
+  --bg-muted: #111111;
+  --border: #ffffff;
+  --border-strong: #ffffff;
+  --fg: #ffffff;
+  --fg-soft: #cccccc;
+  --accent: #ffff00;
+  --accent-dim: #ffff00;
+  --accent-weak: rgba(255, 255, 0, 0.2);
+  --danger: #ff0000;
+}
+
+/* Skip link for accessibility */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 6px;
+  background: var(--accent);
+  color: white;
+  padding: 8px;
+  text-decoration: none;
+  border-radius: 4px;
+  z-index: 10000;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.skip-link:focus {
+  top: 6px;
+}
+
+/* Custom Title Bar */
+.title-bar {
+  display: none; /* Hidden by default, shown only on macOS */
+  height: var(--title-bar-height);
+  background: var(--bg-elevated);
+  /* remove visual separator between title bar and workspace toolbar */
+  border-bottom: none;
+  -webkit-app-region: drag;
+  position: relative;
+  z-index: 1000;
+}
+
+.title-bar__content {
+  display: flex;
+  align-items: center; /* Vertical centering regardless of title-bar height */
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  padding: 0 70px; /* Minimal space for traffic light buttons */
+  box-sizing: border-box;
+}
+
+.title-bar__title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-soft);
+  text-align: center;
+  line-height: 1; /* Let flex centering handle vertical alignment */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--title-bar-height) * 1); /* Ensure title occupies the full bar height for perfect centering */
+}
+
+/* Show title bar only on macOS */
+body.platform-darwin .title-bar {
+  display: flex; /* Override the default none to show on macOS */
+  align-items: center; /* Center traffic lights vertically */
+}
+
+/* On macOS set the title bar height so layout can account for it */
+body.platform-darwin {
+  --title-bar-height: 22px;
+}
+
+/* Title bar theme adjustments */
+body[data-theme="dark"] .title-bar {
+  background: var(--bg-elevated);
+  border-bottom-color: var(--border);
+}
+
+body[data-theme="light"] .title-bar {
+  background: var(--bg-elevated);
+  border-bottom-color: var(--border);
+}
+
+/* Platform-specific adjustments */
+body.platform-win32 {
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body.platform-linux {
+  font-family: "Ubuntu", "Liberation Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Tab Bar */
+.tab-bar {
+  height: 35px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  position: relative;
+  z-index: 900;
+}
+
+.tab-bar__tabs {
+  display: flex;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tab-bar__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-bar__new-tab {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--fg-soft);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tab-bar__new-tab:hover {
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+
+.tab-bar__new-tab .icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Tab bar visible (previously hidden) */
+.tab-bar,
+.tab-bar__new-tab {
+  display: flex !important;
+  align-items: center;
+}
+
+/* Per-pane tab bar (placed inside each editor pane) */
+.pane-tab-bar {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  gap: 8px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+.pane-tab-bar.debug-visual {
+  /* Temporary debug visuals: colored background and dashed outline */
+  background: rgba(0, 128, 255, 0.03) !important;
+  outline: 2px dashed rgba(0, 128, 255, 0.8) !important;
+}
+.pane-tab-bar .tab.debug-visual {
+  background: rgba(0,0,0,0.03) !important;
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.04);
+}
+.pane-tab-bar .tab-bar__tabs { flex: 1; }
+.pane-tab-bar .tab-bar__new-tab { margin-left: 6px; }
+
+/* Explicit highlight for the right-pane tab list to help debugging */
+#tab-bar-tabs-right.debug-visual {
+  background: rgba(255, 0, 0, 0.03) !important;
+  outline: 2px dashed rgba(255,0,0,0.8) !important;
+}
+
+/* Individual Tabs */
+.tab {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  min-width: 120px;
+  max-width: 200px;
+  background: transparent;
+  border: none;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  padding: 0 12px;
+  margin-right: 2px;
+  position: relative;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab:hover {
+  background: var(--bg-muted);
+}
+
+.tab--active {
+  background: var(--bg);
+  border-bottom: 2px solid var(--accent);
+}
+
+.tab--active:hover {
+  background: var(--bg);
+}
+
+.tab__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-soft);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 8px;
+}
+
+.tab__close {
+  background: transparent;
+  border: none;
+  color: var(--fg-soft);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.tab__close:hover { background: var(--bg-muted); color: var(--fg); }
+.tab__dirty { font-size: 11px; }
+
+.tab--active .tab__title {
+  color: var(--fg);
+}
+
+.tab__close {
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: var(--fg-soft);
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.tab__close:hover {
+  opacity: 1;
+  background: var(--bg-muted);
+}
+
+.tab__close .icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* Pane video viewer: ensure the video fits inside the pane without resizing it */
+.pane-video-container {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  pointer-events: auto;
+}
+.video-pane-viewer {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+/* Adjust app layout for tab bar */
+.app-shell {
+  height: calc(100vh - var(--title-bar-height) - 35px);
+  position: relative; /* anchor absolute children like the sidebar resize handle */
+}
+
+/* Ensure the workspace doesn't produce unexpected scrollbars when the
+   sidebar-resize-handle is visible; editor panes handle their own scrolling. */
+.workspace {
+  overflow: hidden;
+}
+
+/* Windows-specific scrollbar styling */
+body.platform-win32 ::-webkit-scrollbar {
+  width: 12px;
+}
+
+body.platform-win32 ::-webkit-scrollbar-track {
+  background: var(--bg-muted);
+}
+
+body.platform-win32 ::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+}
+
+body.platform-win32 ::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-soft);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1117;
+    --bg-elevated: #151922;
+    --bg-sidebar: #181d27;
+    --bg-muted: #1a1f2b;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --fg: #e9edf5;
+    --fg-soft: rgba(233, 237, 245, 0.72);
+    --accent: #91a7ff;
+    --accent-dim: #7c97ff;
+    --accent-weak: rgba(145, 167, 255, 0.18);
+    --danger: #ff6b6b;
+  }
+}
+
+/* High Contrast Mode */
+body[data-high-contrast="true"] {
+  --bg: #000000;
+  --bg-elevated: #000000;
+  --bg-sidebar: #000000;
+  --bg-muted: #111111;
+  --border: #ffffff;
+  --border-strong: #ffffff;
+  --fg: #ffffff;
+  --fg-soft: #cccccc;
+  --accent: #ffff00;
+  --accent-dim: #ffff00;
+  --accent-weak: rgba(255, 255, 0, 0.2);
+  --danger: #ff0000;
+}
+
+/* Update Notification */
+
+/* Ensure the notification does not overlap the macOS custom title bar or traffic lights.
+   Use the --title-bar-height variable so the notification sits just under the title bar
+   on macOS. Also keep its z-index lower than the title bar (which uses 1000) so the
+   traffic lights remain on top. */
+.update-notification {
+  position: relative;
+  z-index: 1200; /* raised so notification appears above settings modal */
+  margin-top: 0;
+}
+
+body.platform-darwin .update-notification {
+  /* push the notification below the title bar on macOS; keep it fixed so it
+     can't be overlaid by the custom title bar traffic lights or other
+     positioned elements. Center it horizontally and limit width for
+     readability. */
+  position: fixed;
+  top: var(--title-bar-height);
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 40px);
+  max-width: 900px;
+  z-index: 1200;
+}
+
+.update-notification__submessage {
+  font-size: 12px;
+  color: var(--fg-soft);
+  margin-top: 4px;
+}
+
+.settings-submessage {
+  font-size: 12px;
+  color: var(--fg-soft);
+}
+
+.settings-item > div > div > .settings-submessage {
+  margin-left: 0; /* align under the button in the new column layout */
+  max-width: 420px;
+  word-break: break-word;
+}
+
+/* Layout for update check row: reserve vertical space for submessage so buttons don't move */
+.update-check-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.check-button-column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Reserve height so the Open Release Page button doesn't shift when submessage appears */
+  min-height: 44px; /* approximate height of button + small message */
+  min-width: 140px;
+}
+
+.check-button-column .settings-submessage {
+  min-height: 18px; /* reserve a line for the message */
+  opacity: 1;
+  transition: opacity 160ms ease-in-out;
+}
+
+/* Visual polish for update buttons */
+.update-check-row .settings-button {
+  border-radius: 8px;
+  font-weight: 600;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 4px 12px rgba(18,24,38,0.04);
+}
+
+.update-check-row .settings-button.icon-left {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.update-check-row .settings-button .btn-icon {
+  font-size: 14px;
+  opacity: 0.95;
+}
+
+.update-check-row .settings-button.primary {
+  background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+}
+
+.update-check-row .settings-button.secondary {
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+
+.settings-submessage {
+  color: var(--fg-soft);
+}
+
+/* Make the two columns share available width so their buttons match size */
+.update-check-row > .check-button-column,
+.update-check-row > div {
+  flex: 1 1 0;
+}
+
+.update-check-row .settings-button {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Ensure both update buttons have identical height and centered content */
+.update-check-row .settings-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px; /* keep consistent padding */
+  min-height: 38px; /* enforce consistent height */
+}
+
+
+.update-notification__message {
+  font-size: 14px;
+  color: var(--fg-soft);
+  margin-bottom: 12px;
+}
+
+.update-notification__progress {
+  margin-top: 8px;
+}
+
+.update-notification__progress-bar {
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.update-notification__progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+.update-notification__progress-text {
+  font-size: 12px;
+  color: var(--fg-soft);
+}
+
+.update-notification__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Math WYSIWYG panel */
+.math-wysiwyg-panel {
+  position: absolute;
+  right: 12px;
+  top: 80px;
+  width: 360px;
+  max-height: 60vh;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  z-index: 900;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.math-wysiwyg__header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:12px;
+  border-bottom:1px solid var(--border);
+}
+.math-wysiwyg__list { padding:8px; display:flex; flex-direction:column; gap:8px; }
+.math-wysiwyg__item { padding:8px; border-radius:6px; background:var(--bg); border:1px solid var(--border); display:flex; gap:8px; align-items:flex-start; }
+.math-wysiwyg__item pre { margin:0; white-space:pre-wrap; word-break:break-word; font-family:var(--font-family); }
+.math-wysiwyg__actions { margin-left:auto; display:flex; gap:6px; }
+.math-wysiwyg-panel[hidden] { display: none; }
+
+/* Modal */
+.modal { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.35); z-index:10000; }
+.modal[hidden] { display: none; }
+.modal__content { background:var(--bg-elevated); border-radius:8px; width:640px; max-width:calc(100% - 40px); box-shadow:0 10px 40px rgba(0,0,0,0.3); overflow:hidden; }
+.modal__header { padding:12px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.modal__body { padding:12px; display:flex; gap:12px; }
+#math-edit-textarea { width:50%; min-height:160px; font-family:var(--font-family); font-size:13px; }
+#math-edit-preview { width:50%; padding:8px; border:1px dashed var(--border); border-radius:6px; min-height:160px; overflow:auto; }
+.modal__footer { padding:12px; display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--border); }
+
+/* Math Preview Popup */
+.math-preview-popup {
+  /* Use fixed positioning so the popup is positioned relative to the viewport.
+     This prevents it from being clipped or mis-positioned when the popup
+     element is contained inside a positioned ancestor (for example the
+     left editor pane) while the math expression originates from the right
+     editor textarea. */
+  position: fixed;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-width: 300px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-5px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.citation-modal__list { max-height: 40vh; overflow: auto; padding: 8px; display:flex; flex-direction:column; gap:6px; }
+.citation-item { padding:8px; border-radius:6px; background:var(--bg); border:1px solid var(--border); cursor:pointer; display:flex; flex-direction:column; }
+.citation-item .cite-key { font-family: monospace; font-size:12px; color:var(--fg-soft); }
+.citation-item .cite-title { font-weight:600; color:var(--fg); margin-top:4px; }
+.citation-item .cite-meta { font-size:12px; color:var(--fg-soft); margin-top:4px; }
+.citation-search { width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; margin-bottom:8px; }
+
+.math-preview-popup.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  /* Ensure popup floats above most UI elements */
+  z-index: 9000; /* Ensure it's above panes/dividers but below modals */
+}
+
+/* Temporary visual aid for debugging visibility during development.
+   You can remove this later if not needed. */
+
+
+
+.math-preview-popup__content {
+  padding: 6px 8px; /* slightly smaller so popup fits tighter */
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+/* Make header previews (e.g. when previewing '# Title') shrink-wrap to their text
+   so the popup just barely fits the heading content. Keep headings single-line. */
+.math-preview-popup__content h1,
+.math-preview-popup__content h2,
+.math-preview-popup__content h3,
+.math-preview-popup__content h4,
+.math-preview-popup__content h5,
+.math-preview-popup__content h6 {
+  display: inline-block;
+  margin: 0;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.math-preview-popup__content .katex {
+  font-size: 1.1em;
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden; /* Disable scrolling globally */
+}
+
+/* Editor math live-preview overlay */
+.editor-pane { position: relative; }
+/* Make sure editor panes manage their own scrolling and don't show a vertical
+  scrollbar in the middle of the layout due to adjacent absolute elements. */
+.editor-pane { overflow: hidden; }
+.editor-math-overlay {
+  position: absolute;
+  inset: 0 0 0 0;
+  /* By default don't capture pointer events so the editor remains interactive.
+     We selectively enable pointer events for interactive children (like iframes)
+     so embeds can be clicked/scrolled while most overlay content remains inert. */
+  pointer-events: none;
+  overflow: auto;
+  padding: 24px 16px 24px 24px; /* align with textarea padding */
+  white-space: pre-wrap;
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  color: var(--fg);
+  background: transparent;
+  z-index: 2; /* sit above textarea visually but remain inert unless children allow pointer events */
+  -webkit-overflow-scrolling: touch; /* smoother touch scrolling */
+  touch-action: pan-y; /* allow vertical swiping on touch devices */
+}
+.editor-math-overlay .math-inline, .editor-math-overlay .math-block {
+  pointer-events: auto; /* allow clicking math blocks if needed */
+  cursor: pointer;
+  user-select: text;
+  color: inherit;
+}
+.editor-math-overlay .katex, .editor-math-overlay .katex-display { color: inherit; margin: 0; }
+.editor-math-overlay .editor-math-block {
+  display: block;
+  text-align: left;
+  margin: 0.5em 0 1em 0;
+}
+.editor-math-block { 
+  display: block; 
+  text-align: left;
+  margin: 1em 0 2em 0;
+  background: transparent; 
+}
+
+.editor-heading { margin: 10px 0 6px; }
+.editor-heading--h1 { font-size: 1.6em; font-weight: 700; }
+.editor-heading--h2 { font-size: 1.4em; font-weight: 600; }
+.editor-heading--h3 { font-size: 1.2em; font-weight: 600; }
+.editor-heading--h4 { font-size: 1.1em; font-weight: 600; }
+.editor-heading--h5 { font-size: 1em; font-weight: 600; }
+.editor-heading--h6 { font-size: 0.95em; font-weight: 600; }
+
+.editor-inline-code { background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+.editor-block-code { background: rgba(0,0,0,0.03); padding: 8px; border-radius: 6px; font-family: monospace; overflow: auto; }
+.editor-list-item { margin-left: 18px; }
+.editor-overlay-image { max-width: 60%; display: inline-block; margin: 6px 0; }
+
+/* Overlay videos: make responsive and constrain to overlay width/height so they don't overflow */
+.editor-overlay-video {
+  display: block;
+  width: 100%; /* take available overlay width */
+  max-width: min(900px, 100%); /* cap super-wide videos while staying responsive */
+  height: auto;
+  margin: 8px 0;
+  margin-left: auto;
+  margin-right: auto;
+  border-radius: 8px;
+  box-shadow: 0 12px 24px rgba(15, 17, 23, 0.08);
+  background: #000; /* video background while loading */
+  max-height: 70vh; /* avoid very tall videos that overflow the window */
+  object-fit: contain; /* preserve aspect ratio */
+  box-sizing: border-box;
+}
+
+/* If you prefer inline smaller videos, add a helper class 'inline-video' to reduce width */
+.editor-overlay-video.inline-video {
+  display: inline-block;
+  width: auto;
+  max-width: 60%;
+}
+.editor-table { display: block; background: rgba(0,0,0,0.02); padding: 6px; border-radius: 6px; }
+
+.editor-math-inline { display: inline-block; vertical-align: 6px; line-height: 1; text-align: left; margin: 0 25px; }
+
+.mirror-text {
+  display: inline;
+  color: var(--fg);
+  font-family: var(--font-family);
+  font-size: 15px;
+  line-height: 1;
+  white-space: pre-wrap;
+  position: relative;
+  z-index: 3;
+  vertical-align: 6px;
+  text-align: left;
+  margin: 0 2px 0 8px;
+}
+
+.editor-wikilink { 
+  display: inline-block; 
+  line-height: 0.5;
+  vertical-align: top;
+  border-radius: 8;
+}
+
+.editor-wikilink img,
+.editor-wikilink video {
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  box-shadow: none;
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Reduce padding for embeds in the math overlay */
+.editor-math-overlay .wikilink-embed {
+  padding: 1px 3px;
+  margin: 1px 0;
+  border-radius: 8px;
+}
+
+.editor-math-overlay .wikilink-embed__header {
+  margin-bottom: 2px;
+  font-size: 10px;
+}
+
+.editor-math-overlay .wikilink-embed__figure {
+  gap: 8px;
+}
+
+.editor-html-block, .editor-html-block iframe {
+  touch-action: auto;
+}
+
+.editor-html-block iframe {
+  width: 100%;
+  height: 420px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: white;
+  /* allow pointer events on iframe so users can interact with embedded pages */
+  pointer-events: auto;
+}
+
+/* Toggle button active state */
+.icon-button.active { background: var(--accent-weak); border-radius:6px; }
+.icon-button.active .icon { color: var(--accent); }
+
+body {
+  font-size: var(--font-size);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Global scrollbar styling - make scrollbars smaller */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-soft);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+button,
+input,
+textarea {
+  font-family: inherit;
+}
+
+.app-shell {
+  display: flex;
+  height: calc(100vh - var(--title-bar-height));
+  width: 100vw;
+  overflow: hidden;
+}
+
+.app-shell.sidebar-collapsed .explorer {
+  display: none;
+}
+
+/* When sidebar is collapsed, hide the resize handle to avoid a stray visible
+   handle left in the UI. The handle is positioned absolutely and would
+   otherwise remain visible even when the explorer is hidden. */
+.app-shell.sidebar-collapsed .sidebar-resize-handle {
+  display: none !important;
+}
+
+.app-shell.sidebar-collapsed .workspace {
+  border-left: none;
+}
+
+.explorer {
+  width: var(--sidebar-width, 200px);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-width: 500px;
+  --hashtag-panel-height: 300px;
+}
+
+.sidebar-resize-handle {
+  /* Improve hit targeting and stacking so the handle reliably receives
+     pointer events even when other panes create stacking contexts. Center
+     the interactive area on the sidebar/workspace boundary and expose a
+     thin visible indicator so users can grab the lit line easily. */
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* Keep a reasonably large interactive width but position it so the left edge
+     is on the sidebar/workspace boundary for precise edge alignment. */
+  width: 24px; /* interactive width extending to the right of the boundary - matches workspace splitter */
+  left: calc(var(--sidebar-width, 200px) + 1px); /* position left edge on the visual boundary (accounting for 1px border) */
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  transform: translateX(0);
+  pointer-events: auto;
+  z-index: 2147483645; /* very high so it stays above content/scrollbars */
+  /* Ensure the sidebar handle is above the workspace splitter which uses 2147483646 */
+  z-index: 9000;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none; /* prevent touch-driven scrolling artifacts */
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+/* Thin visual indicator at the left edge of the interactive hit area. The line
+   itself is 1px wide and doesn't receive pointer events (the parent does). */
+.sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px; /* default thin indicator */
+  background: var(--border);
+  pointer-events: none;
+  opacity: 0.8;
+  transition: width 120ms ease, background 120ms ease, opacity 120ms ease;
+}
+
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle:active::after {
+  background: var(--accent);
+  opacity: 1;
+  width: 2px; /* expand to 2px on hover to match workspace splitter */
+}
+
+.explorer__header {
+  display: flex;
+  flex-direction: row; /* Change to horizontal layout */
+  align-items: center; /* Center items vertically */
+  justify-content: space-between; /* Space between title and actions */
+  gap: 4px;
+  padding: 6px 12px;
+  /* remove visible header bar */
+  border-bottom: none;
+  background: transparent;
+}
+
+.explorer__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px; /* Reduced gap for compact layout */
+}
+
+.explorer__actions .icon-button.small {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--fg-soft);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+  position: relative;
+}
+
+.explorer__actions .icon-button.small:hover {
+  background: var(--bg-elevated-hover, rgba(255, 255, 255, 0.1));
+  color: var(--fg);
+}
+
+.explorer__actions .icon-button.small .icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* Enhanced tooltip styling for keyboard shortcuts */
+button[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 8px); /* Position to the left of the button */
+  transform: translateY(-50%);
+  background: #2d2d2d !important; /* Force dark background */
+  color: #ffffff !important; /* Force white text */
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  border: 1px solid #555;
+  z-index: 99999;
+  pointer-events: none;
+  opacity: 1 !important; /* Force visibility */
+  display: block !important;
+}
+
+@keyframes tooltipFadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.explorer__title-block {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.explorer__title {
+  font-size: calc(16px * var(--font-scale, 1));
+  font-weight: 600;
+}
+
+.explorer__path {
+  font-size: calc(16px * var(--font-scale, 1)); /* Same size as title */
+  font-weight: 600; /* Bold like the title */
+  color: var(--fg); /* Primary color instead of soft */
+  max-width: 200px; /* Increased max-width for better visibility */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2; /* Match title line height */
+}
+
+/* Style for when no folder is open - higher specificity */
+.explorer__path.no-folder {
+  font-size: calc(12px * var(--font-scale, 1)) !important;
+  font-weight: 400 !important;
+  color: var(--fg-soft) !important;
+  max-width: 160px !important; /* Smaller max-width for placeholder text */
+}
+
+/* Ensure folder name is always bold and large when folder is open */
+.explorer__path:not(.no-folder) {
+  font-size: calc(16px * var(--font-scale, 1)) !important;
+  font-weight: 600 !important;
+  color: var(--fg) !important;
+}
+
+.explorer__tree {
+  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-x: hidden; /* Prevent horizontal scrolling */
+  border-radius: 0;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 6px 0;
+  min-height: 200px; /* Minimum height for tree */
+}
+
+/* Explorer tree scrollbar styling */
+.explorer__tree::-webkit-scrollbar {
+  width: 4px;
+}
+
+.explorer__tree::-webkit-scrollbar-track {
+  background: var(--bg-muted);
+}
+
+.explorer__tree::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+
+.explorer__tree::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-soft);
+}
+
+/* Hashtag container - anchored to bottom */
+.hashtag-container {
+  /* Anchor the hashtag container to the bottom of the sidebar */
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 40px;
+  /* allow explicit height control when minimized/restored */
+  height: var(--hashtag-panel-height, 300px);
+  /* ensure it visually sits at the bottom and doesn't push other content */
+  order: 99;
+  /* Smooth height transition for minimize/restore */
+  transition: height 220ms ease, max-height 220ms ease;
+  overflow: hidden;
+}
+
+/* Hashtag resize handle */
+.hashtag-resize-handle {
+  height: 8px;
+  background: transparent;
+  cursor: ns-resize;
+  position: relative;
+  margin: 0;
+  flex-shrink: 0;
+  border-radius: 2px;
+}
+
+.hashtag-resize-handle:hover {
+  background: transparent;
+}
+
+.hashtag-resize-handle:active {
+  background: transparent;
+}
+
+/* Minimized hashtag panel */
+.hashtag-container.hashtag-minimized {
+  /* When minimized, occupy only a single header line (compact) */
+  height: 32px !important;
+  min-height: 32px !important;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  overflow: visible;
+}
+
+.hashtag-container.hashtag-minimized .hashtag-list,
+.hashtag-container.hashtag-minimized .hashtag-detail {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Hide the resize handle when minimized to avoid accidental drags */
+.hashtag-container.hashtag-minimized .hashtag-resize-handle {
+  display: none !important;
+}
+
+.explorer__section-header .explorer__section-actions { display:flex; gap:6px; align-items:center; }
+
+.explorer__empty {
+  flex: 1;
+  border-radius: 0;
+  border: 1px dashed var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-soft);
+  font-size: 14px;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.empty-state {
+  max-width: 280px;
+}
+
+.empty-state__icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+}
+
+.empty-state__title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--fg);
+  margin-bottom: 8px;
+}
+
+.empty-state__description {
+  font-size: 13px;
+  line-height: 1.4;
+  margin-bottom: 16px;
+}
+
+.empty-state__tips {
+  text-align: left;
+}
+
+.empty-state__tips .tip {
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+  color: var(--fg-soft);
+}
+
+.empty-state__tips .tip:last-child {
+  margin-bottom: 0;
+}
+
+.empty-state__tips kbd {
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.empty-state__tips code {
+  background: var(--bg-muted);
+  border-radius: 3px;
+  padding: 1px 3px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+#hashtag-panel .explorer__empty {
+  min-height: 120px;
+  padding: 18px;
+  font-size: 12px;
+  border-radius: 0;
+}
+
+#hashtag-panel .empty-state {
+  max-width: none;
+}
+
+#hashtag-panel .empty-state__icon {
+  font-size: 24px;
+}
+
+#hashtag-panel .empty-state__title {
+  font-size: 14px;
+}
+
+#hashtag-panel .empty-state__description {
+  font-size: 12px;
+}
+
+#hashtag-panel .empty-state__tips .tip {
+  font-size: 11px;
+}
+
+#hashtag-panel {
+  padding: 0;
+  border: none;
+}
+
+.explorer__section {
+  border-radius: 0;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 8px; /* Reduced padding */
+  height: var(--hashtag-panel-height, 300px);
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto; /* Move scrollbar to side of section */
+  overflow-x: hidden;
+  /* Remove margin-top since container handles positioning */
+  flex: 1;
+}
+
+/* Explorer section scrollbar styling (for hashtag panel) */
+.explorer__section::-webkit-scrollbar {
+  width: 4px;
+}
+
+.explorer__section::-webkit-scrollbar-track {
+  background: var(--bg-muted);
+}
+
+.explorer__section::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 2px;
+}
+
+.explorer__section::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-soft);
+}
+
+.explorer__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px; /* Add margin instead of relying on padding */
+}
+
+.explorer__section-title {
+  font-size: calc(14px * var(--font-scale, 1));
+  font-weight: 600;
+  color: var(--fg);
+  flex-shrink: 0; /* Prevent text from shrinking */
+}
+
+.hashtag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1; /* Take available space */
+  padding-right: 4px;
+  align-content: flex-start; /* Align content to top, preventing centering */
+  align-items: flex-start; /* Align items to top */
+}
+
+.hashtag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent-weak);
+  color: var(--accent);
+  border: 1px solid transparent;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, border 0.15s ease;
+  appearance: none;
+  font: inherit;
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+.hashtag-pill:hover,
+.hashtag-pill:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.hashtag-pill--active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.hashtag-pill__tag {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 150px; /* Prevent excessively long hashtags from breaking layout */
+}
+
+.hashtag-pill__count {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+}
+
+.hashtag-pill--active .hashtag-pill__count {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.hashtag-detail {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: 140px;
+}
+
+.hashtag-detail[hidden] {
+  display: none !important;
+}
+
+.hashtag-detail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.hashtag-detail__items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hashtag-detail__empty {
+  font-size: 12px;
+  color: var(--fg-soft);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.hashtag-detail__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.02);
+  cursor: pointer;
+  transition: border 0.15s ease, background 0.15s ease;
+  appearance: none;
+  font: inherit;
+  text-align: left;
+  line-height: 1.4;
+  color: inherit;
+}
+
+.hashtag-detail__item:hover {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+.hashtag-detail__item--active {
+  border-color: var(--accent);
+  background: rgba(76, 110, 245, 0.16);
+}
+
+.hashtag-detail__note {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hashtag-detail__snippet {
+  font-size: 12px;
+  color: var(--fg-soft);
+}
+
+.hashtag-detail__match {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.hashtag-detail__meta {
+  font-size: 11px;
+  color: var(--fg-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.hashtag-hidden {
+  display: none !important;
+}
+
+.explorer__empty[hidden] {
+  display: none !important;
+}
+
+.tree-node {
+  --depth: 0;
+  padding-left: calc(var(--depth) * 16px + 12px);
+  position: relative;
+}
+
+.tree-node__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tree-node__label:hover {
+  background: var(--accent-weak);
+  border-radius: 6px;
+}
+
+.tree-node__chevron {
+  width: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--fg-soft);
+}
+
+.tree-node__name {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-node--directory .tree-node__label {
+  font-weight: 500;
+}
+
+.tree-node--directory.tree-node--collapsed .tree-node__children {
+  display: none;
+}
+
+.tree-node__children {
+  border-left: 1px solid var(--border);
+}
+
+.tree-node--file .tree-node__label {
+  font-weight: 400;
+}
+
+.tree-node--file .tree-node__icon {
+  width: 14px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--fg-soft);
+}
+
+.tree-node--file.tree-node--unsupported .tree-node__label {
+  color: var(--fg-soft);
+  cursor: not-allowed;
+}
+
+.tree-node--file.tree-node--unsupported .tree-node__label:hover {
+  background: transparent;
+}
+
+.tree-node--file.tree-node--active .tree-node__label,
+.tree-node--directory.tree-node--active .tree-node__label {
+  background: var(--accent-weak);
+  color: var(--fg);
+  border-radius: 6px;
+}
+
+.tree-node--file.tree-node--active .tree-node__label {
+  font-weight: 600;
+}
+
+.tree-empty {
+  flex: 1;
+  border: none;
+  resize: none;
+  padding: 24px 16px 24px 24px; /* More padding on right to move scrollbar */
+  font-size: 15px;
+  line-height: 1.6;
+  background: transparent;
+  color: var(--fg);
+  position: relative;
+  z-index: 2; /* Keep textarea above overlay so caret remains visible */
+  overflow-y: auto; /* Ensure editor can scroll */
+  width: 8px;
+}
+
+.sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sidebar__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar__title h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.app-logo {
+  font-size: 20px;
+}
+
+.sidebar__search input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
+.sidebar__search input:focus {
+  outline: 2px solid var(--accent-weak);
+  border-color: var(--accent);
+}
+
+.sidebar__list {
+  flex: 1;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.note-list-item {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: background 0.15s ease;
+}
+
+.note-list-item:last-child {
+  border-bottom: none;
+}
+
+.note-list-item:hover {
+  background: var(--accent-weak);
+}
+
+.note-list-item.active {
+  background: var(--accent-weak);
+  border-left: 3px solid var(--accent);
+  padding-left: 13px;
+}
+
+.note-list-item__title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-list-item__meta {
+  font-size: 12px;
+  color: var(--fg-soft);
+}
+
+.note-list-item__excerpt {
+  font-size: 13px;
+  color: var(--fg-soft);
+  margin: 0;
+}
+
+.note-list-item__badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--border);
+  color: var(--fg);
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.note-list-item__badge--muted {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-soft);
+}
+
+.sidebar__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.sidebar__footer button {
+  flex: 1;
+}
+
+.workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.workspace__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 24px;
+  /* remove top border so it sits flush under the custom title bar */
+  border-top: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  gap: 16px;
+  position: relative;
+}
+
+.workspace__filemeta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+}
+
+.workspace__filepath {
+  color: var(--fg-soft);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace__filename-wrapper {
+  display: none;
+}
+
+.workspace__filename {
+  font-size: 18px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace__filename--editable {
+  cursor: text;
+}
+
+.workspace__filename--editable:focus-visible {
+  outline: 2px solid var(--accent-weak);
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+
+.rename-file-form {
+  position: relative;
+}
+
+.rename-file-form[hidden] {
+  display: none;
+}
+
+#rename-file-input {
+  font-size: 18px;
+  font-weight: 600;
+  padding: 4px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  min-width: 220px;
+}
+
+#rename-file-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-weak);
+}
+
+.workspace__filepath {
+  font-size: 14px;
+  color: var(--fg-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* Style for filename part within the path - make it bold and larger */
+.workspace__filepath .filename {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--fg);
+}
+
+.workspace__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.workspace__actions .icon-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  color: var(--fg-soft);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.workspace__actions .icon-button:hover {
+  background: var(--bg-elevated-hover, rgba(255, 255, 255, 0.1));
+  color: var(--fg);
+}
+.workspace__actions .icon-button .icon {
+  pointer-events: none;
+}
+.workspace__actions .icon-button[aria-pressed="true"] {
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+/* Split editor toggle button */
+#toggle-split-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--fg-soft);
+}
+
+#toggle-split-button[aria-pressed="true"] {
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+
+button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--fg);
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.2s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+button.primary:hover {
+  filter: brightness(1.05);
+}
+
+/* Toolbar popovers */
+.create-file-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 240px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  box-shadow: 0 18px 42px rgba(15, 17, 23, 0.16);
+  padding: 16px;
+  z-index: 20;
+}
+
+.create-file-popover[hidden] {
+  display: none;
+}
+
+.create-file-popover__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.create-file-popover__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+#new-file-name {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+#new-file-name:focus {
+  outline: 2px solid var(--accent-weak);
+  border-color: var(--accent);
+}
+
+.create-file-popover__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Search Panel */
+.workspace__search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  box-shadow: 0 6px 16px rgba(15, 17, 23, 0.08);
+}
+
+.workspace__search[hidden] {
+  display: none;
+}
+
+#editor-search-input {
+  width: 200px;
+  min-width: 140px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 14px;
+}
+
+#editor-search-input::placeholder {
+  color: var(--fg-soft);
+}
+
+.workspace__search-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace__search-controls button,
+#editor-search-close {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-soft);
+  line-height: 1;
+  font-size: 13px;
+}
+
+.workspace__search-controls button:hover,
+#editor-search-close:hover {
+  color: var(--fg);
+  border-color: var(--border);
+  background: var(--bg-elevated);
+}
+
+.workspace__search-count {
+  font-size: 12px;
+  color: var(--fg-soft);
+  min-width: 60px;
+  text-align: right;
+}
+
+/* Context menu */
+.context-menu {
+  position: fixed;
+  min-width: auto; /* Remove fixed width, let content determine size */
+  width: max-content; /* Size to fit content */
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  box-shadow: 0 18px 42px rgba(15, 17, 23, 0.18);
+  padding: 4px; /* Reduced from 6px */
+  display: flex;
+  flex-direction: column;
+  gap: 2px; /* Reduced from 4px */
+  z-index: 1000;
+}
+
+.context-menu[hidden] {
+  display: none;
+}
+
+.context-menu button {
+  width: 100%;
+  padding: 4px 8px; /* Reduced from 8px 12px */
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+  white-space: nowrap; /* Prevent text wrapping to keep compact */
+  font-size: calc(13px * var(--font-scale, 1)); /* Make responsive to font scale setting */
+  font-family: inherit; /* Use selected font family */
+}
+
+.context-menu button:hover {
+  background: var(--accent-weak);
+  color: var(--accent);
+  outline: none;
+}
+
+.context-menu button:focus {
+  background: var(--accent-weak);
+  color: var(--accent);
+  outline: none;
+}
+
+/* Remove focus styling when not hovering */
+.context-menu button:focus:not(:hover) {
+  background: transparent;
+  color: var(--fg);
+}
+
+.context-menu button:disabled {
+  cursor: default; /* Use default cursor instead of not-allowed to remove the icon */
+  opacity: 0.4; /* Make disabled items more subdued */
+  color: var(--fg-soft); /* Use softer color for disabled state */
+}
+
+.context-menu button:disabled:hover {
+  background: transparent; /* Ensure no hover effect on disabled buttons */
+  color: var(--fg-soft);
+  cursor: default;
+}
+
+.context-menu button.danger {
+  color: var(--danger);
+}
+
+.context-menu button.danger:hover {
+  background: rgba(224, 49, 49, 0.12);
+  color: var(--danger);
+}
+
+.context-menu__separator {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 6px; /* Reduced from 4px 8px */
+}
+
+.block-anchor {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.block-highlight {
+  animation: blockHighlight 2s ease-out;
+  box-shadow: 0 0 0 3px rgba(76, 110, 245, 0.35);
+  border-radius: 10px;
+}
+
+@keyframes blockHighlight {
+  0% {
+    background-color: rgba(76, 110, 245, 0.25);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+button.ghost {
+  background: transparent;
+}
+
+button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+button.small {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+/* Export dropdown styles */
+.export-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.export-dropdown__button {
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.export-dropdown__button:hover {
+  background: var(--bg-elevated-hover, rgba(255, 255, 255, 0.1));
+}
+
+.export-dropdown__arrow {
+  font-size: 10px;
+  transition: transform 0.15s ease;
+}
+
+.export-dropdown[data-open="true"] .export-dropdown__arrow {
+  transform: rotate(180deg);
+}
+
+.export-dropdown__menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 120px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  padding: 4px 0;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: all 0.15s ease;
+}
+
+/* When export controls are disabled use default cursor to avoid showing 'not-allowed' */
+.export-dropdown__button:disabled,
+.export-dropdown__option:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.export-dropdown[data-open="true"] .export-dropdown__menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.export-dropdown__option {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-radius: 0;
+}
+
+.export-dropdown__option:hover {
+  background: var(--bg-elevated-hover, rgba(255, 255, 255, 0.1));
+  outline: none;
+}
+
+.export-dropdown__option:focus {
+  background: var(--bg-elevated-hover, rgba(255, 255, 255, 0.1));
+  outline: none;
+}
+
+.export-dropdown__separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* Remove focus when hovering over other elements */
+.export-dropdown__option:focus:not(:hover) {
+  background: transparent;
+}
+
+.workspace__content {
+  --local-editor-ratio: var(--editor-ratio, 0.5);
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg);
+  position: relative;
+}
+
+/* When both editor panes are visible (split), enforce a per-pane minimum
+   width so each editor remains usable. Lower the minimum so users can
+   shrink panes more aggressively on small screens or narrow windows. */
+.workspace__content.split-editors .editor-pane {
+  /* Reduced from 300px to allow tighter splits while remaining usable. */
+  min-width: 120px;
+}
+
+.workspace__content.split-editors .editor-pane--left {
+  flex: 0 1 calc(var(--editor-pane-ratio, 0.5) * 100%);
+}
+
+.workspace__content.split-editors .editor-pane--right {
+  flex: 0 1 calc((1 - var(--editor-pane-ratio, 0.5)) * 100%);
+}
+
+
+
+.workspace__content.preview-collapsed .workspace__splitter,
+.workspace__content.preview-collapsed .preview-pane {
+  display: none;
+}
+
+.workspace__content.preview-collapsed .editor-pane {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.workspace__content.pdf-mode .preview-pane {
+  /* Show the PDF in the preview pane but keep editor panes visible.
+     Previously editor panes and the splitter were hidden which caused
+     the PDF to occupy the full workspace. Keep the split layout so
+     users can keep editing while previewing PDFs. */
+  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+}
+
+/* Per-pane PDF iframe used when rendering a PDF inside an editor pane */
+.editor-pane .pdf-pane-viewer {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+  box-sizing: border-box;
+}
+
+/* Make sure editor panes have constrained layout so iframe can fill them */
+.editor-pane {
+  display: flex;
+  flex-direction: column;
+  /* Allow the editor to shrink below 200px so ratio-based sizing can
+     make the editor take a larger fraction of the workspace when
+     desired (prevents a hard 200px bottleneck). */
+  min-width: 0;
+  flex: 1;
+}
+
+.editor-pane textarea {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.workspace__content.pdf-mode #markdown-preview {
+  display: none;
+}
+
+.workspace__content.image-mode .workspace__splitter {
+  /* Keep splitters visible so users can still resize editors when an image
+     is displayed. Previously the rule hid editor panes entirely which
+     prevented per-pane image viewers (appended into editor panes) from
+     being seen. We only hide the central markdown preview elsewhere. */
+  display: flex;
+}
+
+.workspace__content.image-mode .preview-pane {
+  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+}
+
+.workspace__content.image-mode #markdown-preview {
+  display: none;
+}
+
+.workspace__content.video-mode .editor-pane,
+.workspace__content.video-mode .workspace__splitter {
+  display: none;
+}
+
+.workspace__content.video-mode .preview-pane {
+  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+}
+
+.workspace__content.video-mode #markdown-preview {
+  display: none;
+}
+
+.workspace__content.html-mode .editor-pane,
+.workspace__content.html-mode .workspace__splitter {
+  display: none;
+}
+
+.workspace__content.html-mode .preview-pane {
+  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+}
+
+.workspace__content.html-mode #markdown-preview {
+  display: none;
+}
+
+.workspace__content.latex-mode .preview-pane {
+  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+}
+
+.workspace__content.latex-mode #markdown-preview {
+  display: none;
+}
+
+
+
+.editor-pane {
+  flex: 1;
+  /* Lower the clamp minimum so editor panes can shrink smaller while
+     preserving a reasonable preferred width on wide screens. */
+  min-width: clamp(120px, 40vw, 640px);
+  display: flex;
+  flex-direction: column;
+  border-right: none;
+  position: relative;
+  min-height: 0;
+  overflow-y: auto; /* Allow scrolling in editor pane */
+}
+
+
+/* Drag and drop styles */
+.tree-node--dragging {
+  opacity: 0.5;
+  background: var(--bg-hover);
+}
+
+.tree-node[draggable="true"] {
+  cursor: grab;
+}
+
+.tree-node[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.editor-drop-target {
+  /* Highlight removed: neutralize any visual effects when class is present. */
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.preview-pane {
+  /* Fixed-width right sidebar for live preview */
+  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  max-width: 60vw;
+  min-width: 0px; /* Allow preview to be minimized completely */
+  margin-right: 0;
+  position: relative;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg-elevated);
+  min-height: 0;
+}
+
+/* Layout for split editors: left and right editor panes side-by-side
+   The right editor is hidden by default and can be toggled visible.
+   When visible, both editors share the available space left of the preview. */
+.workspace__content {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  align-items: stretch;
+  width: 100%;
+}
+
+.editor-pane {
+  /* Editors live in the center area and share available space horizontally */
+  flex: 1 1 0%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: transparent;
+}
+
+.editor-pane--left {
+  border-right: 1px solid rgba(0,0,0,0.04);
+}
+
+.editor-pane--right {
+  border-left: 1px solid rgba(0,0,0,0.04);
+}
+
+#note-editor-right {
+  flex: 1;
+  border: none;
+  resize: none;
+  padding: 24px 16px 24px 24px;
+  font-size: 15px;
+  line-height: 1.6;
+  background: transparent;
+  color: var(--fg);
+  position: relative;
+  z-index: 1;
+  overflow-y: auto;
+}
+
+/* Ensure any textarea inside an editor pane (including dynamic panes)
+   uses the same layout and fills available space. This catches
+   dynamically-created textareas like #note-editor-<id>. */
+.editor-pane textarea {
+  flex: 1 1 0%;
+  border: none;
+  resize: none;
+  padding: 24px 16px 24px 24px;
+  font-size: 15px;
+  line-height: 1.6;
+  background: transparent;
+  color: var(--fg);
+  position: relative;
+  z-index: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Container used when rendering an image inside an editor pane. The
+   container fills the available pane space (flex:1) and centers the
+   image. The image itself is constrained with max-width/max-height
+   and object-fit: contain so it never forces the pane to resize. */
+.editor-pane .pane-image-container {
+  /* Position absolutely so the container does not contribute to the
+     flex layout measurements of the editor pane and thus cannot force
+     the pane to resize when the image loads. The textarea remains in
+     the normal flow (and is hidden when an image is shown). */
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden; /* clip image rather than grow the pane */
+  padding: 16px; /* visual padding; image sizing accounts for this */
+  box-sizing: border-box;
+  z-index: 10; /* render above the textarea but below actions/badges */
+}
+
+.editor-pane .pane-image-viewer {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+/* Minimal visual for showing a faux gutter and padding when line numbers enabled */
+.editor-show-line-numbers {
+  padding-left: 56px !important; /* leave space for pseudo-gutter */
+  background-image: linear-gradient(transparent, transparent);
+  background-repeat: no-repeat;
+  background-position: 12px 0;
+}
+
+/* Ensure tab size is applied - modern browsers respect tab-size or -moz-tab-size */
+.editor-pane textarea, #note-editor-right, textarea[id^="note-editor-"] {
+  tab-size: 4; /* default; updated dynamically by inline style when user changes */
+  -moz-tab-size: 4;
+}
+
+/* Mirror scrollbar styles for right editor */
+#note-editor-right::-webkit-scrollbar { width: 4px; }
+#note-editor-right::-webkit-scrollbar-track { background: transparent; }
+#note-editor-right::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+#note-editor-right:focus { outline: none; }
+
+/* Editor pane badges and active pane styling */
+.editor-pane__badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0,0,0,0.06);
+  color: var(--fg-soft);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  z-index: 30;
+  pointer-events: none;
+}
+
+/* Actions container in editor pane (e.g., close button for right editor) */
+.editor-pane__actions {
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  display: flex;
+  gap: 6px;
+  z-index: 35;
+}
+
+.editor-pane__actions .icon-button.small {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
+.editor-pane.active,
+.editor-pane--left.active,
+.editor-pane--right.active,
+.editor-pane--dynamic.active {
+  /* No blue outline; use a subtle brightness increase for active editor panes
+     Apply to all pane variants (left/right/dynamic/generic) so the visual
+     treatment is consistent regardless of how the pane was created. */
+  box-shadow: none !important;
+  filter: brightness(1.03);
+  transition: filter 160ms ease, background-color 160ms ease;
+}
+
+/* Slightly dim inactive editor panes so the active one stands out. */
+.editor-pane:not(.active) {
+  filter: brightness(0.98);
+  transition: filter 160ms ease;
+}
+
+/* In dark theme, make inactive editors slightly gray/washed so the active
+   editor reads clearly. We apply a small grayscale + stronger dimming. */
+body[data-theme="dark"] .editor-pane:not(.active) {
+  filter: grayscale(0.22) brightness(0.92);
+}
+
+/* Ensure no browser/OS focus ring or leftover box-shadow appears on editor panes
+   or any focusable child elements (textareas, inputs) inside them. This
+   overrides lingering rules that used the accent color for focus styling. */
+.editor-pane,
+.editor-pane *:focus,
+.editor-pane textarea:focus,
+#note-editor-right:focus,
+.editor-pane--right:focus,
+.editor-pane--right *:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.editor-pane--left.active .editor-pane__badge,
+.editor-pane--right.active .editor-pane__badge {
+  background: var(--accent);
+  color: white;
+}
+
+.workspace__splitter {
+  flex: 0 0 24px; /* Larger hover area */
+  cursor: col-resize;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  margin-left: -12px; /* Pull 6px into the editor pane */
+  margin-right: -12px; /* Pull 6px into the preview pane */
+  z-index: 9000; /* Ensure it's above both panes and editor dividers but below modals */
+  pointer-events: auto; /* Ensure splitter receives pointer events */
+}
+
+/* Small divider between the two central editors (visual only) */
+.editors__divider {
+  /* Make divider interactive: larger hit area and higher z-index so it
+     captures pointer events instead of the textarea scrollbar. */
+  flex: 0 0 12px; /* Larger hover area */
+  cursor: col-resize;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  margin-left: -6px;
+  margin-right: -6px;
+  z-index: 1200;
+  pointer-events: auto;
+}
+
+.editors__divider::after {
+  content: "";
+  width: 1px; /* Thin visible line */
+  height: 100%;
+  background: var(--border-strong); /* Use theme-aware border color */
+  opacity: 0.9;
+  transition: background 0.12s ease, width 0.12s ease, transform 0.12s ease;
+  pointer-events: none; /* let the divider capture pointer events, not the pseudo */
+}
+
+.editors__divider:hover::after,
+.editors__divider.editors__divider--active::after {
+  background: var(--accent);
+  width: 2px; /* Slightly thicker when hovered or active */
+  transform: translateX(0);
+}
+
+/* Visual handle for editors divider: centered, larger hit/visual area but pointer events are
+   captured by the divider itself (handle uses pointer-events: none). This makes all dividers
+   look and behave consistently across multiple panes. */
+.editors__divider__handle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 28px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* let the divider element capture pointer events */
+}
+.editors__divider__handle::before {
+  content: "";
+  width: 2px;
+  height: 60%;
+  background: var(--border-strong);
+  border-radius: 2px;
+  opacity: 0.7;
+  transition: background 0.12s ease, width 0.12s ease, opacity 0.12s ease;
+}
+.editors__divider:hover .editors__divider__handle::before,
+.editors__divider.editors__divider--active .editors__divider__handle::before {
+  background: var(--accent);
+  width: 4px;
+  opacity: 1;
+}
+
+.preview-pane[tabindex="-1"] {
+  outline: none;
+}
+
+.workspace__splitter::after {
+  content: "";
+  pointer-events: none; /* don't block pointer events, let the splitter element capture them */
+  width: 0px; /* No visible bar */
+  height: 0px; /* No visible bar */
+  background: transparent; /* Completely invisible */
+  transition: none; /* No transitions since nothing shows */
+}
+
+.workspace__splitter:hover::after,
+.workspace__splitter.workspace__splitter--active::after {
+  background: var(--accent);
+  width: 2px; /* Thin visible bar on hover */
+  height: 100%;
+}
+
+#note-editor {
+  flex: 1;
+  border: none;
+  resize: none;
+  padding: 24px 16px 24px 24px; /* More padding on right to move scrollbar */
+  font-size: 15px;
+  line-height: 1.6;
+  background: transparent;
+  color: var(--fg);
+  position: relative;
+  z-index: 1;
+  overflow-y: auto; /* Ensure editor can scroll */
+}
+
+
+/* Move editor scrollbar further to the right */
+#note-editor::-webkit-scrollbar {
+  width: 4px;
+  margin-right: 8px; /* Additional space from right edge */
+}
+
+
+#note-editor::-webkit-scrollbar-track {
+  background: transparent;
+  margin-right: 8px;
+}
+
+
+#note-editor::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+  margin-right: 8px;
+}
+
+
+#note-editor::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-soft);
+}
+
+
+.editor-search-highlights {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: auto;
+  bottom: auto;
+  padding: 24px;
+  font-size: 15px;
+  line-height: 1.6;
+  font-family: inherit;
+  color: transparent;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: hidden;
+  z-index: 0;
+  box-sizing: border-box;
+}
+
+.editor-search-highlights__content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.editor-search-highlight {
+  position: absolute;
+  border-radius: 4px;
+  background: rgba(76, 110, 245, 0.28);
+}
+
+.editor-search-highlight.active {
+  background: rgba(76, 110, 245, 0.5);
+}
+
+.wiki-suggest {
+  position: fixed;
+  top: 24px;
+  left: 24px;
+  min-width: 220px;
+  max-width: min(360px, calc(100% - 48px));
+  max-height: 280px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 40px rgba(15, 17, 23, 0.16);
+  overflow: hidden; /* Disable scrolling */
+  padding: 6px 0;
+  z-index: 10000;
+}
+
+.wiki-suggest__item {
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.wiki-suggest__item:hover,
+.wiki-suggest__item[data-active="true"] {
+  background: var(--accent-weak);
+}
+
+.wiki-suggest__title {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.wiki-suggest__meta {
+  font-size: 11px;
+  color: var(--fg-soft);
+  line-height: 1.2;
+}
+
+#note-editor:focus {
+  outline: none;
+}
+
+
+/* Secondary editor removed */
+
+.preview-scroll {
+  flex: 1;
+  overflow-y: auto; /* Re-enable scrolling for editor content */
+  padding: 24px;
+  min-width: 0;
+}
+
+#markdown-preview {
+  min-width: 0;
+}
+
+.code-viewer,
+.image-viewer,
+.video-viewer,
+.html-viewer {
+  display: none;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
+.code-viewer {
+  padding: 24px;
+  overflow: auto; /* Re-enable scrolling for code content */
+  position: relative;
+}
+
+.code-viewer.visible {
+  display: block;
+}
+
+.code-viewer[data-language]::before {
+  content: attr(data-language);
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-soft);
+}
+
+.image-viewer {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+}
+
+.image-viewer.visible {
+  display: flex;
+}
+
+.image-viewer img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 18px 32px rgba(15, 17, 23, 0.12);
+}
+
+.image-viewer figcaption {
+  font-size: 12px;
+  color: var(--fg-soft);
+}
+
+.video-viewer {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+}
+
+.video-viewer video {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 18px 32px rgba(15, 17, 23, 0.12);
+}
+
+.video-viewer figcaption {
+  font-size: 12px;
+  color: var(--fg-soft);
+}
+
+.html-viewer {
+  flex-direction: column;
+  position: relative;
+}
+
+.html-viewer iframe {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: white;
+}
+
+.html-viewer__fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--fg-soft);
+  font-size: 14px;
+}
+
+.pdf-viewer {
+  display: none;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: none;
+  background: var(--bg-elevated);
+}
+
+.pdf-viewer.visible {
+  display: block;
+  height: 100%;
+}
+.pdf-viewer[tabindex="0"]:focus {
+  outline: 3px solid rgba(76, 110, 245, 0.28);
+  outline-offset: 2px;
+}
+.preview-pane .pdf-viewer {
+  min-height: 220px; /* reasonable default to avoid large shifts */
+}
+
+.preview-scroll h1,
+.preview-scroll h2,
+.preview-scroll h3 {
+  margin-top: 24px;
+}
+
+.preview-scroll pre {
+  background: rgba(15, 23, 42, 0.08);
+  padding: 14px;
+  border-radius: 12px;
+
+  display: block;
+}
+
+/* Inline embed images and videos - remove default margins/padding */
+.preview-scroll img,
+.preview-scroll video {
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  box-shadow: none;
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Highlighted text styling */
+.preview-scroll mark {
+  background-color: rgba(255, 235, 59, 0.4);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .preview-scroll mark {
+    background-color: rgba(255, 193, 7, 0.3);
+  }
+}
+
+.workspace__content.pdf-mode #code-viewer,
+.workspace__content.notebook-mode #code-viewer,
+.workspace__content.image-mode #code-viewer,
+.workspace__content.video-mode #code-viewer,
+.workspace__content.html-mode #code-viewer {
+  display: none;
+}
+.workspace__content.code-mode #code-viewer {
+  display: block;
+}
+
+.workspace__content.image-mode #pdf-viewer,
+.workspace__content.image-mode .preview-scroll,
+.workspace__content.video-mode #pdf-viewer,
+.workspace__content.video-mode .preview-scroll,
+.workspace__content.html-mode #pdf-viewer,
+.workspace__content.html-mode .preview-scroll {
+  display: none;
+}
+
+.workspace__content.image-mode .image-viewer {
+  display: flex;
+}
+
+.workspace__content.video-mode .video-viewer {
+  display: flex;
+}
+
+.workspace__content.html-mode .html-viewer {
+  display: flex;
+}
+
+.notebook-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: 12px;
+}
+
+.notebook-preview[data-language]::before {
+  content: attr(data-language);
+  position: absolute;
+  top: -4px;
+  right: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-soft);
+}
+
+.nb-cell {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--bg-elevated);
+}
+
+.nb-cell__header {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-soft);
+  margin-bottom: 12px;
+}
+
+.nb-cell__code {
+  margin: 0;
+  padding: 16px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.08);
+  overflow-x: auto;
+}
+
+.nb-cell__code code {
+  font-family: "SFMono-Regular", "Menlo", monospace;
+  font-size: 13px;
+}
+
+.nb-cell__outputs {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nb-cell__output {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(76, 110, 245, 0.12);
+  color: var(--fg);
+  font-family: "SFMono-Regular", "Menlo", monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.nb-cell__markdown > :first-child {
+  margin-top: 0;
+}
+
+.nb-cell__markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.nb-empty {
+  font-size: 13px;
+  color: var(--fg-soft);
+  margin: 0;
+}
+
+/* Pane-local notebook viewer styling */
+.nb-pane-viewer {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nb-pane-controls { display:flex; gap:8px; margin-bottom:8px; }
+.nb-pane-controls .nb-edit-toggle,
+.nb-pane-controls .nb-save-btn,
+.nb-pane-controls .nb-cancel-btn { padding:6px 10px; border-radius:6px; border:1px solid var(--border-strong); background:var(--bg-elevated); cursor:pointer; }
+.nb-raw-editor { width:100%; min-height:240px; font-family: monospace; font-size:13px; padding:8px; border:1px solid var(--border); border-radius:6px; }
+
+/* Notebook editor styles */
+.notebook-editor { display:flex; flex-direction:column; gap:12px; }
+.nb-editor-cell { border:1px solid var(--border); padding:8px; border-radius:8px; background: var(--bg-elevated); }
+.nb-editor-cell__header { font-weight:600; font-size:13px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
+.nb-editor-cell__textarea { width:100%; min-height:100px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', 'Courier New', monospace; font-size:13px; padding:8px; border-radius:6px; border:1px solid var(--border); }
+.nb-editor-cell__outputs { margin-top:8px; }
+.nb-editor-cell__output { background: #1f1f1f10; padding:8px; border-radius:6px; white-space:pre-wrap; font-size:13px; }
+
+.nb-editor-cell__controls { display:flex; gap:8px; align-items:center; }
+.nb-editor-cell__preview-toggle { padding:6px 8px; border-radius:6px; border:1px solid var(--border-strong); background:var(--bg); cursor:pointer; }
+.nb-editor-cell__preview { border-top:1px dashed var(--border); margin-top:8px; padding-top:8px; }
+.nb-editor-cell__preview :where(p, h1, h2, h3, ul, ol, pre) { margin: 0 0 8px 0; }
+
+.nb-cell .nb-cell__copy-btn {
+  margin-left: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: none;
+  background: var(--bg-muted);
+  cursor: pointer;
+}
+
+.nb-cell .nb-cell__copy-btn:hover {
+  background: var(--bg);
+}
+
+.wikilink {
+  color: var(--accent);
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  outline: none;
+}
+
+.wikilink:hover {
+  border-bottom-color: currentColor;
+}
+
+.wikilink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.wikilink--missing {
+  color: var(--danger);
+  border-bottom: 1px dashed var(--danger);
+  cursor: help;
+}
+
+.wikilink-embed {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--bg-elevated);
+  margin: 8px 0;
+  box-shadow: 0 2px 8px rgba(15, 17, 23, 0.06);
+}
+
+.wikilink-embed__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--fg-soft);
+}
+
+.wikilink-embed__meta {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Hide the small meta label that appears at the top-right of embedded blocks.
+   This removes the extra text (type/label) shown in the embed header. If you
+   later want to show it only in certain contexts, replace this with a more
+   specific selector (for example: .editor-math-overlay .wikilink-embed__meta).
+*/
+.wikilink-embed__meta {
+  display: none !important;
+}
+
+.wikilink-embed__body {
+  font-size: 14px;
+  color: var(--fg);
+}
+
+.wikilink-embed__body > :first-child {
+  margin-top: 0;
+}
+
+.wikilink-embed__body > :last-child {
+  margin-bottom: 0;
+}
+
+.wikilink-embed--missing {
+  border-style: dashed;
+  border-color: var(--danger);
+  background: rgba(224, 49, 49, 0.08);
+}
+
+.wikilink-embed--error {
+  border-color: rgba(224, 150, 49, 0.9);
+  background: rgba(224, 150, 49, 0.08);
+}
+
+.wikilink-embed__message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-soft);
+}
+
+.wikilink-embed__code {
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(15, 17, 23, 0.08);
+  overflow-x: auto;
+  font-size: 13px;
+}
+
+.wikilink-embed__figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+}
+
+.wikilink-embed__figure img {
+  max-width: 100%;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(15, 17, 23, 0.08);
+}
+
+.wikilink-embed__figure video {
+  max-width: 100%;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(15, 17, 23, 0.08);
+}
+
+.wikilink-embed__figure figcaption {
+  font-size: 12px;
+  color: var(--fg-soft);
+  text-align: center;
+}
+
+.wikilink--embed {
+  font-weight: 600;
+}
+
+.status-bar {
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  padding: 6px 24px;
+  font-size: 12px;
+  color: var(--fg-soft);
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+}
+
+/* Force hashtag list visible */
+#hashtag-list, .hashtag-list {
+  display: flex !important;
+}
+
+.status-bar__settings {
+  background: none;
+  border: none;
+  color: var(--fg-soft);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.status-bar__settings:hover {
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+
+.status-bar__settings svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Status text vertical centering */
+#status-text {
+  display: flex;
+  align-items: center;
+  line-height: 1;
+}
+
+/* Settings Modal */
+.settings-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 10000;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.settings-modal.visible {
+  display: flex;
+}
+
+.settings-modal__content {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+}
+
+.settings-modal__header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-modal__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0;
+}
+
+.settings-modal__close {
+  background: none;
+  border: none;
+  color: var(--fg-soft);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 18px;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.settings-modal__close:hover {
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+
+.settings-modal__body {
+  padding: 0;
+  overflow: hidden;
+  height: calc(80vh - 120px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Settings Navigation */
+.settings-nav {
+  display: flex;
+  background: var(--bg-elevated);
+  margin: 0;
+  padding: 0 8px;
+  overflow-x: auto; /* enable horizontal scrolling when items overflow */
+  -webkit-overflow-scrolling: touch; /* smooth momentum scrolling on touch devices */
+  scrollbar-width: thin;
+  touch-action: pan-x; /* allow horizontal swipe gestures */
+  white-space: nowrap; /* keep items in a single row so they can scroll */
+}
+
+.settings-nav__item {
+  background: none;
+  border: none;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-soft);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  flex: 0 0 auto; /* prevent items from shrinking so they can scroll horizontally */
+}
+
+.settings-nav__item:hover {
+  color: var(--fg);
+}
+
+.settings-nav__item.active {
+  color: var(--accent);
+}
+
+/* subtle scroll hint: gradient overlay at right edge when nav overflows */
+.settings-nav {
+  position: relative;
+}
+.settings-nav::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  pointer-events: none;
+  background: linear-gradient(to right, rgba(0,0,0,0), var(--bg-elevated));
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.settings-nav[data-overflow="true"]::after { opacity: 1; }
+
+/* workspace toolbar and icon button polish */
+.workspace__toolbar { align-items: center; }
+.workspace__actions .icon-button {
+  background: transparent;
+  border: none;
+  padding: 6px 8px;
+  margin-left: 6px;
+  border-radius: 8px;
+  transition: background 140ms ease, transform 120ms ease;
+}
+.workspace__actions .icon-button:hover {
+  background: var(--bg-muted);
+  transform: translateY(-1px);
+}
+.workspace__actions .icon-button:focus {
+  outline: 2px solid var(--accent-weak);
+  outline-offset: 2px;
+}
+
+/* Export dropdown menu subtle elevation */
+.export-dropdown__menu {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+/* Hashtag pill styling for better readability */
+.hashtag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.hashtag-pill:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,0.06); }
+.hashtag-pill--active { background: linear-gradient(90deg, var(--accent), var(--accent-dim)); color: white; border-color: transparent; }
+.hashtag-pill__count { background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 6px; font-size: 12px; }
+
+/* Hashtag detail items as cards */
+.hashtag-detail__item {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.hashtag-detail__item:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+
+/* Status bar polish */
+.status-bar { background: var(--bg-elevated); border-top: 1px solid var(--border); padding: 8px 12px; display:flex; align-items:center; gap:8px; }
+.status-bar span { color: var(--fg-soft); font-size: 13px; }
+.status-bar__settings { margin-left: 8px; border-radius: 6px; padding: 6px; transition: background 120ms ease; }
+.status-bar__settings:hover { background: var(--bg-muted); }
+
+/* Autosave indicator and manual save button */
+.status-bar__autosave {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-soft);
+}
+.status-bar__autosave .autosave-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+}
+.status-bar__autosave .autosave-dot.active { background: var(--accent); box-shadow: 0 0 6px rgba(76,110,245,0.25); }
+.status-bar__autosave button.save-now {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-soft);
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.status-bar__autosave button.save-now:hover { background: var(--bg-muted); color: var(--fg); }
+
+/* small global radii and button smoothing */
+button, .settings-button, input[type='range'] { border-radius: 6px; }
+
+/* Settings Tabs Container */
+.settings-tabs-container {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+.settings-tab {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  overflow-y: auto;
+  opacity: 0;
+  transform: translateX(100%);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.settings-tab.active {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.settings-tab.slide-out-left {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+
+.settings-tab.slide-out-right {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.settings-tab.slide-in-left {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+
+.settings-tab.slide-in-right {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.settings-tab.slide-in-left.active {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.settings-tab.slide-in-right.active {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  max-width: 900px;
+}
+
+@media (max-width: 768px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
+.settings-section {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0 24px 20px 24px;
+  margin-bottom: 0;
+  transition: none;
+}
+
+.settings-section:hover {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.settings-section__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0 0 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-item {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.settings-item:last-child {
+  margin-bottom: 0;
+}
+
+.settings-item__label {
+  display: block;
+  font-size: 13px;
+  color: var(--fg);
+  margin-bottom: 0;
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.settings-item__description {
+  font-size: 12px;
+  color: var(--fg-soft);
+  margin-top: 4px;
+}
+
+.settings-description {
+  font-size: 12px;
+  color: var(--fg-soft);
+  margin-top: 8px;
+}
+
+.settings-button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.settings-button:hover {
+  background: var(--accent-dim);
+}
+
+.settings-button--secondary {
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+
+.settings-button--secondary:hover {
+  background: var(--border);
+}
+
+.settings-select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--fg);
+  cursor: pointer;
+  width: 100%;
+  max-width: 200px;
+}
+
+.settings-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-weak);
+}
+
+.color-picker-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.font-family-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.font-family-group .settings-select {
+  flex: 1;
+  max-width: 200px;
+}
+
+.slider-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.slider-group .settings-slider {
+  flex: 1;
+  max-width: 150px;
+}
+
+/* Settings Toggle for Advanced Options */
+.settings-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--fg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.settings-toggle:hover {
+  background: var(--bg-muted);
+  border-color: var(--accent);
+}
+
+/* Arrow-only toggle */
+.settings-arrow-toggle {
+  background: none;
+  border: none;
+  padding: 4px;
+  color: var(--fg-soft);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+}
+
+.settings-arrow-toggle:hover {
+  color: var(--accent);
+  background: var(--bg-muted);
+}
+
+.settings-toggle .toggle-icon,
+.settings-arrow-toggle .toggle-icon {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+.settings-toggle[aria-expanded="true"] .toggle-icon,
+.settings-arrow-toggle[aria-expanded="true"] .toggle-icon {
+  transform: rotate(90deg);
+}
+
+.settings-toggle[aria-expanded="true"] .toggle-text {
+  content: "Hide";
+}
+
+/* Advanced Settings Section */
+.settings-advanced {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.settings-advanced.visible {
+  opacity: 1;
+  max-height: 2000px; /* Increased to accommodate new sections */
+  overflow: visible;
+}
+
+.font-preview-sample {
+  display: inline-block;
+  margin-left: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.02);
+  font-size: 14px;
+  color: var(--fg);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-family-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.font-family-group .settings-select {
+  min-width: 80px; /* make the closed select wider so the dropdown button looks roomy */
+  max-width: 120px;
+}
+
+/* Settings Divider */
+.settings-divider {
+  margin: 6px 0 6px 0;
+  padding: 12px 0;
+  border-top: 2px solid var(--border);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.settings-divider__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Component Section Styling */
+.settings-component-section {
+  margin: 20px 0;
+  padding: 16px 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  position: relative;
+}
+
+.settings-component__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0 0 16px 0;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  position: relative;
+}
+
+.settings-component__title::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 20px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+/* Component-specific color coding */
+.settings-component-section:nth-of-type(1) .settings-component__title::before {
+  background: #10b981; /* Green for Workspace */
+}
+
+.settings-component-section:nth-of-type(2) .settings-component__title::before {
+  background: #3b82f6; /* Blue for Editor */
+}
+
+.settings-component-section:nth-of-type(3) .settings-component__title::before {
+  background: #f59e0b; /* Orange for Preview */
+}
+
+/* Export Tab Styling */
+.export-controls,
+.import-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.export-preview {
+  margin-top: 12px;
+}
+
+.export-preview__text {
+  width: 100%;
+  min-height: 200px;
+  max-height: 400px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.export-preview__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.import-status {
+  font-size: 12px;
+  color: var(--fg-soft);
+  margin-left: 8px;
+}
+
+.import-status.success {
+  color: #10b981;
+}
+
+.import-status.error {
+  color: #ef4444;
+}
+
+/* Checkbox Styling */
+.settings-checkbox {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  margin-right: 8px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.settings-checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.settings-checkbox:checked::after {
+  content: '✓';
+  position: absolute;
+  top: -2px;
+  left: 1px;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.settings-checkbox:hover {
+  border-color: var(--accent);
+}
+
+/* Component controls disabled state */
+.settings-item [disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-item label:has(.settings-checkbox) {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* File Input Styling */
+.settings-file-input {
+  display: none;
+}
+
+/* Traffic Light Controls for macOS */
+.traffic-lights {
+  position: fixed;
+  top: 8px;
+  left: 12px;
+  z-index: 1000;
+  transition: top 0.2s ease;
+}
+
+.traffic-lights.center-with-title {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.traffic-lights.top-left {
+  top: 8px;
+}
+
+.traffic-lights.custom-position {
+  top: var(--traffic-light-offset, 8px);
+}
+
+/* macOS specific styling when traffic lights are repositioned */
+body.traffic-lights-center .workspace__toolbar {
+  padding-left: 24px; /* Normal padding when centered */
+}
+
+body.traffic-lights-top-left .workspace__toolbar {
+  padding-left: 80px; /* More padding to avoid overlap */
+}
+
+body.traffic-lights-custom .workspace__toolbar {
+  padding-left: 80px; /* More padding for custom position */
+}
+
+/* Ensure title bar content is properly positioned */
+.workspace__filemeta {
+  position: absolute;
+  left: 24px; /* Left align instead of center */
+  transform: none; /* Remove centering transform */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start; /* Left align content */
+  justify-content: center;
+  text-align: left; /* Left align text */
+}
+
+.workspace__actions {
+  position: absolute;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-picker {
+  width: 60px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  background: none;
+  padding: 0;
+}
+
+.color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+}
+
+.color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 6px;
+}
+
+.slider-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-slider {
+  flex: 1;
+  max-width: 200px;
+  height: 6px;
+  background: var(--bg-muted);
+  border-radius: 3px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.settings-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.settings-slider::-webkit-slider-thumb:hover {
+  background: var(--accent-dim);
+}
+
+.slider-value {
+  font-size: 12px;
+  color: var(--fg-soft);
+  min-width: 35px;
+  text-align: center;
+  font-weight: 500;
+}
+
+/* Font loading for web fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Roboto:wght@400;500&family=Open+Sans:wght@400;500;600&family=Source+Sans+Pro:wght@400;500;600&family=Lato:wght@400;500&family=Poppins:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Fira+Code:wght@400;500&display=swap');
+
+/* Theme Override Classes */
+body[data-theme="light"] {
+  color-scheme: light;
+  --bg: var(--bg-light, #f7f8fa);
+  --bg-elevated: var(--bg-elevated-light, #ffffff);
+  --bg-sidebar: var(--bg-sidebar-light, #eef1f6);
+  --border: var(--border-light, rgba(20, 23, 26, 0.08));
+  --border-strong: var(--border-strong-light, rgba(20, 23, 26, 0.14));
+  --fg: var(--fg-light, #1f2933);
+  --fg-soft: var(--fg-soft-light, rgba(31, 41, 51, 0.72));
+  --accent: var(--accent-light, #4c6ef5);
+  --accent-weak: var(--accent-weak-light, rgba(76, 110, 245, 0.12));
+  --danger: var(--danger-light, #e03131);
+}
+
+body[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: var(--bg-dark, #0f1117);
+  --bg-elevated: var(--bg-elevated-dark, #151922);
+  --bg-sidebar: var(--bg-sidebar-dark, #181d27);
+  --border: var(--border-dark, rgba(255, 255, 255, 0.08));
+  --border-strong: var(--border-strong-dark, rgba(255, 255, 255, 0.16));
+  --fg: var(--fg-dark, #e9edf5);
+  --fg-soft: var(--fg-soft-dark, rgba(233, 237, 245, 0.72));
+  --accent: var(--accent-dark, #91a7ff);
+  --accent-weak: var(--accent-weak-dark, rgba(145, 167, 255, 0.18));
+  --danger: var(--danger-dark, #ff6b6b);
+}
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-soft);
+  font-size: 16px;
+  text-align: center;
+}
+
+@media (max-width: 1200px) {
+  .sidebar {
+    width: 280px;
+  }
+}
+
+@media (max-width: 980px) {
+  .workspace__content {
+    flex-direction: column;
+  }
+
+  .workspace__splitter {
+    display: none;
+  }
+
+  .editor-pane,
+  .preview-pane {
+    flex: none;
+    min-width: auto;
+    width: 100%;
+    border-left: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .preview-pane {
+    border-bottom: none;
+  }
+}
+
+.sidebar__list::-webkit-scrollbar,
+.preview-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar__list::-webkit-scrollbar-thumb,
+.preview-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+.preview-scroll .katex-display {
+  margin: 16px 0;
+  /* Allow KaTeX blocks (including tall matrices) to grow instead of showing
+     an inner scrollbar. Previously this used overflow-x:auto which caused
+     horizontal/vertical scrollbars inside the preview; make them visible so
+     the outer preview handles scrolling. */
+  overflow: visible;
+}
+
+.preview-scroll .katex {
+  font-size: 16px;
+  overflow: visible;
+}
+
+/* Allow wikilink embeds and html iframes inside the preview to expand to
+   their content where possible. Some embeds were inserted with inline
+   height styles (e.g. height:600px) which produced inner scrollbars; use
+   a permissive rule here to prefer auto sizing while keeping a sensible
+   minimum height. Important is used to override inline styles placed on
+   the iframe by the renderer. */
+.wikilink-embed, .wikilink-embed__body {
+  overflow: visible;
+}
+
+.html-embed-iframe,
+.embedded-html-iframe,
+.editor-html-block iframe,
+iframe.html-embed-iframe {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 120px;
+}
+
+/* Inline Chat Styles */
+.inline-chat {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px;
+  max-width: 90vw;
+  max-height: 70vh;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  font-family: inherit;
+}
+
+.inline-chat[hidden] {
+  display: none !important;
+}
+
+.inline-chat__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 12px 12px 0 0;
+}
+
+.inline-chat__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--fg);
+}
+
+.inline-chat__icon {
+  font-size: 16px;
+}
+
+.inline-chat__close {
+  background: none;
+  border: none;
+  color: var(--fg-soft);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.inline-chat__close:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.inline-chat__content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.inline-chat__messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  min-height: 120px;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inline-chat__message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inline-chat__message--user {
+  align-items: flex-end;
+}
+
+.inline-chat__message--assistant {
+  align-items: flex-start;
+}
+
+.inline-chat__message-bubble {
+  max-width: 80%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.inline-chat__message--user .inline-chat__message-bubble {
+  background: var(--accent);
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.inline-chat__message--assistant .inline-chat__message-bubble {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+.inline-chat__message-time {
+  font-size: 11px;
+  color: var(--fg-soft);
+  margin: 0 12px;
+}
+
+.inline-chat__input-container {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 0 0 12px 12px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.inline-chat__input {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  resize: none;
+  min-height: 36px;
+  max-height: 120px;
+  line-height: 1.4;
+}
+
+.inline-chat__input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.inline-chat__input::placeholder {
+  color: var(--fg-soft);
+}
+
+.inline-chat__send {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: background-color 0.2s;
+  min-width: 40px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inline-chat__send:hover {
+  background: var(--accent-hover);
+}
+
+.inline-chat__send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.inline-chat__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  color: var(--fg-soft);
+  text-align: center;
+  gap: 8px;
+}
+
+.inline-chat__empty-icon {
+  font-size: 32px;
+  opacity: 0.5;
+}
+
+.inline-chat__empty-text {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* Auto-growing textarea */
+.inline-chat__input[data-growing="true"] {
+  height: auto;
+  overflow-y: hidden;
+}
+
+/* Overlay backdrop */
+.inline-chat-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 999;
+  backdrop-filter: blur(2px);
+}
+
+/* Keybinding Styles */
+.keybinding-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.keybindings-list {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+}
+
+.keybinding-input-group {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.keybinding-select {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.keybinding-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-weak);
+}
+
+.keybinding-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.keybinding-item:last-child {
+  border-bottom: none;
+}
+
+.keybinding-label {
+  flex: 1;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.keybinding-input {
+  width: 150px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.keybinding-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-weak);
+}
+
+/* High contrast adjustments for keybindings */
+body[data-high-contrast="true"] .keybinding-select,
+body[data-high-contrast="true"] .keybinding-input {
+  border-color: var(--border-strong);
+  background: var(--bg);
+}
+
+body[data-high-contrast="true"] .keybinding-select:focus,
+body[data-high-contrast="true"] .keybinding-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-weak);
+}
+
+/* LaTeX Preview Styles */
+.latex-preview {
+  font-family: "Computer Modern", "Latin Modern Roman", serif;
+  line-height: 1.6;
+}
+
+.latex-preview h2 {
+  margin-top: 2em;
+  margin-bottom: 1em;
+  font-size: 1.5em;
+  font-weight: bold;
+}
+
+.latex-preview h3 {
+  margin-top: 1.5em;
+  margin-bottom: 0.8em;
+  font-size: 1.3em;
+  font-weight: bold;
+}
+
+.latex-preview h4 {
+  margin-top: 1.2em;
+  margin-bottom: 0.6em;
+  font-size: 1.1em;
+  font-weight: bold;
+}
+
+.latex-preview ul, .latex-preview ol {
+  margin: 1em 0;
+  padding-left: 2em;
+}
+
+.latex-preview li {
+  margin: 0.5em 0;
+}
+
+.latex-preview .katex {
+  font-size: 1.1em;
+}
+
+.latex-preview .katex-display {
+  margin: 1em 0;
+  text-align: center;
+}
+
+.latex-preview figure {
+  margin: 1em 0;
+  text-align: center;
+}
+
+.latex-preview figure img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+.latex-preview figcaption {
+  margin-top: 0.5em;
+  font-size: 0.9em;
+  color: var(--fg-soft);
+  text-align: center;
+}
+
+/* Table of Contents Modal */
+.toc-content {
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: var(--font-family);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.toc-content ul {
+  margin: 0;
+  padding-left: 1.5em;
+}
+
+.toc-content li {
+  margin: 0.25em 0;
+}
+
+.toc-content a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.toc-content a:hover {
+  text-decoration: underline;
+}
+
+/* Statistics Modal */
+.stats-modal .modal__content {
+  width: 480px;
+  max-width: calc(100% - 20px);
+}
+
+.stats-content {
+  font-family: var(--font-family);
+  width: 100%;
+}
+
+.stats-modal .modal__body {
+  padding: 6px;
+  width: 100%;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.375rem;
+  margin-top: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0.5rem 0.25rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-height: 60px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.stat-label {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--fg-soft);
+  margin-bottom: 0.25rem;
+  line-height: 1.2;
+}
+
+.stat-value {
+  font-size: 1.1em;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+/* Templates Modal */
+.templates-modal .modal__content {
+  width: 400px;
+  max-width: calc(100% - 20px);
+}
+
+.templates-content {
+  font-family: var(--font-family);
+  width: 100%;
+}
+
+.templates-modal .modal__body {
+  padding: 6px;
+  width: 100%;
+}
+
+.templates-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.375rem;
+  margin-top: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.template-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem 0.25rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  min-height: 70px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.template-item:hover {
+  background: var(--bg);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.template-icon {
+  font-size: 1.3rem;
+  margin-bottom: 0.2rem;
+}
+
+.template-name {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 0.1rem;
+  line-height: 1.2;
+}
+
+.template-description {
+  font-size: 0.65em;
+  color: var(--fg-soft);
+  line-height: 1.2;
+}

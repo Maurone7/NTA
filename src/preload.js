@@ -1,3 +1,4 @@
+```javascript
 const { contextBridge, ipcRenderer } = require('electron');
 
 const api = {
@@ -11,10 +12,8 @@ const api = {
   // Save a notebook (.ipynb). Payload: { filePath, notebook }
   saveNotebook: (data) => ipcRenderer.invoke('workspace:saveNotebook', data),
   createMarkdownFile: (data) => ipcRenderer.invoke('workspace:createMarkdownFile', data),
-  // Read a bibliography file (e.g., bibliography.bib) from the workspace
   readBibliography: (data) => ipcRenderer.invoke('workspace:readBibliography', data),
-  // Open a file chooser to select a .bib file and return its content
-  chooseBibFile: () => ipcRenderer.invoke('workspace:chooseBibFile'),
+  openFileChooser: () => ipcRenderer.invoke('workspace:chooseBibFile'),
   renameMarkdownFile: (data) => ipcRenderer.invoke('workspace:renameMarkdownFile', data),
   readPdfBinary: (data) => ipcRenderer.invoke('workspace:readPdfBinary', data),
   resolveResource: (data) => ipcRenderer.invoke('workspace:resolveResource', data),
@@ -49,9 +48,11 @@ const api = {
   // Note: download/update APIs removed - app no longer performs automatic downloads.
   // Custom in-app updater: verified download + progress events
   customCheckAndUpdate: (opts) => ipcRenderer.invoke('app:customCheckAndUpdate', opts || {}),
+  
   // Dev-only check which queries GitHub directly (works in unpacked/dev mode)
   devCheckForUpdates: () => ipcRenderer.invoke('app:devCheckForUpdates'),
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
+  
   // Generic invoke for backward compatibility with existing renderer code
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
   
@@ -65,7 +66,7 @@ const api = {
   
   // Update event listeners
   on: (channel, callback) => {
-  const validChannels = ['update-available', 'update-progress', 'update-downloaded', 'update-not-available', 'update-error', 'workspace:changed', 'custom-update-progress', 'custom-update-started', 'custom-update-result', 'fallback-started', 'fallback-result', 'fallback-available', 'fallback-progress'];
+    const validChannels = ['update-available', 'update-progress', 'update-downloaded', 'update-not-available', 'update-error', 'workspace:changed', 'custom-update-progress', 'custom-update-started', 'custom-update-result', 'fallback-started', 'fallback-result', 'fallback-available', 'fallback-progress'];
     if (validChannels.includes(channel)) {
       ipcRenderer.on(channel, (_event, data) => callback(data));
     }
@@ -77,10 +78,14 @@ const api = {
 
 contextBridge.exposeInMainWorld('api', api);
 
-// Expose a dedicated font import helper that accepts a display name, filename and an ArrayBuffer
+// Expose a dedicated font importer that accepts a display name, filename and an ArrayBuffer
 contextBridge.exposeInMainWorld('fontImporter', {
   importFont: async (displayName, filename, arrayBuffer) => {
     // We transfer the buffer to the main process; ipcRenderer will serialize the ArrayBuffer
     return ipcRenderer.invoke('fonts:import', { displayName, filename, buffer: arrayBuffer });
   }
 });
+
+```
+
+

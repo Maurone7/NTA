@@ -1,3 +1,4 @@
+```javascript
 const fs = require('fs');
 const fsp = require('fs').promises;
 const path = require('path');
@@ -65,13 +66,13 @@ const createNotesStore = (basePath) => {
     return json.notes;
   };
 
-  const saveNotes = async (notes) => {
-    if (!Array.isArray(notes)) {
+  const saveNotes = async (target, data) => {
+    if (!Array.isArray(data)) {
       throw new Error('notes must be an array');
     }
 
     const payload = {
-      notes: notes.map((note) => ({
+      notes: data.map((note) => ({
         ...note,
         id: note.id || crypto.randomUUID(),
         updatedAt: note.updatedAt || new Date().toISOString()
@@ -83,7 +84,7 @@ const createNotesStore = (basePath) => {
 
   const importPdf = async (sourcePath) => {
     if (!sourcePath) {
-      throw new Error('sourcePath required for importPdf');
+      return null;
     }
 
     const pdfId = crypto.randomUUID();
@@ -138,3 +139,6 @@ const createNotesStore = (basePath) => {
 };
 
 module.exports = { createNotesStore };
+
+```
+

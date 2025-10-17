@@ -43,7 +43,7 @@
       </div>
     </div>
 
-    <!-- per-pane Tab Bars will be rendered inside each editor pane -->
+    <!-- Tab Bar (removed) -->
 
     <div class="app-shell">
       <aside class="explorer" aria-label="Workspace explorer">
@@ -203,7 +203,7 @@
               <button
                 id="export-dropdown-button"
                 class="ghost export-dropdown__button"
-                title="Export options (⌘E exports in preferred format)"
+                title="Export current note (⌘E)"
                 aria-haspopup="true"
                 aria-expanded="false"
               >
@@ -249,15 +249,8 @@
           </div>
         </div>
         <div class="workspace__content">
-          <section class="editor-pane editor-pane--left" data-pane-id="left" aria-label="Markdown editor (left)">
-            <div class="pane-tab-bar">
-              <div class="tab-bar__tabs" id="tab-bar-tabs-left" role="tablist"></div>
-              <button id="new-tab-button-left" class="tab-bar__new-tab" title="New Tab" aria-label="New Tab">+</button>
-            </div>
+          <section class="editor-pane editor-pane--left" aria-label="Markdown editor (left)">
             <div class="editor-pane__badge" data-pane="left"></div>
-            <div class="editor-pane__actions">
-              <button id="close-left-editor" class="icon-button small" type="button" title="Close left editor" aria-label="Close left editor">✕</button>
-            </div>
             <div
               id="editor-search-highlights"
               class="editor-search-highlights"
@@ -315,7 +308,7 @@
                   <textarea
                     id="inline-chat-input"
                     class="inline-chat__input"
-                    placeholder="Write a command (ex. table 4x4) and I'll make it an inline command"
+                    placeholder="Ask a question or describe what you want to do..."
                     rows="1"
                     aria-label="Chat input"
                   ></textarea>
@@ -328,21 +321,10 @@
               </div>
             </div>
           </section>
-
-          <div
-            id="workspace-splitter"
-            class="workspace__splitter"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize editor and preview"
-            tabindex="0"
-          ></div>
-
-          <section class="editor-pane editor-pane--right" data-pane-id="right" aria-label="Markdown editor (right)" hidden>
-            <div class="pane-tab-bar">
-              <div class="tab-bar__tabs" id="tab-bar-tabs-right" role="tablist"></div>
-              <button id="new-tab-button-right" class="tab-bar__new-tab" title="New Tab" aria-label="New Tab">+</button>
-            </div>
+          <!-- Divider between the two central editors -->
+          <div class="editors__divider" aria-hidden="true"></div>
+          <!-- Add right editor pane for side-by-side editing -->
+          <section class="editor-pane editor-pane--right" aria-label="Markdown editor (right)">
             <div class="editor-pane__badge" data-pane="right"></div>
             <div class="editor-pane__actions">
               <button id="close-right-editor" class="icon-button small" type="button" title="Close right editor" aria-label="Close right editor">✕</button>
@@ -357,34 +339,16 @@
             </div>
             <textarea id="note-editor-right" spellcheck="true" aria-label="Markdown editor (right)"></textarea>
             <div id="editor-math-overlay-right" class="editor-math-overlay" aria-hidden="true" hidden></div>
-            
-            <!-- Math Preview Popup -->
-            <div id="math-preview-popup-right" class="math-preview-popup" hidden>
-              <div class="math-preview-popup__content"></div>
-            </div>
-            
-            <div
-              id="wikilink-suggestions-right"
-              class="wiki-suggest"
-              role="listbox"
-              aria-label="Wiki link suggestions"
-              hidden
-            ></div>
-            <div
-              id="hashtag-suggestions-right"
-              class="wiki-suggest"
-              role="listbox"
-              aria-label="Hashtag suggestions"
-              hidden
-            ></div>
-            <div
-              id="file-suggestions-right"
-              class="wiki-suggest"
-              role="listbox"
-              aria-label="File path suggestions"
-              hidden
-            ></div>
           </section>
+
+          <div
+            id="workspace-splitter"
+            class="workspace__splitter"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize editor and preview"
+            tabindex="0"
+          ></div>
 
           <section class="preview-pane" aria-label="Preview" tabindex="-1">
             <div id="markdown-preview" class="preview-scroll"></div>
@@ -780,21 +744,11 @@
                     <label for="show-line-numbers" class="toggle-label">Show line numbers in editor</label>
                   </div>
                 </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">Show Filename Only</label>
-                  <div class="toggle-group">
-                    <input type="checkbox" id="show-filename-only" class="settings-toggle">
-                    <label for="show-filename-only" class="toggle-label">Show only filename in title bar, hide directory path</label>
-                  </div>
-                </div>
               </div>
             </div>
             
             <!-- Export Tab -->
             <div class="settings-tab" id="export-tab">
-              <div class="settings-description">
-                <p>Export your notes to PDF, HTML, DOCX, or EPUB formats for sharing, printing, or archiving. The default export format is used when you press <kbd>⌘E</kbd> to quickly export the current note (when "Use Cmd+E for direct export" is enabled). You can also export and import your app settings to backup your preferences or transfer them between devices.</p>
-              </div>
               <div class="settings-section">
                 <div class="settings-item">
                   <label class="settings-item__label">Default Export Format</label>
@@ -804,13 +758,6 @@
                     <option value="docx">DOCX</option>
                     <option value="epub">EPUB</option>
                   </select>
-                </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">
-                    <input type="checkbox" id="cmd-e-direct-export-toggle" class="settings-toggle" checked>
-                    Use Cmd+E for direct export
-                  </label>
-                  <span class="settings-description">When enabled, Cmd+E exports directly using the default format. When disabled, Cmd+E opens the export dropdown menu.</span>
                 </div>
                 <div class="settings-item">
                   <label class="settings-item__label">Export Settings</label>

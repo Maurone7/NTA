@@ -1,5 +1,4 @@
-// Lightweight autolink helper extracted from app renderer logic so it can be
-// unit-tested independently and reused by the renderer.
+```javascript
 function autolinkPlainUrlsInTextarea(textarea) {
   try {
     if (!textarea || typeof textarea.value !== 'string') return;
@@ -20,6 +19,13 @@ function autolinkPlainUrlsInTextarea(textarea) {
       const beforeChar = v[idx - 1] || '';
       const afterChar = v[idx + url.length] || '';
       if (beforeChar === '(' || beforeChar === ']' || afterChar === ')' || afterChar === ']') {
+        continue;
+      }
+
+      // Avoid transforming if this URL is already part of a markdown link like [text](url)
+      const lookback = Math.max(0, idx - 60);
+      const contextBefore = v.slice(lookback, idx + url.length + 2);
+      if (/\[[^\]]*\]\($/m.test(contextBefore) || /\[[^\]]+\]\([^)]*$/m.test(contextBefore)) {
         continue;
       }
 
@@ -75,3 +81,5 @@ function autolinkPlainUrlsInTextarea(textarea) {
 }
 
 module.exports = { autolinkPlainUrlsInTextarea };
+```
+
