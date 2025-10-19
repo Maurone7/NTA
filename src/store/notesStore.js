@@ -1,4 +1,3 @@
-```javascript
 const fs = require('fs');
 const fsp = require('fs').promises;
 const path = require('path');
@@ -66,7 +65,7 @@ const createNotesStore = (basePath) => {
     return json.notes;
   };
 
-  const saveNotes = async (target, data) => {
+  const saveNotes = async (data) => {
     if (!Array.isArray(data)) {
       throw new Error('notes must be an array');
     }
@@ -139,6 +138,3 @@ const createNotesStore = (basePath) => {
 };
 
 module.exports = { createNotesStore };
-
-```
-

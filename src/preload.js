@@ -1,4 +1,3 @@
-```javascript
 const { contextBridge, ipcRenderer } = require('electron');
 
 const api = {
@@ -85,7 +84,5 @@ contextBridge.exposeInMainWorld('fontImporter', {
     return ipcRenderer.invoke('fonts:import', { displayName, filename, buffer: arrayBuffer });
   }
 });
-
-```
 
 

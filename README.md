@@ -156,18 +156,21 @@ $$\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}$$
 
 NTA supports two types of wiki-style links to connect your notes:
 
-### Regular Links: `[[Note Name]]`
-Creates a clickable link to another note:
+### Embed Links: `[[Note Name]]`
+Embeds the actual content of another note inline:
 ```markdown
 Check out my [[Research Notes]] for more details.
 See also: [[Project Ideas]] and [[Meeting Notes]]
 ```
-- **Existing notes**: Click to open immediately
-- **Missing notes**: Click to create them automatically
+- **Existing notes**: Displays the full content of the linked note
+- **Missing notes**: Shows a placeholder to create them
 - **Auto-complete**: Start typing `[[` to see suggestions
 
-### Embed Links: `![[Note Name]]`
-Embeds the actual content of another note inline:
+### Transclusion Links: `![[Note Name]]`
+Also embeds content (for compatibility):
+```markdown
+![[Important Quote]]
+```
 ```markdown
 Here's my summary: ![[Key Findings]]
 
@@ -240,3 +243,4 @@ Allow insertion of 3d models (stl)
 Fix window resizing
 Add &subfigure
 Add the & commands to latex
+Allow bolding and italics with cmd+B and comd+I

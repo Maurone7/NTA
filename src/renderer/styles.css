@@ -1188,6 +1188,21 @@ button[data-tooltip]:hover::after {
   font-family: monospace;
 }
 
+.editor-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  min-height: 300px;
+}
+
+.editor-empty .empty-state__message {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--fg-muted);
+}
 #hashtag-panel .explorer__empty {
   min-height: 120px;
   padding: 18px;
@@ -2136,6 +2151,7 @@ button.small {
   --local-editor-ratio: var(--editor-ratio, 0.5);
   display: flex;
   flex: 1;
+  width: 100%;
   min-height: 0;
   background: var(--bg);
   position: relative;
@@ -2302,7 +2318,7 @@ button.small {
   /* Fixed-width right sidebar for live preview */
   flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
   width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
-  max-width: 60vw;
+  max-width: 100%;
   min-width: 0px; /* Allow preview to be minimized completely */
   margin-right: 0;
   position: relative;
@@ -2426,16 +2442,7 @@ button.small {
 
 /* Editor pane badges and active pane styling */
 .editor-pane__badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  background: rgba(0,0,0,0.06);
-  color: var(--fg-soft);
-  font-size: 11px;
-  padding: 4px 8px;
-  border-radius: 12px;
-  z-index: 30;
-  pointer-events: none;
+  display: none;
 }
 
 /* Actions container in editor pane (e.g., close button for right editor) */

@@ -10,7 +10,8 @@
     "test": "CI=true mocha tests/unit tests/dom tests/smoke --reporter spec",
     "test:smoke": "CI=true node scripts/smoke-test.js",
     "test:update": "CI=true mocha tests/unit/updateMechanism.spec.js --reporter spec",
-  "test:e2e-pdf": "CI=true node tests/playwright/e2e-two-pdf-same-pane.js",
+    "test:e2e-pdf": "CI=true node tests/playwright/e2e-two-pdf-same-pane.js",
+    "test:e2e": "./scripts/run-e2e.sh",
     "ci": "CI=true npm test && CI=true npm run build:mac",
     "run-ci": "./scripts/non-interactive.sh npm run ci",
     "install-ci": "./scripts/non-interactive.sh npm ci",
@@ -26,7 +27,6 @@
     "pack": "electron-builder --dir",
     "clean:artifacts": "node scripts/clean-repo.js"
   },
-
   "author": "Maurone7",
   "license": "MIT",
   "dependencies": {
@@ -34,21 +34,22 @@
     "dompurify": "^3.1.6",
     "electron-updater": "^6.6.2",
     "epub-gen": "^0.1.0",
+    "js-yaml": "^4.1.0",
     "katex": "^0.16.11",
     "marked": "^12.0.2",
-    "turndown": "^7.2.1",
-    "js-yaml": "^4.1.0"
+    "node-fetch": "^3.3.2",
+    "turndown": "^7.2.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.43.0",
     "electron": "^30.0.0",
     "electron-builder": "^26.0.12",
     "electronmon": "^2.0.2",
     "eslint": "^8.57.0",
-    "jsdom": "^27.0.0",
+    "jsdom": "^27.0.1",
     "mocha": "^10.2.0",
     "mocha-junit-reporter": "^2.0.0",
-    "playwright": "^1.43.0",
-    "@playwright/test": "^1.43.0"
+    "playwright": "^1.43.0"
   },
   "build": {
     "appId": "com.maurone7.notetakingapp",
@@ -58,8 +59,8 @@
     },
     "files": [
       "src/**/*",
-  "package.json",
-  "!**/test-folder/**",
+      "package.json",
+      "!**/test-folder/**",
       "!test-screenshot.png",
       "!dist/**",
       "!**/*.map",

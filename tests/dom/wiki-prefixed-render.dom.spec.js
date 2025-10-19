@@ -40,7 +40,7 @@ function makeWindow() {
 }
 
 describe('DOM: render folder-prefixed wiki links', function() {
-  it('renders active wiki links for [[folder/Note]] and embeds for ![[ and !![[', function(done) {
+  it('renders links, block embeds and inline embeds (inline renders content-only)', function(done) {
     const window = makeWindow();
     global.window = window; global.document = window.document; global.localStorage = window.localStorage; global.MutationObserver = window.MutationObserver;
     global.window.marked = require('marked');
@@ -83,11 +83,24 @@ describe('DOM: render folder-prefixed wiki links', function() {
     // If renderMarkdownPreview returns HTML or updates DOM, check for wikilink elements
     setTimeout(() => {
       try {
+        const preview = document.getElementById('markdown-preview');
         // Search for elements with data-wiki-target matching the target
         const targets = Array.from(document.querySelectorAll('[data-wiki-target]')).map(el => ({ tag: el.tagName, attr: el.getAttribute('data-wiki-target'), classes: el.className }));
         // We expect entries for sub/Sub Note (display may be escaped)
         const found = targets.some(t => (t.attr || '').toLowerCase().includes('sub/sub note'));
         assert(found, 'Rendered preview should contain wikilink elements for sub/Sub Note');
+
+        // Expect a block embed for the ![[...]] case
+        const blockEmbeds = Array.from(preview.querySelectorAll('.wikilink-embed'));
+        assert(blockEmbeds.length >= 1, 'Rendered preview should contain at least one block embed for ![[...]]');
+
+        // Inline embed (!![[...]] ) should render the referenced content directly
+        // (in our seeded note the content is `# sub`, so there should be an <h1>
+        // rendered that is not contained inside a .wikilink-embed wrapper).
+        const h1s = Array.from(preview.querySelectorAll('h1'));
+        const inlineH1 = h1s.find(h => !h.closest('.wikilink-embed'));
+        assert(inlineH1, 'Inline embed (!![[...]] ) should render content directly (h1 found outside embed wrapper)');
+
         done();
       } catch (e) {
         done(e);

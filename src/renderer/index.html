@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NTA</title>
+  <title></title>
     <!-- Content Security Policy: relaxed in dev to allow file:// for local preview assets (images, media, frames).
       In production you should remove file: and serve resources via a secure preload/handler. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; media-src 'self' data: blob: file:; connect-src 'self' http: https:; object-src 'none'; frame-src 'self' data: blob: file:;">
@@ -16,10 +16,10 @@
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <!-- Custom Title Bar for macOS -->
     <div id="title-bar" class="title-bar">
-      <div class="title-bar__content">
-  <div class="title-bar__title">NTA</div>
+        <div class="title-bar__content">
+    <div class="title-bar__title"></div>
+        </div>
       </div>
-    </div>
 
     <!-- Update Notification -->
     <div id="update-notification" class="update-notification" hidden>
@@ -66,13 +66,6 @@
           <div class="empty-state">
             <div class="empty-state__icon">📁</div>
             <div class="empty-state__title">No folder open</div>
-            <div class="empty-state__description">
-              Open a folder to start taking notes with Markdown and PDF support.
-            </div>
-            <div class="empty-state__tips">
-              <div class="tip">💡 <strong>Tip:</strong> Use <kbd>⌘O</kbd> to quickly open a folder</div>
-              <div class="tip">📝 Create notes with <code>[[Wiki Links]]</code> and <code>#hashtags</code></div>
-            </div>
           </div>
         </div>
         <div class="hashtag-container">
@@ -251,6 +244,10 @@
         <div class="workspace__content">
           <section class="editor-pane editor-pane--left" aria-label="Markdown editor (left)">
             <div class="editor-pane__badge" data-pane="left"></div>
+            <div class="pane-tab-bar">
+              <div class="tab-bar__tabs" id="tab-bar-tabs-left" role="tablist"></div>
+              <button class="tab-bar__new-tab" id="new-tab-button-left" title="New Tab" aria-label="New Tab">+</button>
+            </div>
             <div
               id="editor-search-highlights"
               class="editor-search-highlights"
@@ -326,6 +323,10 @@
           <!-- Add right editor pane for side-by-side editing -->
           <section class="editor-pane editor-pane--right" aria-label="Markdown editor (right)">
             <div class="editor-pane__badge" data-pane="right"></div>
+            <div class="pane-tab-bar">
+              <div class="tab-bar__tabs" id="tab-bar-tabs-right" role="tablist"></div>
+              <button class="tab-bar__new-tab" id="new-tab-button-right" title="New Tab" aria-label="New Tab">+</button>
+            </div>
             <div class="editor-pane__actions">
               <button id="close-right-editor" class="icon-button small" type="button" title="Close right editor" aria-label="Close right editor">✕</button>
             </div>
