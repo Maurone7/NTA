@@ -25,7 +25,7 @@ open ./NTA.app
 
 ## 🔄 Stay Updated
 
-NTA checks for updates when you first open the app and notifies you when new versions are available. You can also manually check for updates anytime through the settings (gear icon in bottom status bar). Just click "Download" when prompted, and the app will update itself automatically.
+NTA checks for updates when you first open the app and notifies you when new versions are available. You can also manually check for updates anytime through the settings (gear icon in bottom status bar).
 
 ## 📞 Support
 
