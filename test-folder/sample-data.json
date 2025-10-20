@@ -1,0 +1,13 @@
+{
+  "name": "Sample JSON",
+  "description": "A test JSON file",
+  "data": {
+    "numbers": [1, 2, 3, 4, 5],
+    "strings": ["hello", "world"],
+    "boolean": true
+  },
+  "metadata": {
+    "created": "2025-10-05",
+    "version": "1.0"
+  }
+}
