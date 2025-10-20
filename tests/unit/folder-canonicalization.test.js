@@ -1,8 +1,19 @@
 const assert = require('assert');
 const path = require('path');
+const { JSDOM } = require('jsdom');
 
 describe('Unit: folder canonicalization for wiki suggestions', function() {
   it('collapses multiple folder candidates with same last-segment into one suggestion', function() {
+    // Set up minimal DOM environment for app.js
+    const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
+    global.window = dom.window;
+    global.document = dom.window.document;
+    global.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+    
+    // Minimal stubs for APIs that app.js expects
+    global.window.api = { on: () => {}, removeListener: () => {} };
+    global.window.matchMedia = () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} });
+    
     // Load app test hooks
     const app = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'));
     const hooks = app.__test__;
@@ -41,5 +52,10 @@ describe('Unit: folder canonicalization for wiki suggestions', function() {
     const unique = Array.from(new Set(lastSegs));
 
     assert.strictEqual(unique.filter(u => u === 'examples').length, 1, `expected one canonical 'examples' suggestion, got ${JSON.stringify(folders)}`);
+    
+    // Clean up globals
+    delete global.window;
+    delete global.document;
+    delete global.localStorage;
   });
 });

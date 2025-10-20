@@ -84,7 +84,8 @@ describe('DOM: wiki suggestions', function() {
   // Ensure index rebuild for suggestion resolving
   if (typeof hooks.rebuildWikiIndex === 'function') hooks.rebuildWikiIndex();
 
-      // Set up active note
+      // Set up active note and current folder
+      hooks.state.currentFolder = '/tmp/ws';
       // Ensure simple wikiIndex entries for tests
       try {
         const slugify = (s) => (s || '').toString().trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
@@ -160,7 +161,8 @@ describe('DOM: wiki suggestions', function() {
 
   if (typeof hooks.rebuildWikiIndex === 'function') hooks.rebuildWikiIndex();
 
-      // Set up active note
+      // Set up active note and current folder
+      hooks.state.currentFolder = '/tmp/ws';
       hooks.state.activeNoteId = note1.id;
       hooks.state.editorPanes.left.noteId = note1.id;
 
@@ -266,6 +268,8 @@ describe('DOM: wiki suggestions', function() {
               // Should include the subfolder note and not include notes from root
               assert(scopedTitles.includes('Sub Note'), 'Should include Sub Note from subfolder');
               assert(!scopedTitles.includes('Root Note'), 'Should not include Root Note when scoped to subfolder');
+              // Most importantly: should NOT re-suggest the folder that's already selected
+              assert(!scopedTitles.includes('folder/'), 'Should not re-suggest the already selected folder');
 
               done();
             } catch (e) {
@@ -285,6 +289,46 @@ describe('DOM: wiki suggestions', function() {
       try { window.close(); } catch (err) {}
       delete global.window; delete global.document; delete global.localStorage;
       done(e);
+    }
+  });
+
+  it('does not re-suggest folders when manually typing folder paths', function(done) {
+    const window = makeWindow();
+    global.window = window; global.document = window.document; global.localStorage = window.localStorage; global.MutationObserver = window.MutationObserver;
+    const app = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'));
+    const hooks = app.__test__;
+    if (hooks.initialize) hooks.initialize();
+
+    try {
+      // Set up workspace with subfolder
+      const rootFolder = '/tmp/ws';
+      const subFolder = '/tmp/ws/docs';
+
+      const noteRoot = { id: 'note1', type: 'markdown', title: 'Root Note', absolutePath: `${rootFolder}/root.md`, content: '# Root' };
+      const noteSub = { id: 'note2', type: 'markdown', title: 'Doc Note', absolutePath: `${subFolder}/doc.md`, content: '# Doc' };
+
+      hooks.state.notes.set(noteRoot.id, noteRoot);
+      hooks.state.notes.set(noteSub.id, noteSub);
+      hooks.state.currentFolder = rootFolder;
+
+      // Test that manually typing "docs/" shows only notes from docs folder, no folder suggestions
+      const items = hooks.collectWikiSuggestionItems('docs/');
+      const folderSuggestions = items.filter(item => item.kind === 'folder');
+      const docFolderSuggested = items.some(item => item.kind === 'folder' && item.display.includes('docs'));
+      const correctNote = items.some(item => item.kind === 'note' && item.display === 'Doc Note');
+      const wrongNote = items.some(item => item.kind === 'note' && item.display === 'Root Note');
+
+      assert(folderSuggestions.length === 0, 'Should not suggest any folders when folder path is complete');
+      assert(!docFolderSuggested, 'Should not re-suggest the docs/ folder itself');
+      assert(correctNote, 'Should show notes from the docs/ folder');
+      assert(!wrongNote, 'Should not show notes from other folders');
+
+      done();
+    } catch (e) {
+      done(e);
+    } finally {
+      try { window.close(); } catch (e) {}
+      delete global.window; delete global.document; delete global.localStorage;
     }
   });
 });

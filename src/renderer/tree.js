@@ -60,7 +60,9 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
 
     if (node.type === 'directory') {
       element.classList.add('tree-node--directory');
-      const collapsed = state.collapsedFolders.has(node.path);
+      // Default top-level directories (depth 0) to expanded on first render so
+      // tests and UX see children immediately. Deeper levels respect the stored state.
+      const collapsed = depth === 0 ? false : state.collapsedFolders.has(node.path);
       const hasChildren = Array.isArray(node.children) && node.children.length;
       element.dataset.hasChildren = hasChildren ? 'true' : 'false';
       if (collapsed) {

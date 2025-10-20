@@ -11,22 +11,51 @@ const PDF_EXTENSION = '.pdf';
 const PPTX_EXTENSION = '.pptx';
 const DEFAULT_MARKDOWN_EXTENSION = '.md';
 const SCRIPT_EXTENSIONS = {
+  // Common scripting and text formats
   '.py': { language: 'python' },
+  '.js': { language: 'javascript' },
+  '.jsx': { language: 'javascript' },
+  '.ts': { language: 'typescript' },
+  '.tsx': { language: 'typescript' },
+  '.json': { language: 'json' },
+  '.html': { language: 'html' },
+  '.htm': { language: 'html' },
+  '.css': { language: 'css' },
+  '.scss': { language: 'scss' },
+  '.md': { language: 'markdown' },
+  '.markdown': { language: 'markdown' },
+  '.mdx': { language: 'markdown' },
   '.txt': { language: 'text' },
-  '.aux': { language: 'latex' },
   '.log': { language: 'text' },
+  '.yml': { language: 'yaml' },
+  '.yaml': { language: 'yaml' },
+  '.pyc': { language: 'python' },
+
+  // LaTeX related
+  '.tex': { language: 'latex' },
+  '.aux': { language: 'latex' },
   '.lot': { language: 'latex' },
   '.lof': { language: 'latex' },
-  '.fls': { language: 'text' },
+  '.fdb_latexmk': { language: 'latex' },
+  '.cls': { language: 'latex' },
+  '.toc': { language: 'latex' },
+
+  // Bibliography and support files
+  '.bib': { language: 'bibtex' },
   '.blg': { language: 'bibtex' },
   '.bbl': { language: 'bibtex' },
-  '.cls': { language: 'latex' },
-  '.iges': { language: 'text' },
+
+  // Shell / scripts
   '.sh': { language: 'shell' },
-  '.fdb_latexmk': { language: 'latex' },
+  '.bash': { language: 'shell' },
+  '.zsh': { language: 'shell' },
+  '.ps1': { language: 'powershell' },
+
+  // Compiled/auxiliary
   '.out': { language: 'text' },
+  '.fls': { language: 'text' },
   '.synctex.gz': { language: 'text' },
-  '.toc': { language: 'latex' }
+  '.iges': { language: 'text' }
 };
 const IMAGE_EXTENSIONS = new Set([
   '.png',

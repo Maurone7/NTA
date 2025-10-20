@@ -5,7 +5,7 @@
   "main": "src/main.js",
   "homepage": "https://github.com/Maurone7/NTA",
   "scripts": {
-    "start": "electron .",
+  "start": "electron .",
     "dev": "CI=true electronmon .",
     "test": "CI=true mocha tests/unit tests/dom tests/smoke --reporter spec",
     "test:smoke": "CI=true node scripts/smoke-test.js",
@@ -15,9 +15,11 @@
     "ci": "CI=true npm test && CI=true npm run build:mac",
     "run-ci": "./scripts/non-interactive.sh npm run ci",
     "install-ci": "./scripts/non-interactive.sh npm ci",
-    "build": "CI=true electron-builder",
+  "build": "CI=true electron-builder",
+  "prebuild": "node scripts/generate-ico.js",
     "build:mac": "electron-builder --mac --publish=never",
-    "build:win": "CI=true electron-builder --win",
+  "build:win": "CI=true electron-builder --win",
+  "build:win:no-publish": "node scripts/generate-ico.js && electron-builder --win --publish=never",
     "build:win32": "CI=true electron-builder --win --ia32",
     "build:win64": "CI=true electron-builder --win --x64",
     "build:linux": "CI=true electron-builder --linux",
@@ -44,6 +46,7 @@
     "@playwright/test": "^1.43.0",
     "electron": "^30.0.0",
     "electron-builder": "^26.0.12",
+    
     "electronmon": "^2.0.2",
     "eslint": "^8.57.0",
     "jsdom": "^27.0.1",
@@ -126,7 +129,7 @@
         }
       ],
       "artifactName": "${productName}-${version}-${arch}.${ext}",
-      "icon": "assets/NTA logo.png"
+  "icon": "assets/NTA-logo.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -136,9 +139,9 @@
       "shortcutName": "NoteTaking App",
       "uninstallDisplayName": "NoteTaking App",
       "license": "LICENSE.txt",
-      "installerIcon": "assets/NTA logo.png",
-      "uninstallerIcon": "assets/NTA logo.png",
-      "installerHeaderIcon": "assets/NTA logo.png",
+  "installerIcon": "assets/NTA-logo.ico",
+  "uninstallerIcon": "assets/NTA-logo.ico",
+  "installerHeaderIcon": "assets/NTA-logo.ico",
       "deleteAppDataOnUninstall": false,
       "perMachine": false,
       "allowElevation": true

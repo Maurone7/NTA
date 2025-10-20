@@ -480,6 +480,11 @@ const elements = {
   toggleSidebarButton: document.getElementById('toggle-sidebar-button') || document.createElement('button'),
   togglePreviewButton: document.getElementById('toggle-preview-button') || document.createElement('button'),
   editorSearchInput: document.getElementById('editor-search-input') || document.createElement('input'),
+  editorReplaceInput: document.getElementById('editor-replace-input') || document.createElement('input'),
+  editorSearchCase: document.getElementById('editor-search-case') || document.createElement('button'),
+  editorSearchReplaceToggle: document.getElementById('editor-search-replace-toggle') || document.createElement('button'),
+  editorReplaceOne: document.getElementById('editor-replace-one') || document.createElement('button'),
+  editorReplaceAll: document.getElementById('editor-replace-all') || document.createElement('button'),
   fileName: document.getElementById('file-name') || document.createElement('div'),
   filePath: document.getElementById('file-path') || document.createElement('div'),
   // New advanced settings elements
@@ -687,6 +692,26 @@ function wrapSelection(before, after) {
   const end = edt.selectionEnd;
   const selectedText = edt.getValue().substring(start, end);
 
+  // Check if text is already wrapped and toggle it off if so
+  const isWrapped = selectedText.startsWith(before) && selectedText.endsWith(after);
+  if (isWrapped && before === after) {
+    // For markers like * or **, check if they're actually wrapping the text
+    const innerText = selectedText.substring(before.length, selectedText.length - after.length);
+    const replacement = innerText;
+    try {
+      edt.el.setRangeText(replacement);
+    } catch (e) {
+      const v = edt.getValue();
+      edt.setValue(v.slice(0, start) + replacement + v.slice(end));
+    }
+    // Position cursor at end of unwrapped text
+    const newCursorPos = start + innerText.length;
+    try { edt.setSelectionRange(newCursorPos, newCursorPos); } catch (e) {}
+    try { edt.focus({ preventScroll: false }); } catch (e) { edt.focus(); }
+    return;
+  }
+
+  // Otherwise wrap the text
   const replacement = before + selectedText + after;
   // apply replacement directly on underlying textarea
   try {
@@ -1106,11 +1131,11 @@ const state = {
     end: 0,
     query: '',
     embed: false,
-    position: {
-      top: 24,
-      left: 24
-    },
-    suppress: false
+    position: { top: 24, left: 24 },
+    suppress: false,
+    expandedFolders: new Set(), // Track which folders are expanded
+    navigationHistory: [],       // Track navigation path for breadcrumbs
+    sideSelectedIndex: null       // When a folder is expanded, which file is selected in side column
   },
   tagSuggest: {
     open: false,
@@ -1144,9 +1169,14 @@ const state = {
   search: {
     open: false,
     query: '',
+    replaceQuery: '',
+    replaceText: '',
     matches: [],
     activeIndex: -1,
-    lastCaret: 0
+    lastCaret: 0,
+    caseSensitive: false,
+    replaceMode: false,
+    replaceVisible: false
   },
   contextMenu: {
     open: false,
@@ -1350,14 +1380,22 @@ function renderTabsForPane(paneId, containerId) {
     console.debug('[tabs] candidates for pane', String(paneId), 'count:', candidateTabs.length, 'ids:', JSON.stringify(candidateTabs.map(t => ({ id: t.id, noteId: t.noteId, paneId: t.paneId }))) );
   } catch (e) {}
 
-  // Only render tabs that belong to this pane (paneId may be null for
-  // legacy/unassigned tabs — treat them as belonging to the left pane only
-  // to avoid showing the same tab in multiple panes).
+    // Only render tabs that belong to this pane. Tabs with null `paneId` are
+    // legacy/unassigned tabs; show them in the currently active editor pane
+    // if one exists, otherwise fall back to the left pane. This avoids
+    // duplication while making unassigned tabs visible when the right pane
+    // is active.
   let renderedCount = 0;
   state.tabs.forEach((tab) => {
     if (tab.paneId && tab.paneId !== paneId) return;
-    // Only show null paneId tabs in the left pane to avoid duplication
-    if (!tab.paneId && paneId !== 'left') return;
+    // For legacy/unassigned tabs (tab.paneId == null), prefer showing them
+    // in the currently active pane if that pane matches; otherwise show them
+    // in the left pane only. This avoids duplicates but makes them visible
+    // when the user is actively using the right pane.
+    if (!tab.paneId) {
+      const activePane = state.activeEditorPane || 'left';
+      if (paneId !== activePane && paneId !== 'left') return;
+    }
     const btn = document.createElement('button');
     btn.className = 'tab';
     btn.setAttribute('role', 'tab');
@@ -1761,6 +1799,7 @@ class Pane {
     try { inst.addEventListener('focus', () => { setActiveEditorPane(this.id); updateWikiSuggestions(inst.el); updateHashtagSuggestions(inst.el); }); } catch (e) {}
     try { inst.addEventListener('blur', handleEditorBlur); } catch (e) {}
     try { inst.addEventListener('select', handleEditorSelect); } catch (e) {}
+    try { inst.addEventListener('scroll', syncEditorSearchHighlightScroll); } catch (e) {}
   }
 
   _bindPaneEvents() {
@@ -3197,22 +3236,20 @@ const clearPaneViewer = (paneId) => {
   try {
     const root = getPaneRootElement(paneId);
     if (!root) return;
-    const existingPdf = root.querySelector('.pdf-pane-viewer');
-    if (existingPdf) existingPdf.remove();
-    const existingNb = root.querySelector('.notebook-viewer');
-    if (existingNb) existingNb.remove();
-  const existingVideo = root.querySelector('.video-pane-viewer');
-  if (existingVideo) existingVideo.remove();
-  const existingHtml = root.querySelector('.html-pane-viewer');
-  if (existingHtml) existingHtml.remove();
-    // Remove any image container previously added and restore pane sizing
-    const existingImg = root.querySelector('.pane-image-container');
-    if (existingImg) existingImg.remove();
-    // (No pane minWidth restoration — do not lock pane size when showing images)
+
+    // Remove all known pane-local viewer/editor elements (defensive: remove multiples if present)
+    ['.pdf-pane-viewer', '.notebook-viewer', '.notebook-cell-editor', '.notebook-editor', '.video-pane-viewer', '.html-pane-viewer', '.pane-image-container']
+      .forEach((sel) => {
+        try {
+          const nodes = Array.from(root.querySelectorAll(sel));
+          nodes.forEach((n) => { try { n.remove(); } catch (e) {} });
+        } catch (e) { /* ignore per-selector */ }
+      });
+
+    // Restore textarea visibility/pointer events
     const ta = root.querySelector('textarea');
     if (ta) {
       try {
-        // restore visibility/pointer events and original hidden state
         ta.style.visibility = '';
         ta.style.pointerEvents = '';
         ta.removeAttribute('aria-hidden');
@@ -3232,37 +3269,23 @@ const renderNotebookInPane = (note, paneId) => {
   const root = getPaneRootElement(paneId);
   if (!root) return false;
 
-  // If the pane has a textarea/editor, prefer showing the raw notebook JSON
-  // in the editor instead of creating a separate notebook viewer. This
-  // ensures the user sees the ipynb source in the pane.
-  try {
-    const ta = root.querySelector('textarea');
-    if (ta) {
-      ta.hidden = false;
-      ta.disabled = false;
-      if (typeof note.content === 'string' && note.content.trim()) {
-        ta.value = note.content;
-      } else if (note.notebook) {
-        try { ta.value = JSON.stringify(note.notebook, null, 2); } catch (e) { ta.value = ''; }
-      } else {
-        ta.value = '';
-      }
-      return true;
-    }
-  } catch (e) { /* ignore */ }
-
-  // Clear existing pane viewer
+  // Clear any existing viewers first
   clearPaneViewer(paneId);
 
   // Create notebook viewer
   const viewer = document.createElement('div');
   viewer.className = 'notebook-viewer';
 
-  // Add edit toggle button
+  // Add edit buttons
   const editBtn = document.createElement('button');
   editBtn.className = 'edit-raw-button';
   editBtn.textContent = 'Edit raw';
   viewer.appendChild(editBtn);
+
+  const editCellsBtn = document.createElement('button');
+  editCellsBtn.className = 'edit-cells-button';
+  editCellsBtn.textContent = 'Edit cells';
+  viewer.appendChild(editCellsBtn);
 
   // Add save and cancel buttons (initially hidden)
   const saveBtn = document.createElement('button');
@@ -3277,59 +3300,131 @@ const renderNotebookInPane = (note, paneId) => {
   cancelBtn.style.display = 'none';
   viewer.appendChild(cancelBtn);
 
-  // Add basic notebook content
+  // Add basic notebook content (summary)
   const content = document.createElement('div');
   content.className = 'nb-content';
-  content.textContent = 'Notebook content here'; // Placeholder
+  if (note.notebook && Array.isArray(note.notebook.cells) && note.notebook.cells.length > 0) {
+    try {
+      const lines = note.notebook.cells.map((cell) => {
+        const t = (cell && (cell.cell_type || cell.type)) || 'code';
+        const src = Array.isArray(cell?.source) ? cell.source.join('') : (cell?.source || '');
+        const head = t === 'markdown' ? '# ' : (t === 'raw' ? '>' : '');
+        return (head + src).trim();
+      }).filter(Boolean);
+      content.textContent = lines.join('\n---\n');
+    } catch (e) {
+      try { content.textContent = JSON.stringify(note.notebook, null, 2); } catch (ee) { content.textContent = 'Notebook'; }
+    }
+  } else {
+    content.textContent = 'Empty notebook';
+  }
   viewer.appendChild(content);
 
   // Add event listeners
   editBtn.addEventListener('click', () => {
-    // Hide viewer, show editor
+    // Hide viewer, show raw JSON editor
     viewer.style.display = 'none';
-    const editor = createNotebookEditor(note, paneId);
+    // Remove any structured editor if present
+    const existingStructured = root.querySelector('.notebook-cell-editor');
+    if (existingStructured) existingStructured.remove();
+
+    const editor = document.createElement('div');
+    editor.className = 'notebook-editor';
+    const ta = document.createElement('textarea');
+    try { ta.value = JSON.stringify(note.notebook, null, 2); } catch (e) { ta.value = ''; }
+    editor.appendChild(ta);
     root.appendChild(editor);
+
     editBtn.style.display = 'none';
+    editCellsBtn.style.display = 'none';
+    saveBtn.style.display = 'inline-block';
+    cancelBtn.style.display = 'inline-block';
+  });
+
+  editCellsBtn.addEventListener('click', () => {
+    // Hide viewer, show cell-based editor
+    viewer.style.display = 'none';
+    // Remove any raw editor if present
+    const existingRaw = root.querySelector('.notebook-editor');
+    if (existingRaw) existingRaw.remove();
+
+    const structured = createNotebookCellsEditor(note);
+    root.appendChild(structured);
+
+    editBtn.style.display = 'none';
+    editCellsBtn.style.display = 'none';
     saveBtn.style.display = 'inline-block';
     cancelBtn.style.display = 'inline-block';
   });
 
   saveBtn.addEventListener('click', () => {
-    // Save changes and restore viewer
-    const editor = root.querySelector('.notebook-editor');
-    if (editor) {
-      const ta = editor.querySelector('textarea');
+    // Save changes from either raw or structured editor, then restore viewer
+    const raw = root.querySelector('.notebook-editor');
+    const structured = root.querySelector('.notebook-cell-editor');
+
+    if (raw) {
+      const ta = raw.querySelector('textarea');
       try {
         const updatedNotebook = JSON.parse(ta.value);
-        // Update the note in state
-        const currentNote = state.notes.get(note.id);
-        if (currentNote) {
-          currentNote.notebook = updatedNotebook;
-          state.notes.set(note.id, currentNote);
-        }
-        editor.remove();
-        // Re-render with updated note
+        const currentNote = state.notes.get(note.id) || note;
+        currentNote.notebook = updatedNotebook;
+        currentNote.content = JSON.stringify(updatedNotebook, null, 2);
+        state.notes.set(currentNote.id, currentNote);
+        raw.remove();
         renderNotebookInPane(currentNote, paneId);
       } catch (e) {
-        // Invalid JSON, don't save
-        return;
+        return; // invalid JSON
+      }
+      return;
+    }
+
+    if (structured) {
+      try {
+        const updatedNotebook = collectNotebookFromCellsEditor(structured, note);
+        const currentNote = state.notes.get(note.id) || note;
+        currentNote.notebook = updatedNotebook;
+        currentNote.content = JSON.stringify(updatedNotebook, null, 2);
+        state.notes.set(currentNote.id, currentNote);
+        structured.remove();
+        renderNotebookInPane(currentNote, paneId);
+      } catch (e) {
+        return; // invalid structured content
       }
     }
   });
 
   cancelBtn.addEventListener('click', () => {
     // Cancel changes and restore viewer
-    const editor = root.querySelector('.notebook-editor');
-    if (editor) {
-      editor.remove();
-    }
+    const raw = root.querySelector('.notebook-editor');
+    if (raw) raw.remove();
+    const structured = root.querySelector('.notebook-cell-editor');
+    if (structured) structured.remove();
     viewer.style.display = 'block';
     editBtn.style.display = 'inline-block';
+    editCellsBtn.style.display = 'inline-block';
     saveBtn.style.display = 'none';
     cancelBtn.style.display = 'none';
   });
 
   root.appendChild(viewer);
+
+  // Default to cell-based editing experience in the editor pane while keeping
+  // the viewer available for legacy/test flows. Show the structured editor by
+  // default and keep the viewer hidden until toggled via the Edit buttons.
+  try {
+    const structured = createNotebookCellsEditor(note);
+    root.appendChild(structured);
+    // Hide the viewer initially so the editor shows cells by default
+    viewer.style.display = 'none';
+    // Ensure the pane textarea is fully hidden to avoid overlay artifacts
+    try {
+      const ta = root.querySelector('textarea');
+      if (ta) { ta.hidden = true; ta.style.visibility = 'hidden'; ta.setAttribute('aria-hidden','true'); }
+    } catch (e) {}
+    // Wire live-edit handlers so changes reflect immediately in preview/state
+    try { attachNotebookCellsEditorHandlers(structured, note, paneId); } catch (e) { /* ignore */ }
+  } catch (e) { /* best-effort: if editor cannot be created, keep viewer only */ }
+
   return true;
 };
 
@@ -3437,12 +3532,146 @@ const renderHtmlInPane = async (note, paneId) => {
 const createNotebookEditor = (note, paneId) => {
   const editor = document.createElement('div');
   editor.className = 'notebook-editor';
-
   const ta = document.createElement('textarea');
-  ta.value = JSON.stringify(note.notebook, null, 2); // Placeholder: raw JSON
+  ta.value = JSON.stringify(note.notebook, null, 2);
   editor.appendChild(ta);
-
   return editor;
+};
+
+// Build a simple structured cell editor for a notebook
+const createNotebookCellsEditor = (note) => {
+  const ed = document.createElement('div');
+  ed.className = 'notebook-cell-editor';
+
+  const cells = Array.isArray(note?.notebook?.cells) ? note.notebook.cells : [];
+
+  cells.forEach((cell, idx) => {
+    const row = document.createElement('div');
+    const typeInit = (cell && (cell.cell_type || cell.type)) || 'code';
+    row.className = `nb-edit-cell nb-edit-cell--${typeInit}`;
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'nb-edit-header';
+    header.textContent = `Cell ${idx + 1}`;
+
+    // Type selector
+    const typeSel = document.createElement('select');
+    typeSel.className = 'nb-edit-type';
+    typeSel.setAttribute('aria-label', 'Cell type');
+    typeSel.title = 'Cell type';
+    [{v:'markdown',t:'Markdown'},{v:'code',t:'Code'},{v:'raw',t:'Raw'}].forEach(({v,t}) => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = t; if (v === typeInit) o.selected = true; typeSel.appendChild(o);
+    });
+
+    // Source textarea
+    const ta = document.createElement('textarea');
+    ta.className = 'nb-edit-source';
+    const src = Array.isArray(cell?.source) ? cell.source.join('') : (cell?.source || '');
+    ta.value = src;
+    ta.placeholder = typeInit === 'markdown' ? 'Write markdown…' : (typeInit === 'raw' ? 'Write raw text…' : 'Write code…');
+
+    // Auto-resize to fit content and avoid inner scrollbars
+    try {
+      if (window.autoResizeTextarea) {
+        window.autoResizeTextarea(ta);
+      } else {
+        // Fallback simple autosize
+        const autosize = () => { try { ta.style.height = 'auto'; ta.style.overflowY = 'hidden'; ta.style.height = (ta.scrollHeight) + 'px'; } catch (e) {} };
+        autosize();
+        ta.addEventListener('input', autosize);
+      }
+    } catch (e) { /* ignore */ }
+
+    row.appendChild(header);
+    row.appendChild(typeSel);
+    row.appendChild(ta);
+
+    ed.appendChild(row);
+  });
+
+  return ed;
+};
+
+// Attach input/change handlers for the structured editor to update state live
+const attachNotebookCellsEditorHandlers = (editorEl, note, paneId) => {
+  const onChange = () => {
+    try {
+      const updated = collectNotebookFromCellsEditor(editorEl, note);
+      const current = state.notes.get(note.id) || note;
+      current.notebook = updated;
+      current.content = JSON.stringify(updated, null, 2);
+      current.updatedAt = new Date().toISOString();
+      current.dirty = true;
+      state.notes.set(current.id, current);
+      // Update preview only if this pane is active
+      if (state.activeEditorPane === paneId) {
+        try { renderNotebookPreview(current); } catch (e) {}
+      }
+    } catch (e) { /* ignore transient parse errors while typing */ }
+  };
+
+  editorEl.querySelectorAll('.nb-edit-source').forEach((ta) => {
+    try { ta.addEventListener('input', onChange); } catch (e) {}
+    // Ensure autosize continues to work even if editor is re-used
+    try { if (window.autoResizeTextarea) window.autoResizeTextarea(ta); } catch (e) {}
+  });
+  editorEl.querySelectorAll('.nb-edit-type').forEach((sel) => {
+    try {
+      sel.addEventListener('change', (e) => {
+        // Update row styling and placeholders on type change
+        try {
+          const row = e.target.closest('.nb-edit-cell');
+          if (row) {
+            const type = String(e.target.value || 'code');
+            row.classList.remove('nb-edit-cell--markdown','nb-edit-cell--code','nb-edit-cell--raw');
+            row.classList.add(`nb-edit-cell--${type}`);
+            const ta = row.querySelector('.nb-edit-source');
+            if (ta) {
+              ta.placeholder = type === 'markdown' ? 'Write markdown…' : (type === 'raw' ? 'Write raw text…' : 'Write code…');
+              // Switch to monospace for code, proportional for markdown/raw via CSS class
+              try { if (window.autoResizeTextarea) window.autoResizeTextarea(ta); } catch (e) {}
+            }
+          }
+        } catch (err) { /* ignore */ }
+        onChange();
+      });
+    } catch (e) {}
+  });
+};
+
+// Collect a notebook JSON object from the structured editor DOM
+const collectNotebookFromCellsEditor = (editorEl, note) => {
+  const rows = Array.from(editorEl.querySelectorAll('.nb-edit-cell'));
+  const cells = rows.map((row, idx) => {
+    const typeSel = row.querySelector('.nb-edit-type');
+    const ta = row.querySelector('.nb-edit-source');
+    const typ = (typeSel?.value || 'code');
+    const raw = String(ta?.value || '').replace(/\r\n/g, '\n');
+    const lines = raw.length ? raw.split('\n').map((l, i, a) => (i < a.length - 1 ? l + '\n' : l)) : [];
+
+    const original = (Array.isArray(note?.notebook?.cells) && note.notebook.cells[idx]) ? note.notebook.cells[idx] : {};
+
+    const base = { cell_type: typ, metadata: original.metadata || {} };
+    if (typ === 'markdown' || typ === 'raw') {
+      return Object.assign(base, { source: lines });
+    }
+    // code cell
+    return Object.assign(base, {
+      source: lines,
+      execution_count: typeof original.execution_count === 'number' ? original.execution_count : null,
+      outputs: Array.isArray(original.outputs) ? original.outputs : []
+    });
+  });
+
+  const nb = Object.assign({}, note?.notebook || {}, {
+    nbformat: Number(note?.notebook?.nbformat) || 4,
+    nbformat_minor: Number(note?.notebook?.nbformat_minor) || 5,
+    cells
+  });
+
+  return nb;
 };
 
 const renderPdfInPane = async (note, paneId) => {
@@ -4843,6 +5072,8 @@ const openExportDropdown = () => {
       }
 
       const preferred = readStorage(storageKeys.defaultExportFormat) || elements.defaultExportFormatSelect?.value || '';
+      let focusElement = null;
+      
       if (preferred) {
         // Map known values to element ids
         const map = {
@@ -4858,13 +5089,88 @@ const openExportDropdown = () => {
             // Move preferred element to top
             menu.insertBefore(prefEl, menu.firstElementChild);
           }
-
-          // Focus the preferred option for keyboard users
-          try { prefEl?.focus(); } catch (e) { /* ignore focus errors */ }
+          focusElement = prefEl;
         }
+      } else {
+        // If no preferred format, focus the first option
+        const firstOption = menu.querySelector('[role="menuitem"]');
+        focusElement = firstOption;
+      }
+      
+      // Focus the element for keyboard users (use a small timeout to ensure it works)
+      if (focusElement) {
+        try { 
+          setTimeout(() => { focusElement.focus(); }, 10);
+        } catch (e) { /* ignore focus errors */ }
       }
     }
   } catch (e) { /* non-fatal */ }
+  
+  // Attach keyboard handler to document if not already attached
+  if (!window.__nta_export_keydown_handler_attached) {
+    document.addEventListener('keydown', handleExportDropdownKeydown, true);
+    window.__nta_export_keydown_handler_attached = true;
+  }
+};
+
+const handleExportDropdownKeydown = (event) => {
+  // Check if the dropdown is open
+  const dropdown = elements.exportDropdownButton?.closest('.export-dropdown');
+  const isOpen = dropdown?.getAttribute('data-open') === 'true';
+  
+  if (!isOpen) {
+    return;
+  }
+  
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    closeExportDropdown();
+    return;
+  }
+  
+  const menu = document.getElementById('export-dropdown-menu');
+  if (!menu) return;
+  
+  const options = Array.from(menu.querySelectorAll('[role="menuitem"]'));
+  if (options.length === 0) return;
+  
+  // Arrow keys only work if a menu item has focus or if focus is on the menu itself
+  const isMenuFocused = options.some(opt => opt === document.activeElement);
+  if (!isMenuFocused && event.key.startsWith('Arrow') && document.activeElement !== menu) {
+    return;
+  }
+  
+  let currentIndex = options.indexOf(document.activeElement);
+  let nextIndex = currentIndex;
+  
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    event.stopPropagation();
+    nextIndex = currentIndex === -1 ? 0 : Math.min(currentIndex + 1, options.length - 1);
+    options[nextIndex].focus();
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    event.stopPropagation();
+    nextIndex = currentIndex === -1 ? options.length - 1 : Math.max(currentIndex - 1, 0);
+    options[nextIndex].focus();
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    event.stopPropagation();
+    // Click the focused option to trigger export
+    const focused = document.activeElement;
+    if (options.includes(focused)) {
+      focused.click();
+    }
+  } else if (event.key === 'Home') {
+    event.preventDefault();
+    event.stopPropagation();
+    options[0].focus();
+  } else if (event.key === 'End') {
+    event.preventDefault();
+    event.stopPropagation();
+    options[options.length - 1].focus();
+  }
 };
 
 const closeExportDropdown = () => {
@@ -5200,26 +5506,87 @@ const handleTreeNodeDragEnd = (event) => {
 
 // Drop handlers for editors
 const handleEditorDragOver = (event) => {
-  // Only handle if there are files being dragged
-  if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'copy';
-    try { state._isDropping = true; } catch (e) {}
-  }
+  // Allow drop when dragging external files OR internal notes. Some environments
+  // (e.g., Finder on macOS) do not populate dataTransfer.files until drop;
+  // rely on dataTransfer.types including 'Files' in those cases.
+  try {
+    // Clear stale highlights across panes before computing current side
+    try {
+      document.querySelectorAll('.editor-drop-new-pane-right, .editor-drop-left-half, .editor-drop-target').forEach(el => {
+        try { el.classList.remove('editor-drop-new-pane-right', 'editor-drop-left-half', 'editor-drop-target'); } catch (e) {}
+      });
+    } catch (e) {}
+
+    const dt = event.dataTransfer;
+    if (dt) {
+      event.preventDefault();
+      dt.dropEffect = 'copy';
+      try { state._isDropping = true; } catch (e) {}
+      try {
+        const paneRoot = event.target?.closest?.('.editor-pane') || event.currentTarget || event.target;
+        if (paneRoot && paneRoot.classList) {
+          // Decide side highlight only; avoid full-pane highlight
+          try {
+            const rect = paneRoot.getBoundingClientRect && paneRoot.getBoundingClientRect();
+            if (rect && typeof event.clientX === 'number') {
+              const onRight = event.clientX >= rect.left + rect.width / 2;
+              if (onRight) {
+                paneRoot.classList.add('editor-drop-new-pane-right');
+                paneRoot.classList.remove('editor-drop-left-half');
+                paneRoot.classList.remove('editor-drop-target');
+              } else {
+                // Left side: full-pane highlight + left-half marker
+                paneRoot.classList.add('editor-drop-left-half');
+                paneRoot.classList.add('editor-drop-target');
+                paneRoot.classList.remove('editor-drop-new-pane-right');
+              }
+            }
+          } catch (e) { /* ignore geometry */ }
+        }
+      } catch (e) {}
+    }
+  } catch (e) { /* ignore */ }
 };
 
 const handleEditorDragEnter = (event) => {
-  // Only handle if there are files being dragged
-  if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
-    try { event.preventDefault(); } catch (e) {}
-    try { state._isDropping = true; } catch (e) {}
-  }
-  // Intentionally do not add a highlight when entering a pane. Clear any
-  // existing highlights to avoid stale visuals — we don't want the dashed
-  // drop target to appear while the pointer is over a pane.
+  // Allow drop when dragging external files OR internal notes (see comment above).
+  try {
+    // Clear stale highlights across panes on enter as well
+    try {
+      document.querySelectorAll('.editor-drop-new-pane-right, .editor-drop-left-half, .editor-drop-target').forEach(el => {
+        try { el.classList.remove('editor-drop-new-pane-right', 'editor-drop-left-half', 'editor-drop-target'); } catch (e) {}
+      });
+    } catch (e) {}
+
+    const dt = event.dataTransfer;
+    if (dt) {
+      try { event.preventDefault(); } catch (e) {}
+      try { state._isDropping = true; } catch (e) {}
+    }
+  } catch (e) { /* ignore */ }
+  // Add a visible highlight on the pane being entered so users get feedback
+  // that dropping will insert/open files here.
   try {
     const paneRoot = event.target?.closest?.('.editor-pane') || event.currentTarget || event.target;
-    if (paneRoot && paneRoot.classList) paneRoot.classList.remove('editor-drop-target');
+    if (paneRoot && paneRoot.classList) {
+      // Initialize side preview state
+      try {
+        const rect = paneRoot.getBoundingClientRect && paneRoot.getBoundingClientRect();
+        if (rect && typeof event.clientX === 'number') {
+          const onRight = event.clientX >= rect.left + rect.width / 2;
+          if (onRight) {
+            paneRoot.classList.add('editor-drop-new-pane-right');
+            paneRoot.classList.remove('editor-drop-left-half');
+            paneRoot.classList.remove('editor-drop-target');
+          } else {
+            // Left side: full-pane highlight + left-half marker
+            paneRoot.classList.add('editor-drop-left-half');
+            paneRoot.classList.add('editor-drop-target');
+            paneRoot.classList.remove('editor-drop-new-pane-right');
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
   } catch (e) { /* ignore */ }
 };
 
@@ -5229,6 +5596,9 @@ const handleEditorDragLeave = (event) => {
     // Only remove the class if the relatedTarget is outside the paneRoot
     const related = event.relatedTarget || null;
     if (!paneRoot || !paneRoot.contains || (related && !paneRoot.contains(related))) {
+try { document.querySelectorAll('.editor-drop-target').forEach(el => el.classList.remove('editor-drop-target')); } catch (e) {}
+try { document.querySelectorAll('.editor-drop-new-pane-right').forEach(el => el.classList.remove('editor-drop-new-pane-right')); } catch (e) {}
+      try { document.querySelectorAll('.editor-drop-left-half').forEach(el => el.classList.remove('editor-drop-left-half')); } catch (e) {}
       try { document.querySelectorAll('.editor-drop-target').forEach(el => el.classList.remove('editor-drop-target')); } catch (e) {}
     }
     try { state._isDropping = false; } catch (e) {}
@@ -5239,8 +5609,9 @@ const handleEditorDragLeave = (event) => {
 const handleExternalFileDrop = (event, files) => {
   // Determine pane id
   let paneId = null;
+  let paneRoot = null;
   try {
-    const paneRoot = (event.target && event.target.closest) ? event.target.closest('[data-pane-id], .editor-pane--dynamic, .editor-pane--right, .editor-pane') : null;
+    paneRoot = (event.target && event.target.closest) ? event.target.closest('[data-pane-id], .editor-pane--dynamic, .editor-pane--right, .editor-pane') : null;
     if (paneRoot) {
       if (paneRoot.getAttribute) {
         const explicit = paneRoot.getAttribute('data-pane-id');
@@ -5262,6 +5633,28 @@ const handleExternalFileDrop = (event, files) => {
   if (!paneId) {
     paneId = resolvePaneFallback(true);
   }
+
+  // If dropping on the right half of the pane, create a new pane and open there
+  try {
+    if (paneRoot && typeof event.clientX === 'number') {
+      const rect = paneRoot.getBoundingClientRect ? paneRoot.getBoundingClientRect() : null;
+      if (rect && rect.width > 0) {
+        const onRightHalf = event.clientX >= rect.left + rect.width / 2;
+        if (onRightHalf) {
+          const preChosen = event._nta_drop_createdPane || null;
+          if (preChosen && editorInstances[preChosen]) {
+            paneId = preChosen;
+          } else {
+            const created = createEditorPane(null, '');
+            if (created) {
+              paneId = created;
+              try { event._nta_drop_createdPane = created; } catch (e) {}
+            }
+          }
+        }
+      }
+    }
+  } catch (e) { /* ignore split logic errors */ }
 
   // Get the editor instance for this pane
   const editorInstance = editorInstances[paneId];
@@ -5565,7 +5958,9 @@ const handleEditor1Drop = (event) => {
   // remove any visual drop classes on the nearest pane/editor elements (robust)
   try {
     const paneRoot = event.target?.closest?.('.editor-pane') || event.currentTarget || event.target;
-    paneRoot?.classList?.remove('editor-drop-target');
+paneRoot?.classList?.remove('editor-drop-target');
+    paneRoot?.classList?.remove('editor-drop-new-pane-right');
+    paneRoot?.classList?.remove('editor-drop-left-half');
   } catch (e) { /* ignore */ }
 
   // Check for external files first
@@ -5617,6 +6012,21 @@ const handleEditor1Drop = (event) => {
   // Mark as handled for other handlers
   try { event._nta_handled = true; } catch (e) {}
 
+  // If dropping on right half of the pane, create a new pane for this drop
+  try {
+    const root = (event.target && event.target.closest) ? event.target.closest('[data-pane-id], .editor-pane--dynamic, .editor-pane--right, .editor-pane') : null;
+    if (root && typeof event.clientX === 'number') {
+      const rect = root.getBoundingClientRect ? root.getBoundingClientRect() : null;
+      if (rect && rect.width > 0 && event.clientX >= rect.left + rect.width / 2) {
+        const preChosen = event._nta_drop_createdPane || null;
+        if (preChosen && editorInstances[preChosen]) paneId = preChosen; else {
+          const created = createEditorPane(null, '');
+          if (created) { paneId = created; try { event._nta_drop_createdPane = created; } catch (e) {} }
+        }
+      }
+    }
+  } catch (e) { /* ignore */ }
+
   // Debug prints removed
   openNoteInPane(noteId, paneId);
 };
@@ -5667,34 +6077,47 @@ const renderWorkspaceTree = () => {
       name.textContent = node.name || node.path || '';
       label.appendChild(name);
 
+      // Append children container when expanded
       if (hasChildren && !collapsed) {
         const childrenContainer = document.createElement('div');
         childrenContainer.className = 'tree-node__children';
         childrenContainer.setAttribute('role', 'group');
-        node.children.forEach((child) => {
-          childrenContainer.appendChild(createFallbackTreeNode(child, depth + 1));
-        });
+        try {
+          node.children.forEach((child) => {
+            try { childrenContainer.appendChild(createFallbackTreeNode(child, depth + 1)); } catch (e) { /* ignore child render errors */ }
+          });
+        } catch (e) { /* ignore */ }
         el.appendChild(childrenContainer);
       }
     } else {
       el.classList.add('tree-node--file');
       const icon = document.createElement('span');
       icon.className = 'tree-node__icon';
-      if (node.ext === '.md' || node.ext === '.markdown' || node.ext === '.mdx') {
-        icon.textContent = '📝';
-      } else if (node.ext === '.tex') {
-        icon.textContent = '∑';
-      } else if (node.ext === '.pdf') {
-        icon.textContent = '📄';
-      } else {
-        icon.textContent = '•';
-      }
+      try {
+        const ext = String(node.ext || '').toLowerCase();
+        if (ext === '.md' || ext === '.markdown' || ext === '.mdx') icon.textContent = '📝';
+        else if (ext === '.tex') icon.textContent = '∑';
+        else if (ext === '.pdf') icon.textContent = '📄';
+        else if (ext === '.py') icon.textContent = '🐍';
+        else if (ext === '.js' || ext === '.mjs') icon.textContent = '🟨';
+        else if (ext === '.ts') icon.textContent = '🔷';
+        else if (ext === '.css') icon.textContent = '🎨';
+        else if (ext === '.json') icon.textContent = '📋';
+        else if (ext === '.ipynb') icon.textContent = '📓';
+        else if (imageExtensions && imageExtensions.has(ext)) icon.textContent = '🖼️';
+        else if (videoExtensions && videoExtensions.has(ext)) icon.textContent = '🎬';
+        else if (htmlExtensions && htmlExtensions.has(ext)) icon.textContent = '🌐';
+        else icon.textContent = '•';
+      } catch (e) { icon.textContent = '•'; }
       label.appendChild(icon);
 
       const name = document.createElement('span');
       name.className = 'tree-node__name';
       name.textContent = node.name || node.path || '';
       label.appendChild(name);
+
+      // Enable internal drag-and-drop in fallback renderer: make files draggable
+      try { if (node.noteId) { el.dataset.noteId = node.noteId; el.draggable = true; } } catch (e) {}
     }
 
     return el;
@@ -5723,6 +6146,16 @@ const renderWorkspaceTree = () => {
       frag.appendChild(createFallbackTreeNode(child, 0));
     });
     elements.workspaceTree.replaceChildren(frag);
+
+    // Attach drag handlers once for fallback tree so file nodes can be dragged
+    try {
+      if (!elements.workspaceTree._nta_fallback_drag_attached) {
+        elements.workspaceTree.addEventListener('dragstart', handleTreeNodeDragStart);
+        elements.workspaceTree.addEventListener('dragend', handleTreeNodeDragEnd);
+        elements.workspaceTree._nta_fallback_drag_attached = true;
+      }
+    } catch (e) { /* ignore */ }
+
     elements.workspaceTree.hidden = false;
     elements.workspaceEmpty.hidden = true;
   } catch (e) {
@@ -5736,6 +6169,29 @@ try { editorUIModule?.init?.(); } catch (e) {}
 try { rightSidebarModule?.init?.(); } catch (e) {}
 // Ensure left-sidebar is initialized so it can attach its DOM event handlers
 try { leftSidebarModule?.init?.(); } catch (e) {}
+
+// Capture-phase fallback: ensure chevron clicks always toggle folder state
+try {
+  const root = elements.workspaceTree;
+  if (root && !root._nta_chevron_capture) {
+    root.addEventListener('click', (ev) => {
+      try {
+        const chev = ev.target && ev.target.closest ? ev.target.closest('.tree-node__chevron') : null;
+        if (!chev) return;
+        const nodeEl = chev.closest('.tree-node--directory') || chev.closest('.tree-node');
+        const path = nodeEl && nodeEl.dataset ? nodeEl.dataset.path : null;
+        if (!path) return;
+        // Toggle and re-render
+        if (state.collapsedFolders.has(path)) state.collapsedFolders.delete(path); else state.collapsedFolders.add(path);
+        ev.preventDefault && ev.preventDefault();
+        ev.stopImmediatePropagation && ev.stopImmediatePropagation();
+        if (treeModule && typeof treeModule.renderWorkspaceTree === 'function') treeModule.renderWorkspaceTree(); else renderWorkspaceTree();
+      } catch (e) { /* ignore */ }
+    }, true);
+    root._nta_chevron_capture = true;
+  }
+} catch (e) { /* ignore */ }
+
 
 const processPreviewImages = async () => {
   if (!elements.preview) {
@@ -5755,6 +6211,8 @@ const processPreviewImages = async () => {
       }
 
       if (isLikelyExternalUrl(rawSrc) || rawSrc.startsWith('data:')) {
+        // For external or data URLs, set src directly if not already set
+        try { if (!img.getAttribute('src')) img.src = rawSrc; } catch (e) { /* ignore */ }
         return;
       }
 
@@ -5811,6 +6269,11 @@ const processPreviewVideos = async () => {
       }
 
       if ((isLikelyExternalUrl(rawSrc) && !rawSrc.startsWith('/')) || rawSrc.startsWith('data:')) {
+        // For external (http/https/file) or data URLs, set src directly if not already set
+        try {
+          if (!video.getAttribute('src')) video.src = rawSrc;
+          if (typeof video.load === 'function') video.load();
+        } catch (e) { /* ignore */ }
         return;
       }
 
@@ -6436,7 +6899,7 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
                     state.notes.set(paneNote.id, paneNote);
                     if (inst.el) inst.el.value = txt;
                     // Trigger preview render
-                    try { renderMarkdownPreview(paneNote); } catch (e) {}
+                    try { if (paneNote.type === 'latex') renderLatexPreview(paneNote.content ?? '', paneNote.id); else renderMarkdownPreview(paneNote); } catch (e) {}
                   }
                 } catch (e) { /* ignore fetch errors */ }
               }
@@ -6444,120 +6907,69 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
           })();
         } else {
           // Trigger preview render for existing content
-          try { renderMarkdownPreview(paneNote); } catch (e) {}
+          try { if (paneNote.type === 'latex') renderLatexPreview(paneNote.content ?? '', paneNote.id); else renderMarkdownPreview(paneNote); } catch (e) {}
         }
       } else if (paneNote.type === 'notebook') {
-        // For notebooks, create a visual notebook viewer for testing
+        // For notebooks, render the notebook viewer with Edit mode
         try { clearPaneViewer(pane); } catch (e) {}
-        if (inst) inst.el.hidden = true; // Hide the textarea if it exists
-
-        // Create notebook viewer
-        const paneRoot = document.querySelector(`.editor-pane[data-pane-id="${pane}"]`);
-        if (paneRoot) {
-          // Create or update notebook viewer
-          let viewer = paneRoot.querySelector('.notebook-viewer');
-          if (!viewer) {
-            viewer = document.createElement('div');
-            viewer.className = 'notebook-viewer';
-            paneRoot.appendChild(viewer);
-          }
-
-          // Clear existing content
-          viewer.innerHTML = '';
-
-          const editBtn = document.createElement('button');
-          editBtn.className = 'edit-raw-button';
-          editBtn.textContent = 'Edit raw';
-          viewer.appendChild(editBtn);
-
-          // Add save/cancel buttons (initially hidden)
-          const saveBtn = document.createElement('button');
-          saveBtn.className = 'nb-save-btn';
-          saveBtn.textContent = 'Save';
-          saveBtn.style.display = 'none';
-          viewer.appendChild(saveBtn);
-
-          const cancelBtn = document.createElement('button');
-          cancelBtn.className = 'nb-cancel-btn';
-          cancelBtn.textContent = 'Cancel';
-          cancelBtn.style.display = 'none';
-          viewer.appendChild(cancelBtn);
-
-          // Add notebook content display
-          const content = document.createElement('div');
-          content.className = 'notebook-content';
-          if (paneNote.notebook && paneNote.notebook.cells) {
-            content.textContent = paneNote.notebook.cells.map(cell => cell.source || '').join('\n');
-          }
-          viewer.appendChild(content);
-
-          // Add click handlers for testing
-          editBtn.addEventListener('click', () => {
-            // Hide edit button, show save/cancel
-            editBtn.style.display = 'none';
-            saveBtn.style.display = 'inline-block';
-            cancelBtn.style.display = 'inline-block';
-
-            // Replace content with textarea
-            const editor = document.createElement('div');
-            editor.className = 'notebook-editor';
-
-            const ta = document.createElement('textarea');
-            ta.value = JSON.stringify(paneNote.notebook, null, 2);
-            editor.appendChild(ta);
-
-            viewer.replaceChild(editor, content);
-          });
-
-          saveBtn.addEventListener('click', () => {
-            // Hide save/cancel, show edit
-            saveBtn.style.display = 'none';
-            cancelBtn.style.display = 'none';
-            editBtn.style.display = 'inline-block';
-
-            // Get the edited content and update the note
-            const editor = viewer.querySelector('.notebook-editor');
-            const ta = editor.querySelector('textarea');
-            try {
-              const updatedNotebook = JSON.parse(ta.value);
-              paneNote.notebook = updatedNotebook;
-              state.notes.set(paneNote.id, paneNote);
-            } catch (e) {
-              // Invalid JSON, keep original
-            }
-
-            // Replace editor with content display
-            const newContent = document.createElement('div');
-            newContent.className = 'notebook-content';
-            if (paneNote.notebook && paneNote.notebook.cells) {
-              newContent.textContent = paneNote.notebook.cells.map(cell => cell.source || '').join('\n');
-            }
-            viewer.replaceChild(newContent, editor);
-          });
-
-          cancelBtn.addEventListener('click', () => {
-            // Hide save/cancel, show edit
-            saveBtn.style.display = 'none';
-            cancelBtn.style.display = 'none';
-            editBtn.style.display = 'inline-block';
-
-            // Replace editor with original content display
-            const newContent = document.createElement('div');
-            newContent.className = 'notebook-content';
-            if (paneNote.notebook && paneNote.notebook.cells) {
-              newContent.textContent = paneNote.notebook.cells.map(cell => cell.source || '').join('\n');
-            }
-            const editor = viewer.querySelector('.notebook-editor');
-            if (editor) {
-              viewer.replaceChild(newContent, editor);
-            }
-          });
-        }
+        if (inst) { inst.el.hidden = true; /* Hide the textarea initially */ }
+        try { renderNotebookInPane(paneNote, pane); } catch (e) { /* ignore */ }
 
         // Also populate textarea for compatibility
         if (inst) inst.el.value = paneNote.content ?? (paneNote.notebook ? JSON.stringify(paneNote.notebook, null, 2) : '');
-        // Trigger preview render for notebook
+        // Trigger preview render for notebook (may be empty initially)
         try { renderNotebookPreview(paneNote); } catch (e) {}
+
+        // If the note has no content but has an absolutePath, read it now
+        if ((!paneNote.content || !paneNote.content.length) && paneNote.absolutePath) {
+          (async () => {
+            try {
+              const payload = { src: paneNote.absolutePath, notePath: paneNote.absolutePath, folderPath: paneNote.folderPath ?? state.currentFolder ?? null };
+              const res = await window.api.resolveResource(payload);
+              const url = res?.value ?? null;
+              if (!url) return;
+              let txt = null;
+              if (typeof url === 'string' && url.startsWith('data:')) {
+                // decode data URL (support base64)
+                const comma = url.indexOf(',');
+                const header = url.substring(5, comma);
+                const payload = url.substring(comma + 1);
+                const isBase64 = header.indexOf(';base64') !== -1;
+                if (isBase64) {
+                  try {
+                    const bin = atob(payload);
+                    const len = bin.length;
+                    const bytes = new Uint8Array(len);
+                    for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+                    try { txt = new TextDecoder('utf-8').decode(bytes); } catch (e) { txt = '' + bin; }
+                  } catch (e) { txt = null; }
+                } else {
+                  try { txt = decodeURIComponent(payload); } catch (e) { txt = payload; }
+                }
+              } else {
+                // For file:// URLs, fetch the content
+                try {
+                  const response = await fetch(url);
+                  if (response.ok) txt = await response.text();
+                } catch (e) { txt = null; }
+              }
+
+              if (txt !== null) {
+                // Try to parse JSON; if parsing fails, keep raw text
+                let parsed = null;
+                try { parsed = JSON.parse(txt); } catch (e) { parsed = null; }
+                paneNote.content = parsed ? JSON.stringify(parsed, null, 2) : txt;
+                if (parsed) paneNote.notebook = parsed;
+                try { state.notes.set(paneNote.id, paneNote); } catch (e) { /* ignore */ }
+                // Update textarea if exists
+                try { if (inst && inst.el) inst.el.value = paneNote.content; } catch (e) {}
+                // Re-render viewer and preview now that we have content
+                try { renderNotebookInPane(paneNote, pane); } catch (e) {}
+                try { renderNotebookPreview(paneNote); } catch (e) {}
+              }
+            } catch (e) { /* ignore resolve/fetch errors */ }
+          })();
+        }
       } else if (paneNote.type === 'html') {
         // For HTML files, populate the editor with the raw HTML source so
         // the user can edit it in the pane. The central preview will render
@@ -6719,6 +7131,19 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
 };
 
 
+// Preprocess markdown to hide &checklist and &check commands from preview
+const preprocessChecklistCommands = (markdown) => {
+  if (!markdown) return markdown;
+  
+  // Remove &checklist command lines (keep the checklist items)
+  let processed = markdown.replace(/^\s*&checklist\s*=?\s*\d*\s*$/gm, '');
+  
+  // Remove &check commands from lines (keep the checkbox item)
+  processed = processed.replace(/\s*&check\s*$/gm, '');
+  
+  return processed;
+};
+
 const renderMarkdownPreview = (markdown, noteId = state.activeNoteId) => {
   // Support calling with a single note object: renderMarkdownPreview(noteObj)
   if (markdown && typeof markdown === 'object' && !(markdown instanceof String)) {
@@ -6729,6 +7154,9 @@ const renderMarkdownPreview = (markdown, noteId = state.activeNoteId) => {
   if (!elements.preview) {
     return;
   }
+  
+  // Preprocess to hide checklist commands
+  const processedMarkdown = preprocessChecklistCommands(markdown);
 
   const renderBasicPreview = (content) => {
     try {
@@ -6979,7 +7407,21 @@ const debouncedRenderPreview = debounce((markdown, noteId) => {
       return;
     }
   } catch (e) { /* ignore and proceed */ }
-  renderMarkdownPreview(markdown, noteId);
+
+  // Choose renderer based on the note type so LaTeX notes continue to
+  // update the preview while the user is typing. When editing a LaTeX
+  // file we must call renderLatexPreview rather than the Markdown path.
+  try {
+    const note = noteId ? (state.notes ? state.notes.get(noteId) : null) : (typeof getActiveNote === 'function' ? getActiveNote() : null);
+    if (note && note.type === 'latex') {
+      try { renderLatexPreview(markdown, noteId); } catch (e) { /* best-effort */ }
+    } else {
+      try { renderMarkdownPreview(markdown, noteId); } catch (e) { /* best-effort */ }
+    }
+  } catch (e) {
+    // Fallback to Markdown renderer on any unexpected error
+    try { renderMarkdownPreview(markdown, noteId); } catch (err) { /* swallow */ }
+  }
 }, 300);
 
 const getPreviewHtmlForExport = async () => {
@@ -7004,28 +7446,33 @@ const getPreviewHtmlForExport = async () => {
     // Run citation post-processing on the sanitized container so exported HTML/PDF
     // includes rendered citations and a References section when available.
     try {
-      // renderCitationsInPreview works against elements.preview; temporarily use
-      // a small shim: create a preview-like element, populate it, call the
-      // function, then extract its innerHTML.
+      // renderCitationsInPreview and resource processors operate against elements.preview;
+      // temporarily swap elements.preview with a shim: populate it, resolve images/videos/iframes,
+      // run citation processing, then extract innerHTML.
       if (typeof renderCitationsInPreview === 'function') {
-  debugLog('Export: Starting citation processing');
+        debugLog('Export: Starting resource & citation processing');
         const shim = document.createElement('div');
         shim.innerHTML = container.innerHTML;
         const prev = elements.preview;
         try {
           elements.preview = shim;
-          // Pass the original markdown if available so bibliography detection works
-          const md = elements.exportPreviewText?.value || '';
-          // Await the processing so export HTML contains rendered citations and bibliography
-          const maybe = renderCitationsInPreview(md, state.activeNoteId);
+          // First resolve images/videos/iframes so exported HTML contains inlined or resolved srcs
+          try { await processPreviewImages(); } catch (e) { /* ignore image resolution errors */ }
+          try { await processPreviewVideos(); } catch (e) { /* ignore video resolution errors */ }
+          try { await processPreviewHtmlIframes(); } catch (e) { /* ignore iframe resolution errors */ }
+
+          // Pass the original content (markdown or LaTeX) so bibliography detection works
+          const note = getActiveNote();
+          const content = note?.content || '';
+          const maybe = renderCitationsInPreview(content, state.activeNoteId);
           if (maybe && typeof maybe.then === 'function') {
             debugLog('Export: Awaiting citation rendering');
             try { await maybe; } catch (e) { debugLog('Export: Citation rendering error', e); }
           }
-          debugLog('Export: Citation processing complete');
-  } catch (e) { debugLog('Export: Citation processing failed', e); }
+          debugLog('Export: Resource & citation processing complete');
+        } catch (e) { debugLog('Export: Processing failed', e); }
         // restore and copy processed HTML back into container
-  try { container.innerHTML = shim.innerHTML; } catch (e) { debugLog('Export: Failed to copy processed HTML', e); }
+        try { container.innerHTML = shim.innerHTML; } catch (e) { debugLog('Export: Failed to copy processed HTML', e); }
         elements.preview = prev;
       }
     } catch (e) { /* ignore */ }
@@ -7099,12 +7546,32 @@ const exportActivePreviewAsPdf = async () => {
   }
 
   setStatus('Preparing PDF export…', false);
-
   try {
+    // If we have a compiled PDF recorded for this note (LaTeX path), prefer
+    // asking the main process to copy/save that exact PDF instead of reprinting HTML.
+    const compiledPdf = (state.compiledPdfByNote && note.id) ? state.compiledPdfByNote.get(note.id) : null;
+    if (compiledPdf && typeof window.api?.exportCompiledPdf === 'function') {
+      try {
+      const res = await window.api.exportCompiledPdf({ pdfPath: compiledPdf, title, notePath: note.absolutePath });
+        if (res?.canceled) {
+          setStatus('Export cancelled.', true);
+          return false;
+        }
+        const exportedPath = typeof res?.filePath === 'string' ? res.filePath : '';
+        const exportedName = extractFileNameFromPath(exportedPath);
+        if (exportedName) setStatus(`Exported preview to ${exportedName}.`, true); else setStatus('Preview exported.', true);
+        return true;
+      } catch (err) {
+        // Fall back to HTML export if compiled export fails
+        debugLog('Compiled PDF export failed, falling back to HTML export', err);
+      }
+    }
+
     const result = await window.api.exportPreviewPdf({
       html,
       theme: resolveCurrentThemePreference(),
-      title
+      title,
+      notePath: note.absolutePath
     });
 
     if (result?.canceled) {
@@ -7169,12 +7636,12 @@ const exportActivePreviewAsHtml = async () => {
 
   setStatus('Preparing HTML export…', false);
 
-  try {
+    try {
     const result = await window.api.exportPreviewHtml({
       html,
       theme: resolveCurrentThemePreference(),
       title,
-      folderPath: state.currentFolder
+      notePath: note.absolutePath
     });
 
     if (result?.canceled) {
@@ -7232,11 +7699,11 @@ const exportActivePreviewAsImage = async (format) => {
   try {
     let result;
     if (format === 'png') {
-      result = await window.api.exportPreviewPng({ html, title, folderPath: state.currentFolder });
+      result = await window.api.exportPreviewPng({ html, title, notePath: note.absolutePath });
     } else if (format === 'jpg' || format === 'jpeg') {
-      result = await window.api.exportPreviewJpg({ html, title, folderPath: state.currentFolder });
+      result = await window.api.exportPreviewJpg({ html, title, notePath: note.absolutePath });
     } else if (format === 'tiff') {
-      result = await window.api.exportPreviewTiff({ html, title, folderPath: state.currentFolder });
+      result = await window.api.exportPreviewTiff({ html, title, notePath: note.absolutePath });
     } else {
       throw new Error(`Unsupported image format: ${format}`);
     }
@@ -7282,7 +7749,7 @@ const renderCodePreview = (code, language) => {
   elements.codeViewer.scrollTop = 0;
 };
 
-const renderLatexPreview = (latexContent, noteId) => {
+const renderLatexPreview = async (latexContent, noteId) => {
   // Debug prints removed
   if (!elements.preview) {
   // Debug prints removed
@@ -7290,14 +7757,49 @@ const renderLatexPreview = (latexContent, noteId) => {
   }
 
   try {
-    // Basic LaTeX processing: split content and render math expressions
-    const processedHtml = processLatexContent(latexContent);
-  // Debug prints removed
-    elements.preview.innerHTML = processedHtml;
+    // If note has an absolutePath and main process exposes compileLatex, try full compile
+  // Resolve note using state map or active note helper
+  const note = (noteId && state.notes && state.notes.get) ? state.notes.get(noteId) : null;
+  const active = typeof getActiveNote === 'function' ? getActiveNote() : null;
+  const resolvedNote = note || active || null;
+  const abs = resolvedNote ? (resolvedNote.absolutePath || resolvedNote.storedPath || '') : '';
+    let compiledPdfShown = false;
+    if (abs && typeof window.api?.compileLatex === 'function') {
+      // Attempt to compile; show intermediate message
+      elements.preview.innerHTML = `<div class="latex-compiling">Compiling LaTeX…</div>`;
+      try {
+        const result = awaitPromiseLike(window.api.compileLatex({ absolutePath: abs }));
+        if (result && result.success && result.pdfPath) {
+          // Try to load the compiled PDF via resolveResource so it becomes a data: URI
+          try {
+            const res = awaitPromiseLike(window.api.resolveResource({ src: result.pdfPath, notePath: abs, folderPath: state.currentFolder }));
+            if (res && res.value) {
+              // Remember compiled PDF path so exports can prefer the exact compiled output
+              try {
+                state.compiledPdfByNote = state.compiledPdfByNote || new Map();
+                if (noteId) state.compiledPdfByNote.set(noteId, result.pdfPath);
+              } catch (e) { /* ignore */ }
+
+              // Use existing PDF viewer to display the compiled PDF
+              const pdfNote = { id: `compiled-pdf-${Date.now()}`, type: 'pdf', absolutePath: result.pdfPath };
+              try { await renderPdfPreview(pdfNote); compiledPdfShown = true; } catch (e) { compiledPdfShown = false; }
+            }
+          } catch (e) { /* fall through to HTML fallback */ }
+        }
+      } catch (e) { /* ignore and fallback below */ }
+    }
+
+    if (!compiledPdfShown) {
+  // Basic LaTeX processing: split content and render math expressions
+  const processedHtml = processLatexContent(latexContent, noteId);
+      elements.preview.innerHTML = processedHtml;
+      // Render citations in the preview if bibliography is available
+      renderCitationsInPreview(latexContent, noteId);
+    }
   // Debug prints removed
     
     // Process any math expressions with KaTeX
-    if (typeof renderMathInElement === 'function') {
+  if (typeof renderMathInElement === 'function') {
   // Debug prints removed
       renderMathInElement(elements.preview, {
         delimiters: [
@@ -7332,6 +7834,13 @@ const renderLatexPreview = (latexContent, noteId) => {
     elements.preview.innerHTML = `<pre>${latexContent}</pre>`;
   }
 };
+
+// Helper to allow awaiting values that may be plain values or Promises
+function awaitPromiseLike(val) {
+  if (!val) return Promise.resolve(val);
+  if (typeof val.then === 'function') return val;
+  return Promise.resolve(val);
+}
 
 // Toggle LaTeX preview visibility for the currently active markdown/latex note
 const toggleLatexPreviewForActiveNote = () => {
@@ -7403,7 +7912,7 @@ const insertLatexBlockAtCursor = (opts = {}) => {
   }
 };
 
-const processLatexContent = (latexContent) => {
+const processLatexContent = (latexContent, noteId = null) => {
   if (!latexContent) return '';
 
   // If the content contains a document environment, extract only the body
@@ -7515,8 +8024,9 @@ const processLatexContent = (latexContent) => {
     processedLine = processedLine.replace(/\\label\{[^}]+\}/g, '');
     
     // Handle \includegraphics command
-    processedLine = processedLine.replace(/\\includegraphics(\[.*?\])?\{([^}]+)\}/g, (match, options, filename) => {
-      return `<img data-raw-src="${filename}" alt="LaTeX image">`;
+    processedLine = processedLine.replace(/\includegraphics(\[.*?\])?\{([^}]+)\}/g, (match, options, filename) => {
+      const safeNote = noteId ? String(noteId) : '';
+      return `<img data-raw-src="${filename}" data-note-id="${safeNote}" alt="LaTeX image">`;
     });
     
     // Handle line breaks
@@ -7548,38 +8058,75 @@ const renderNotebookPreview = (note) => {
 
   const cells = Array.isArray(notebook?.cells) ? notebook.cells : [];
 
-  cells.forEach((cell) => {
+  cells.forEach((cell, idx) => {
     const section = document.createElement('section');
-    section.className = `nb-cell nb-cell--${cell.type ?? 'unknown'}`;
+    const cellType = (cell && (cell.cell_type || cell.type)) || 'unknown';
+    section.className = `nb-cell nb-cell--${cellType}`;
 
-    if (cell.type === 'markdown') {
-      const html = window.DOMPurify.sanitize(window.marked.parse(cell.source ?? ''));
-  const content = document.createElement('div');
-  content.className = 'nb-cell__markdown';
-  try { content.innerHTML = html; } catch (e) { content.textContent = html; }
+    const sourceStr = Array.isArray(cell?.source) ? cell.source.join('') : (cell?.source || '');
+
+    if (cellType === 'markdown') {
+      const html = window.DOMPurify.sanitize(window.marked.parse(sourceStr));
+      const content = document.createElement('div');
+      content.className = 'nb-cell__markdown';
+      try { content.innerHTML = html; } catch (e) { content.textContent = html; }
       section.appendChild(content);
+    } else if (cellType === 'raw') {
+      const pre = document.createElement('pre');
+      pre.className = 'nb-cell__raw';
+      pre.textContent = sourceStr;
+      section.appendChild(pre);
     } else {
       const header = document.createElement('header');
       header.className = 'nb-cell__header';
-      header.textContent = `In [${(cell.index ?? 0) + 1}]`;
+      const count = (typeof cell?.execution_count === 'number' && cell.execution_count >= 0) ? cell.execution_count : (idx + 1);
+      header.textContent = `In [${count}]`;
       section.appendChild(header);
 
       const pre = document.createElement('pre');
       pre.className = 'nb-cell__code';
       const codeElement = document.createElement('code');
-      codeElement.textContent = cell.source ?? '';
+      codeElement.textContent = sourceStr;
       pre.appendChild(codeElement);
       section.appendChild(pre);
 
-      if (Array.isArray(cell.outputs) && cell.outputs.length) {
+      if (Array.isArray(cell?.outputs) && cell.outputs.length) {
         const outputsWrapper = document.createElement('div');
         outputsWrapper.className = 'nb-cell__outputs';
 
-        cell.outputs.forEach((text) => {
-          const outputPre = document.createElement('pre');
-          outputPre.className = 'nb-cell__output';
-          outputPre.textContent = text;
-          outputsWrapper.appendChild(outputPre);
+        cell.outputs.forEach((out) => {
+          try {
+            const outputPre = document.createElement('pre');
+            outputPre.className = 'nb-cell__output';
+            let text = '';
+            const t = out?.output_type || out?.type || '';
+            if (t === 'stream') {
+              const v = Array.isArray(out?.text) ? out.text.join('') : (out?.text || '');
+              text = v;
+            } else if (t === 'execute_result' || t === 'display_data') {
+              const data = out?.data || {};
+              if (typeof data['text/plain'] !== 'undefined') {
+                const v = Array.isArray(data['text/plain']) ? data['text/plain'].join('') : String(data['text/plain']);
+                text = v;
+              } else if (typeof data['application/json'] !== 'undefined') {
+                try { text = JSON.stringify(data['application/json'], null, 2); } catch (e) { text = String(data['application/json']); }
+              } else {
+                // Fallback to any stringifiable content
+                try { text = JSON.stringify(data) } catch (e) { text = String(data) }
+              }
+            } else if (t === 'error') {
+              const ename = out?.ename || 'Error';
+              const evalue = out?.evalue || '';
+              const tb = Array.isArray(out?.traceback) ? out.traceback.join('\n') : (out?.traceback || '');
+              text = `${ename}: ${evalue}\n${tb}`;
+            } else if (typeof out === 'string') {
+              text = out;
+            } else {
+              try { text = JSON.stringify(out, null, 2); } catch (e) { text = String(out); }
+            }
+            outputPre.textContent = text;
+            outputsWrapper.appendChild(outputPre);
+          } catch (e) { /* per-output ignore */ }
         });
 
         section.appendChild(outputsWrapper);
@@ -8069,21 +8616,27 @@ const updateEditorPaneVisuals = () => {
   // Add a helper class to workspace content when there are multiple editor panes
   try {
     const wc = elements.workspaceContent;
-    // Count actual editor pane elements in the DOM (visible or present). Using
-    // editorInstances may include entries for hidden/static panes and causes
-    // incorrect splitting behavior when those panes are not visible. Use the
-    // DOM to determine whether to enter split mode.
+    // Count only VISIBLE editor pane elements (not hidden via attribute or CSS)
     const paneEls = wc ? Array.from(wc.querySelectorAll('.editor-pane')) : [];
-    const paneCount = paneEls.length;
+    const visiblePaneEls = paneEls.filter((el) => {
+      try {
+        if (!el || el.hidden) return false;
+        const cs = window.getComputedStyle(el);
+        if (!cs) return true;
+        if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+      } catch (e) { /* best-effort */ }
+      return true;
+    });
+    const paneCount = visiblePaneEls.length;
 
-    // Show empty state when no panes are open
+    // Show empty state when no panes are open/visible
     const editorEmpty = wc.querySelector('.editor-empty') || (() => {
       const div = document.createElement('div');
       div.className = 'editor-empty empty-state';
       div.innerHTML = `
-        <div class="empty-state__icon">📝</div>
-        <div class="empty-state__title">No files open</div>
-        <div class="empty-state__message">Open a new file</div>
+        <div class=\"empty-state__icon\">📝</div>
+        <div class=\"empty-state__title\">No files open</div>
+        <div class=\"empty-state__message\">Open a file</div>
       `;
       // Insert the empty state before the preview pane so it won't be covered
       const previewPane = wc.querySelector('.preview-pane');
@@ -8107,82 +8660,67 @@ const updateEditorPaneVisuals = () => {
       }
     } catch (e) { /* ignore layout toggle failures */ }
 
-      if (wc && wc.classList) {
-        const shouldSplit = paneCount > 1;
-        wc.classList.toggle('split-editors', shouldSplit);
-        try {
-          // When splitting, ensure a divider exists between every adjacent editor pane
-          if (shouldSplit) {
-            const editorPanes = Array.from(wc.querySelectorAll('.editor-pane'));
-            // If any pane is collapsed (width ~0) or lacks an inline flex, give it an initial
-            // proportional flex so dividers can resize all panes uniformly. Do not override
-            // panes that already have a non-zero computed width and an explicit inline flex.
+    if (wc && wc.classList) {
+      const shouldSplit = paneCount > 1;
+      wc.classList.toggle('split-editors', shouldSplit);
+      try {
+        // When splitting, ensure a divider exists between every adjacent editor pane
+        if (shouldSplit) {
+          const editorPanes = Array.from(wc.querySelectorAll('.editor-pane'));
+          // If any pane is collapsed (width ~0) or lacks an inline flex, give it an initial
+          // proportional flex so dividers can resize all panes uniformly. Do not override
+          // panes that already have a non-zero computed width and an explicit inline flex.
+          try {
+            const minPx = 80;
+            const paneRects = editorPanes.map(p => p.getBoundingClientRect());
+            editorPanes.forEach((p, idx) => {
+              const rect = paneRects[idx];
+              const hasInlineFlex = p.style && p.style.flex && p.style.flex.trim().length > 0;
+              if ((!hasInlineFlex && rect.width < minPx + 1) || rect.width < 1) {
+                // assign equal share
+                try { p.style.flex = `1 1 0px`; } catch (e) { }
+              }
+            });
+          } catch (e) { /* ignore layout inspection errors */ }
+          for (let i = 0; i < editorPanes.length - 1; i++) {
+            const left = editorPanes[i];
+            const right = editorPanes[i + 1];
+            // If there's already a divider immediately between them, skip
+            if (left.nextElementSibling && left.nextElementSibling.classList && left.nextElementSibling.classList.contains('editors__divider')) continue;
+            const divider = document.createElement('div');
+            divider.className = 'editors__divider';
+            divider.dataset.dividerIndex = String(i);
+            divider.style.width = '12px';
+            // ensure consistent interactive style
+            divider.style.cursor = 'col-resize';
+            divider.style.pointerEvents = 'auto';
+            divider.setAttribute('role', 'separator');
+            divider.setAttribute('aria-orientation', 'vertical');
+            divider.setAttribute('tabindex', '0');
+            // Add a consistent visual handle so each divider looks and behaves the same
             try {
-              const minPx = 80;
-              const paneRects = editorPanes.map(p => p.getBoundingClientRect());
-              const totalVisible = paneRects.reduce((sum, r) => sum + (r.width || 0), 0) || 1;
-              editorPanes.forEach((p, idx) => {
-                const rect = paneRects[idx];
-                const hasInlineFlex = p.style && p.style.flex && p.style.flex.trim().length > 0;
-                if ((!hasInlineFlex && rect.width < minPx + 1) || rect.width < 1) {
-                  // assign equal share
-                  try { p.style.flex = `1 1 0px`; } catch (e) { }
-                }
-              });
-            } catch (e) { /* ignore layout inspection errors */ }
-            for (let i = 0; i < editorPanes.length - 1; i++) {
-              const left = editorPanes[i];
-              const right = editorPanes[i + 1];
-              // If there's already a divider immediately between them, skip
-              if (left.nextElementSibling && left.nextElementSibling.classList && left.nextElementSibling.classList.contains('editors__divider')) continue;
-              const divider = document.createElement('div');
-              divider.className = 'editors__divider';
-              divider.dataset.dividerIndex = String(i);
-              divider.style.width = '12px';
-              // ensure consistent interactive style
-              divider.style.cursor = 'col-resize';
-              divider.style.pointerEvents = 'auto';
-              divider.setAttribute('role', 'separator');
-              divider.setAttribute('aria-orientation', 'vertical');
-              divider.setAttribute('tabindex', '0');
-              // Add a consistent visual handle so each divider looks and behaves the same
-              try {
-                const handle = document.createElement('div');
-                handle.className = 'editors__divider__handle';
-                divider.appendChild(handle);
-              } catch (e) { /* ignore DOM errors */ }
-              // Insert divider between the two panes
-              left.parentNode.insertBefore(divider, right);
-              // Attach generic handlers (they will use the active divider element)
-              try {
-                divider.addEventListener('pointerdown', handleEditorSplitterPointerDown);
-                divider.addEventListener('pointermove', handleEditorSplitterPointerMove);
-                divider.addEventListener('pointerup', handleEditorSplitterPointerUp);
-                divider.addEventListener('pointercancel', handleEditorSplitterPointerUp);
-                divider.addEventListener('keydown', handleEditorSplitterKeyDown);
-                divider.addEventListener('dblclick', (e) => {
-                  // On double click, reset the relative sizes of the two panes to 50/50
-                  const paneLeft = e.currentTarget.previousElementSibling;
-                  const paneRight = e.currentTarget.nextElementSibling;
-                  if (paneLeft && paneRight) {
-                    const container = wc.getBoundingClientRect();
-                    const half = Math.round((container.width - (editorPanes.length - 1) * 12) / 2);
-                    try { paneLeft.style.flex = `0 0 ${half}px`; } catch (err) {}
-                    try { paneRight.style.flex = `0 0 ${Math.max(60, container.width - half - 12)}px`; } catch (err) {}
-                  }
-                });
-              } catch (e) { /* ignore */ }
-            }
-          } else {
-            // Remove any per-editor dividers when not in split mode
-            const existing = Array.from(wc.querySelectorAll('.editors__divider'));
-            existing.forEach(d => { try { d.remove(); } catch (e) {} });
+              const handle = document.createElement('div');
+              handle.className = 'editors__divider__handle';
+              divider.appendChild(handle);
+            } catch (e) { /* ignore DOM errors */ }
+            // Insert divider between the two panes
+            left.parentNode.insertBefore(divider, right);
+            // Attach generic handlers (they will use the active divider element)
+            try {
+              divider.addEventListener('pointerdown', handleEditorSplitterPointerDown);
+              divider.addEventListener('pointermove', handleEditorSplitterPointerMove);
+              divider.addEventListener('pointerup', handleEditorSplitterPointerUp);
+            } catch (e) { /* ignore handler attachment errors */ }
           }
-        } catch (e) { /* ignore DOM manipulation errors */ }
-      }
-  } catch (e) { }
+        } else {
+          // Remove any existing dividers when not in split mode
+          const existingDivs = Array.from(wc.querySelectorAll('.editors__divider'));
+          existingDivs.forEach(d => { try { d.remove(); } catch (e) {} });
+        }
+      } catch (e) { /* ignore divider creation errors */ }
+    }
+  } catch (e) { /* ignore layout update failures */ }
 };
-
   // Ensure any existing editors dividers are normalized (used on startup)
   const normalizeEditorDividers = () => {
     try {
@@ -8247,7 +8785,7 @@ const updateActionAvailability = (note) => {
   }
 };
 
-const computeEditorSearchMatches = (text, query) => {
+const computeEditorSearchMatches = (text, query, caseSensitive = false) => {
   if (typeof text !== 'string' || typeof query !== 'string') {
     return [];
   }
@@ -8257,9 +8795,10 @@ const computeEditorSearchMatches = (text, query) => {
   }
 
   const pattern = escapeRegExp(query);
+  const flags = caseSensitive ? 'gu' : 'giu';
 
   try {
-    const regex = new RegExp(pattern, 'giu');
+    const regex = new RegExp(pattern, flags);
     const matches = [];
     let result = regex.exec(text);
 
@@ -8287,7 +8826,13 @@ const computeEditorSearchMatches = (text, query) => {
 };
 
 const updateEditorSearchCount = () => {
-  if (!elements.editorSearchCount) {
+  // Find the active pane's search count element
+  const edt = getActiveEditorInstance();
+  const textarea = edt?.el ?? null;
+  const activePane = textarea?.closest('.editor-pane');
+  const searchCountEl = activePane?.querySelector('.editor-search-count');
+  
+  if (!searchCountEl) {
     return;
   }
 
@@ -8297,7 +8842,7 @@ const updateEditorSearchCount = () => {
     ? state.search.activeIndex + 1
     : 0;
 
-  elements.editorSearchCount.textContent = `${current} / ${total}`;
+  searchCountEl.textContent = `${current} / ${total}`;
 };
 
 const syncEditorSearchHighlightMetrics = () => {
@@ -8405,10 +8950,13 @@ const handleEditorSearchResize = () => {
 };
 
 const renderEditorSearchHighlights = () => {
-  const container = elements.editorSearchHighlights;
-  const contentEl = elements.editorSearchHighlightsContent;
   const edt = getActiveEditorInstance();
   const textarea = edt?.el ?? null;
+  const activePane = textarea?.closest('.editor-pane');
+  
+  // Find the correct highlight container for the active pane
+  const container = activePane?.querySelector('.editor-search-highlights');
+  const contentEl = activePane?.querySelector('.editor-search-highlights__content');
 
   if (!container || !contentEl || !textarea) {
     return;
@@ -8579,7 +9127,7 @@ const updateEditorSearchMatches = (options = {}) => {
     state.search.lastCaret = options.caret;
   }
 
-  const matches = computeEditorSearchMatches(content, query);
+  const matches = computeEditorSearchMatches(content, query, state.search.caseSensitive);
   const previousMatches = Array.isArray(state.search.matches) ? state.search.matches : [];
   const previousActiveIndex = state.search.activeIndex ?? -1;
   const previousActiveStart =
@@ -8629,14 +9177,101 @@ const updateEditorSearchMatches = (options = {}) => {
 
 const openEditorSearch = (options = {}) => {
   const note = getActiveNote();
-  if (!note || note.type !== 'markdown') {
-    setStatus('Search is only available in Markdown notes.', false);
+  const allowedTypes = ['markdown', 'html', 'notebook'];
+  if (!note || !allowedTypes.includes(note.type)) {
+    setStatus('Search is only available in Markdown, HTML, and Notebook files.', false);
     return;
   }
 
-  if (!elements.editorSearch || !elements.editorSearchInput) {
+  // Find the active editor pane
+  const edt = getActiveEditorInstance();
+  const activeTextarea = edt?.el ?? null;
+  const activePane = activeTextarea?.closest('.editor-pane');
+  
+  if (!activePane) {
     return;
   }
+  
+  // Find or create search overlay in the active pane
+  const paneId = activePane.querySelector('.editor-pane__badge')?.dataset?.pane || 'main';
+  let searchOverlay = activePane.querySelector('.editor-search-overlay');
+  
+  if (!searchOverlay) {
+    // Create search overlay for this pane with unique IDs
+    searchOverlay = document.createElement('div');
+    searchOverlay.className = 'editor-search-overlay';
+    searchOverlay.hidden = true;
+    
+    const uniqueId = `search-${paneId}-${Date.now()}`;
+    searchOverlay.innerHTML = `
+      <div class="search-inputs">
+        <input
+          class="editor-search-input"
+          type="text"
+          placeholder="Search in note… (⌘F)"
+          aria-label="Search in current note"
+          autocomplete="off"
+        />
+        <input
+          class="editor-replace-input"
+          type="text"
+          placeholder="Replace with…"
+          aria-label="Replace with"
+          autocomplete="off"
+          hidden
+        />
+      </div>
+      <div class="search-controls">
+        <div class="left-controls">
+          <button type="button" class="editor-search-case search-toggle" aria-label="Match case" title="Match case (Aa)">Aa</button>
+          <button type="button" class="editor-search-replace-toggle search-toggle" aria-label="Toggle replace" title="Toggle replace mode">⇄</button>
+          <button type="button" class="editor-search-prev" aria-label="Previous match (↑)" title="Previous match (↑)">↑</button>
+          <button type="button" class="editor-search-next" aria-label="Next match (↓)" title="Next match (↓)">↓</button>
+          <button type="button" class="editor-replace-one" aria-label="Replace" title="Replace current match" hidden>Replace</button>
+          <button type="button" class="editor-replace-all" aria-label="Replace All" title="Replace all matches" hidden>All</button>
+        </div>
+        <div class="right-controls">
+          <div class="editor-search-count search-count" aria-live="polite">0 / 0</div>
+          <button type="button" class="editor-search-close" aria-label="Close search (Esc)" title="Close search (Esc)">✕</button>
+        </div>
+      </div>
+    `;
+    activePane.appendChild(searchOverlay);
+    
+    // Bind event handlers to the new overlay
+    const searchInput = searchOverlay.querySelector('.editor-search-input');
+    const replaceInput = searchOverlay.querySelector('.editor-replace-input');
+    const caseBtn = searchOverlay.querySelector('.editor-search-case');
+    const replaceToggle = searchOverlay.querySelector('.editor-search-replace-toggle');
+    const prevBtn = searchOverlay.querySelector('.editor-search-prev');
+    const nextBtn = searchOverlay.querySelector('.editor-search-next');
+    const replaceOneBtn = searchOverlay.querySelector('.editor-replace-one');
+    const replaceAllBtn = searchOverlay.querySelector('.editor-replace-all');
+    const closeBtn = searchOverlay.querySelector('.editor-search-close');
+    
+    searchInput?.addEventListener('input', handleEditorSearchInput);
+    searchInput?.addEventListener('keydown', handleEditorSearchKeydown);
+    replaceInput?.addEventListener('input', handleEditorReplaceInput);
+    replaceInput?.addEventListener('keydown', handleEditorReplaceKeydown);
+    caseBtn?.addEventListener('click', handleEditorSearchCaseToggle);
+    replaceToggle?.addEventListener('click', handleEditorSearchReplaceToggle);
+    prevBtn?.addEventListener('click', handleEditorSearchPrev);
+    nextBtn?.addEventListener('click', handleEditorSearchNext);
+    replaceOneBtn?.addEventListener('click', handleEditorReplaceOne);
+    replaceAllBtn?.addEventListener('click', handleEditorReplaceAll);
+    closeBtn?.addEventListener('click', handleEditorSearchClose);
+  }
+  
+  const searchInput = searchOverlay.querySelector('.editor-search-input');
+  
+  if (!searchOverlay || !searchInput) {
+    return;
+  }
+  
+  // Update elements references for this search session
+  elements.editorSearch = searchOverlay;
+  elements.editorSearchInput = searchInput;
+  elements.editorSearchCount = searchOverlay.querySelector('.editor-search-count');
 
   const focusInput = options.focusInput !== false;
   const useSelection = options.useSelection !== false;
@@ -8646,7 +9281,6 @@ const openEditorSearch = (options = {}) => {
   elements.editorSearch.hidden = false;
   elements.editorSearch.setAttribute('aria-hidden', 'false');
 
-  const edt = getActiveEditorInstance();
   const textarea = edt?.el ?? null;
   const selectionStart = textarea?.selectionStart ?? 0;
   const selectionEnd = textarea?.selectionEnd ?? selectionStart;
@@ -8704,8 +9338,8 @@ const closeEditorSearch = (restoreFocus = true, options = {}) => {
   renderEditorSearchHighlights();
 
   if (restoreFocus && wasOpen) {
-    const edt = getActiveEditorInstance();
-    const ta = edt?.el;
+    const edtInstance = getActiveEditorInstance();
+    const ta = edtInstance?.el;
     if (ta && !ta.disabled) {
       window.requestAnimationFrame(() => {
         try {
@@ -8790,6 +9424,170 @@ const handleEditorSearchNext = (event) => {
 const handleEditorSearchClose = (event) => {
   event.preventDefault();
   closeEditorSearch(true);
+};
+
+const handleEditorReplaceInput = (event) => {
+  if (!state.search.open) {
+    return;
+  }
+  // Store replace text for use in replace operations
+  const value = typeof event.target.value === 'string' ? event.target.value : '';
+  state.search.replaceText = value;
+};
+
+const handleEditorReplaceKeydown = (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    // Perform single replace on Enter
+    handleEditorReplaceOne();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    closeEditorSearch(true);
+  }
+};
+
+const handleEditorSearchCaseToggle = (event) => {
+  if (!state.search.open) {
+    return;
+  }
+  
+  const checkbox = event.target;
+  state.search.caseSensitive = Boolean(checkbox.checked);
+  
+  // Re-run search with new case sensitivity
+  updateEditorSearchMatches({
+    preserveActive: false,
+    caret: state.search.lastCaret ?? (getActiveEditorInstance()?.selectionStart ?? 0),
+    focusEditor: false
+  });
+};
+
+const handleEditorSearchReplaceToggle = (event) => {
+  if (!state.search.open) {
+    return;
+  }
+  
+  const checkbox = event.target;
+  const replaceVisible = Boolean(checkbox.checked);
+  state.search.replaceVisible = replaceVisible;
+  
+  // Show/hide replace input and buttons
+  if (elements.editorReplaceInput) {
+    elements.editorReplaceInput.style.display = replaceVisible ? 'block' : 'none';
+  }
+  if (elements.editorReplaceOne) {
+    elements.editorReplaceOne.style.display = replaceVisible ? 'inline-block' : 'none';
+  }
+  if (elements.editorReplaceAll) {
+    elements.editorReplaceAll.style.display = replaceVisible ? 'inline-block' : 'none';
+  }
+  
+  // Focus replace input if showing
+  if (replaceVisible && elements.editorReplaceInput) {
+    window.requestAnimationFrame(() => {
+      elements.editorReplaceInput.focus({ preventScroll: true });
+    });
+  }
+};
+
+const handleEditorReplaceOne = (event) => {
+  if (event) {
+    event.preventDefault();
+  }
+  
+  if (!state.search.open || !state.search.matches || state.search.matches.length === 0) {
+    return;
+  }
+  
+  const activeIndex = state.search.activeIndex;
+  if (activeIndex < 0 || activeIndex >= state.search.matches.length) {
+    return;
+  }
+  
+  const match = state.search.matches[activeIndex];
+  const replaceText = state.search.replaceText || '';
+  
+  const editor = getActiveEditorInstance();
+  if (!editor || !editor.el) {
+    return;
+  }
+  
+  // Perform the replacement
+  const textarea = editor.el;
+  const content = textarea.value;
+  const newContent = content.substring(0, match.start) + replaceText + content.substring(match.end);
+  
+  // Update textarea
+  textarea.value = newContent;
+  
+  // Trigger change event for autosave
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  
+  // Update cursor position
+  const newCursorPos = match.start + replaceText.length;
+  textarea.setSelectionRange(newCursorPos, newCursorPos);
+  
+  // Re-run search to update matches
+  updateEditorSearchMatches({
+    preserveActive: false,
+    caret: newCursorPos,
+    focusEditor: false
+  });
+};
+
+const handleEditorReplaceAll = (event) => {
+  if (event) {
+    event.preventDefault();
+  }
+  
+  if (!state.search.open || !state.search.matches || state.search.matches.length === 0) {
+    return;
+  }
+  
+  const replaceText = state.search.replaceText || '';
+  const editor = getActiveEditorInstance();
+  
+  if (!editor || !editor.el) {
+    return;
+  }
+  
+  const textarea = editor.el;
+  const content = textarea.value;
+  
+  // Sort matches in reverse order to maintain indices during replacement
+  const sortedMatches = [...state.search.matches].sort((a, b) => b.start - a.start);
+  
+  let newContent = content;
+  let totalReplaced = 0;
+  
+  // Replace all matches from end to beginning
+  for (const match of sortedMatches) {
+    newContent = newContent.substring(0, match.start) + replaceText + newContent.substring(match.end);
+    totalReplaced++;
+  }
+  
+  // Update textarea
+  textarea.value = newContent;
+  
+  // Trigger change event for autosave
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  
+  // Set cursor at beginning of first replacement
+  if (state.search.matches.length > 0) {
+    const firstMatch = state.search.matches[0];
+    const newCursorPos = firstMatch.start + replaceText.length;
+    textarea.setSelectionRange(newCursorPos, newCursorPos);
+  }
+  
+  // Show status message
+  setStatus(`Replaced ${totalReplaced} occurrence${totalReplaced !== 1 ? 's' : ''}.`, true);
+  
+  // Re-run search to update matches
+  updateEditorSearchMatches({
+    preserveActive: false,
+    caret: state.search.matches.length > 0 ? state.search.matches[0].start + replaceText.length : 0,
+    focusEditor: false
+  });
 };
 
 const openNoteById = (noteId, silent = false, blockId = null, pane = null) => {
@@ -9407,59 +10205,20 @@ try {
 // second editor UI removed
 
 const handleWorkspaceTreeClick = (event) => {
-  event.preventDefault();
-
+  // Only handle file opens here; directory expand/collapse is handled by sidebar wiring
   const label = event.target.closest('.tree-node__label');
-  if (!label) {
-    return;
-  }
-
+  if (!label) return;
   const nodeElement = label.parentElement;
-  if (!nodeElement) {
-    return;
-  }
+  if (!nodeElement) return;
 
-  // Determine node type: prefer explicit dataset value, fall back to CSS class
   let nodeType = nodeElement.dataset.nodeType;
   if (!nodeType) {
     if (nodeElement.classList && nodeElement.classList.contains('tree-node--directory')) nodeType = 'directory';
     else if (nodeElement.classList && nodeElement.classList.contains('tree-node--file')) nodeType = 'file';
   }
+  if (nodeType === 'directory') return; // let sidebar/fallback handlers toggle folders
 
   const path = nodeElement.dataset.path;
-
-  if (nodeType === 'directory') {
-    // Determine whether this directory has children: prefer dataset.hasChildren,
-    // fall back to inspecting in-memory state.tree when the DOM was rendered
-    // by a minimal fallback renderer that didn't set attributes.
-    let hasChildren = nodeElement.dataset.hasChildren === 'true';
-    if (!hasChildren) {
-      const root = state.tree;
-      if (root && path) {
-        const stack = [root];
-        while (stack.length) {
-          const n = stack.pop();
-          if (!n) continue;
-          if (n.path === path) { hasChildren = Array.isArray(n.children) && n.children.length > 0; break; }
-          if (Array.isArray(n.children)) {
-            for (let i = 0; i < n.children.length; i++) stack.push(n.children[i]);
-          }
-        }
-      }
-    }
-
-    if (!hasChildren || !path) {
-      return;
-    }
-
-    if (state.collapsedFolders.has(path)) {
-      state.collapsedFolders.delete(path);
-    } else {
-      state.collapsedFolders.add(path);
-    }
-    renderWorkspaceTree();
-    return;
-  }
 
   if (nodeType === 'file') {
     if (nodeElement.classList.contains('tree-node--unsupported')) {
@@ -9867,7 +10626,7 @@ const updateMathPreview = (textarea) => {
                 iframe.setAttribute('data-raw-src', `${workspacePath}/${filename}`);
                 iframe.className = 'html-embed-iframe';
                 iframe.style.cssText = 'width:100%;height:300px;border:none;background:white;';
-                iframe.setAttribute('sandbox', 'allow-scripts');
+                iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
                 iframe.setAttribute('loading', 'lazy');
                 const wrapper = document.createElement('div');
                 wrapper.style.width = '200px';
@@ -10410,7 +11169,9 @@ const handleEditor2Drop = (event) => {
 
   // Clear any visual drop classes globally to avoid stale highlights
   try {
-    Array.from(document.querySelectorAll('.editor-drop-target')).forEach((el) => el.classList.remove('editor-drop-target'));
+Array.from(document.querySelectorAll('.editor-drop-target')).forEach((el) => el.classList.remove('editor-drop-target'));
+    Array.from(document.querySelectorAll('.editor-drop-new-pane-right')).forEach((el) => el.classList.remove('editor-drop-new-pane-right'));
+    Array.from(document.querySelectorAll('.editor-drop-left-half')).forEach((el) => el.classList.remove('editor-drop-left-half'));
   } catch (e) { /* ignore */ }
 
   // Check for external files first
@@ -10463,13 +11224,28 @@ const handleEditor2Drop = (event) => {
     else paneId = 'left';
   }
 
+  // If dropping on right half of pane, create a new pane
+  try {
+    const root = (event.target && event.target.closest) ? event.target.closest('[data-pane-id], .editor-pane--dynamic, .editor-pane--right, .editor-pane') : null;
+    if (root && typeof event.clientX === 'number') {
+      const rect = root.getBoundingClientRect ? root.getBoundingClientRect() : null;
+      if (rect && rect.width > 0 && event.clientX >= rect.left + rect.width / 2) {
+        const preChosen = event._nta_drop_createdPane || null;
+        if (preChosen && editorInstances[preChosen]) paneId = preChosen; else {
+          const created = createEditorPane(null, '');
+          if (created) { paneId = created; try { event._nta_drop_createdPane = created; } catch (e) {} }
+        }
+      }
+    }
+  } catch (e) { /* ignore */ }
+
   openNoteInPane(noteId, paneId);
 };
 
 // second editor input handling removed
 
 const inlineCommandPattern = /^\s*&(?<command>[a-z]+)(?:(?::|\s+)(?<argument>.+?))?\s*$/i;
-const inlineCommandNames = ['code', 'math', 'table', 'matrix', 'bmatrix', 'pmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix', 'quote'];
+const inlineCommandNames = ['code', 'math', 'table', 'matrix', 'bmatrix', 'pmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix', 'quote', 'checklist'];
 const inlineCommandStartRegex = new RegExp(`^\\s*&(?:${inlineCommandNames.join('|')})\\b`, 'mi');
 const inlineCommandLineRegex = new RegExp(
   `^(?:[ \\t]*)&(?:${inlineCommandNames.join('|')})\\b[^\\n]*(?:\\r?\\n|$)`,
@@ -10511,7 +11287,7 @@ const detectInlineCommandTrigger = (value, caret, options = {}) => {
 
   const command = match.groups?.command?.toLowerCase() ?? '';
   const originalCommand = match.groups?.command ?? '';
-  const validCommands = ['code', 'math', 'table', 'matrix', 'bmatrix', 'pmatrix', 'vmatrix', 'quote'];
+  const validCommands = ['code', 'math', 'table', 'matrix', 'bmatrix', 'pmatrix', 'vmatrix', 'quote', 'checklist'];
   const validCaseSensitiveCommands = ['Bmatrix', 'Vmatrix'];
   
   if (!validCommands.includes(command) && !validCaseSensitiveCommands.includes(originalCommand)) {
@@ -10741,6 +11517,83 @@ const applyInlineMathTrigger = (textarea, note, trigger) => {
   return true;
 };
 
+const applyInlineChecklistTrigger = (textarea, note, trigger) => {
+  if (!textarea || !note || !trigger || state.suppressInlineCommand) {
+    return false;
+  }
+
+  state.suppressInlineCommand = true;
+
+  try {
+    const before = textarea.value.slice(0, trigger.start);
+    const after = textarea.value.slice(trigger.end);
+
+    const needsLeadingNewline = before.length > 0 && !before.endsWith('\n');
+    const needsTrailingNewline = after.length > 0 && !after.startsWith('\n');
+
+    // Parse the number of items from the argument (default 3)
+    // Supports formats like "3", "=3", " = 3"
+    let itemCount = 3;
+    const rawArg = (trigger.argument ?? '').trim();
+    if (rawArg) {
+      // Remove optional leading = and parse the number
+      const numStr = rawArg.replace(/^=\s*/, '').trim();
+      if (/^\d+$/.test(numStr)) {
+        itemCount = Math.max(1, Math.min(parseInt(numStr, 10), 20)); // clamp between 1 and 20
+      }
+    }
+
+    // Create checklist items
+    const items = [];
+    for (let i = 0; i < itemCount; i++) {
+      items.push('- [ ] Item');
+    }
+
+    const snippetCore = `${items.join('\n')}\n`;
+    const snippet = `${needsLeadingNewline ? '\n' : ''}${snippetCore}${needsTrailingNewline ? '\n' : ''}`;
+    const nextContent = `${before}${snippet}${after}`;
+
+    // Prefer the active editor instance's textarea so split view inserts
+    // always apply to the active pane. Fall back to the local textarea
+    // variable if no active instance is available.
+    const _edt_checklist = getActiveEditorInstance();
+    const _ta_checklist = _edt_checklist?.el ?? textarea;
+    if (_ta_checklist) {
+      try { if (_edt_checklist && typeof _edt_checklist.setValue === 'function') _edt_checklist.setValue(nextContent); else _ta_checklist.value = nextContent; } catch (e) { _ta_checklist.value = nextContent; }
+      try { if (_edt_checklist) _edt_checklist.focus({ preventScroll: true }); else _ta_checklist.focus({ preventScroll: true }); } catch (e) { try { if (_edt_checklist) _edt_checklist.focus(); else _ta_checklist.focus(); } catch (e2) {} }
+    }
+
+    // Position cursor at the first item's text
+    const firstItemContent = 'Item';
+    const selectionAnchorInSnippet = snippetCore.indexOf(firstItemContent);
+    const selectionStart = before.length + (needsLeadingNewline ? 1 : 0) + (selectionAnchorInSnippet >= 0 ? selectionAnchorInSnippet : 0);
+    const selectionEnd = selectionStart + firstItemContent.length;
+
+    window.requestAnimationFrame(() => {
+      try {
+        if (_edt_checklist && typeof _edt_checklist.setSelectionRange === 'function') _edt_checklist.setSelectionRange(selectionStart, selectionEnd);
+        else (_edt_checklist?.el ?? textarea).setSelectionRange(selectionStart, selectionEnd);
+      } catch (e) {}
+    });
+
+    note.content = nextContent;
+    note.updatedAt = new Date().toISOString();
+    note.dirty = true;
+
+    refreshBlockIndexForNote(note);
+    refreshHashtagsForNote(note);
+    renderMarkdownPreview(note.content, note.id);
+    scheduleSave();
+    setStatus(`Inserted checklist with ${itemCount} item${itemCount !== 1 ? 's' : ''}.`, true);
+    updateWikiSuggestions(textarea);
+    updateHashtagSuggestions(textarea);
+  } finally {
+    state.suppressInlineCommand = false;
+  }
+
+  return true;
+};
+
 const maxInlineTableDimension = 12;
 
 const parseInlineMatrixDimensions = (raw) => {
@@ -10753,7 +11606,22 @@ const parseInlineMatrixDimensions = (raw) => {
     return null;
   }
 
-  const match = trimmed.match(/^([1-9]\d?)\s*[xX]\s*([1-9]\d?)$/);
+  // Check if it contains '=' anywhere for fill mode
+  const hasEquals = trimmed.includes('=');
+  let fillMode = false;
+  let fillValue = 'x';
+  let dimensionPart = trimmed;
+  
+  if (hasEquals) {
+    // Find the first '=' and split
+    const equalsIndex = trimmed.indexOf('=');
+    dimensionPart = trimmed.slice(0, equalsIndex).trim();
+    const valuePart = trimmed.slice(equalsIndex + 1).trim();
+    fillValue = valuePart || 'x'; // default to 'x' if nothing after =
+    fillMode = true;
+  }
+
+  const match = dimensionPart.match(/^([1-9]\d?)\s*[xX]\s*([1-9]\d?)$/);
   if (!match) {
     return null;
   }
@@ -10770,7 +11638,9 @@ const parseInlineMatrixDimensions = (raw) => {
   return {
     rows,
     columns,
-    clamped
+    clamped,
+    fillMode,
+    fillValue
   };
 };
 
@@ -10781,11 +11651,11 @@ const applyInlineMatrixTrigger = (textarea, note, trigger, matrixType) => {
 
   const dimensions = parseInlineMatrixDimensions(trigger.argument ?? '');
   if (!dimensions) {
-    setStatus(`Use "&${matrixType} ROWSxCOLS" (e.g. "&${matrixType} 3x4").`, false);
+    setStatus(`Use "&${matrixType} ROWSxCOLS" (e.g. "&${matrixType} 3x4") or "&${matrixType} ROWSxCOLS =VALUE" to fill with VALUE.`, false);
     return false;
   }
 
-  const { rows, columns, clamped } = dimensions;
+  const { rows, columns, clamped, fillMode, fillValue } = dimensions;
   if (rows < 1 || columns < 1) {
     setStatus('Matrix dimensions must be at least 1x1.', false);
     return false;
@@ -10805,17 +11675,55 @@ const applyInlineMatrixTrigger = (textarea, note, trigger, matrixType) => {
       existingMatrix = parseExistingMatrixContent(existingContent, matrixType);
     }
 
-    // Create matrix content with placeholders, preserving existing content
+    // Detect original fill value for existing matrices in fill mode
+    let originalFillValue = null;
+    if (fillMode && existingMatrix) {
+      const valueCounts = new Map();
+      for (const row of existingMatrix) {
+        if (!row) continue;
+        for (const cell of row) {
+          if (cell && !/^a_\{\d+\d+\}$/.test(cell) && cell.trim() !== '') {
+            valueCounts.set(cell, (valueCounts.get(cell) || 0) + 1);
+          }
+        }
+      }
+      // Find the most common value (likely the original fill value)
+      let maxCount = 0;
+      for (const [value, count] of valueCounts) {
+        if (count > maxCount) {
+          maxCount = count;
+          originalFillValue = value;
+        }
+      }
+    }
+
+    // Create matrix content with smart fill value updating
     const matrixRows = [];
     for (let i = 0; i < rows; i++) {
       const rowCells = [];
       for (let j = 0; j < columns; j++) {
-        // Use existing content if available, otherwise use placeholder
+        let cellValue = 'a_{' + (i + 1) + (j + 1) + '}';
+        
         if (existingMatrix && existingMatrix[i] && existingMatrix[i][j]) {
-          rowCells.push(existingMatrix[i][j]);
-        } else {
-          rowCells.push('a_{' + (i + 1) + (j + 1) + '}');
+          const existingValue = existingMatrix[i][j];
+          
+          if (fillMode) {
+            // In fill mode, replace original fill values with new fill value, preserve manually edited content
+            if (originalFillValue && existingValue === originalFillValue) {
+              cellValue = fillValue; // Replace old fill value with new one
+            } else if (!/^a_\{\d+\d+\}$/.test(existingValue) && existingValue.trim() !== '' && existingValue !== fillValue) {
+              cellValue = existingValue; // Preserve manually edited content
+            } else {
+              cellValue = fillValue; // Fill default or empty cells
+            }
+          } else {
+            cellValue = existingValue; // Preserve all existing content when not in fill mode
+          }
+        } else if (fillMode) {
+          cellValue = fillValue; // Fill new cells
         }
+        
+        rowCells.push(cellValue);
       }
       matrixRows.push(rowCells.join(' & '));
     }
@@ -10824,16 +11732,23 @@ const applyInlineMatrixTrigger = (textarea, note, trigger, matrixType) => {
     const matrixBlock = `$$\n\\begin{${matrixType}}\n  ${matrixContent}\n\\end{${matrixType}}\n$$`;
 
     const needsTrailingNewline = afterCommand.length > 0 && !afterCommand.startsWith('\n');
-    const snippetPrefix = '\n';
+    // Only add leading newline if the trigger didn't already consume one
+    const snippetPrefix = trigger.consumedNewline ? '' : '\n';
     const snippetSuffix = needsTrailingNewline ? '\n' : '';
     const snippet = `${snippetPrefix}${matrixBlock}${snippetSuffix}`;
     const nextContent = `${beforeCommand}${snippet}${afterCommand}`;
 
-    textarea.value = nextContent;
-    textarea.focus({ preventScroll: true });
+    // Prefer the active editor instance's textarea so split view inserts
+    // always apply to the active pane.
+    const _edt_matrix = getActiveEditorInstance();
+    const _ta_matrix = _edt_matrix?.el ?? textarea;
+    if (_ta_matrix) {
+      _ta_matrix.value = nextContent;
+      try { _ta_matrix.focus({ preventScroll: true }); } catch (e) { try { _ta_matrix.focus(); } catch (e2) {} }
+    }
 
     // Position cursor at the first matrix element
-    const firstElement = 'a_{11}';
+    const firstElement = fillMode ? fillValue : 'a_{11}';
     const selectionAnchorInSnippet = matrixBlock.indexOf(firstElement);
     const selectionStart = beforeCommand.length + snippetPrefix.length + 
                           (selectionAnchorInSnippet >= 0 ? selectionAnchorInSnippet : 0);
@@ -10855,8 +11770,19 @@ const applyInlineMatrixTrigger = (textarea, note, trigger, matrixType) => {
     renderMarkdownPreview(note.content, note.id);
     scheduleSave();
 
+    let statusMessage = '';
     if (clamped) {
-      setStatus(`Matrix size clamped to ${rows}x${columns}.`, false);
+      statusMessage = `Matrix size clamped to ${rows}x${columns}.`;
+    } else if (fillMode && originalFillValue && originalFillValue !== fillValue) {
+      statusMessage = `Updated ${rows}x${columns} ${matrixType} - replaced "${originalFillValue}" with "${fillValue}" (preserving manual edits).`;
+    } else if (fillMode) {
+      statusMessage = `Created ${rows}x${columns} ${matrixType} filled with "${fillValue}".`;
+    } else {
+      statusMessage = `Created ${rows}x${columns} ${matrixType} with placeholders.`;
+    }
+    
+    if (statusMessage) {
+      setStatus(statusMessage, true);
     }
 
     return true;
@@ -11276,7 +12202,8 @@ const applyInlineTableTrigger = (textarea, note, trigger) => {
       existingTable = parseExistingTableContent(existingContent);
     }
 
-    const needsLeadingNewline = beforeCommand.length > 0 && !beforeCommand.endsWith('\n');
+    // Only add leading newline if needed AND the trigger didn't already consume one
+    const needsLeadingNewline = !trigger.consumedNewline && beforeCommand.length > 0 && !beforeCommand.endsWith('\n');
     const needsTrailingNewline = afterCommand.length > 0 && !afterCommand.startsWith('\n');
 
     const makeRow = (cells) => `| ${cells.join(' | ')} |`;
@@ -11441,6 +12368,10 @@ const applyInlineCommandTrigger = (textarea, note, trigger) => {
     return applyInlineQuoteTrigger(textarea, note, trigger);
   }
 
+  if (trigger.command === 'checklist') {
+    return applyInlineChecklistTrigger(textarea, note, trigger);
+  }
+
   return false;
 };
 
@@ -11458,8 +12389,32 @@ const applyInlineCommandTriggerIfNeeded = (textarea, note) => {
   return applyInlineCommandTrigger(textarea, note, trigger);
 };
 
+// Apply bold formatting (Cmd+B on Mac, Ctrl+B on other platforms)
+const applyBoldFormatting = () => {
+  wrapSelection('**', '**');
+};
+
+// Apply italic formatting (Cmd+I on Mac, Ctrl+I on other platforms)
+const applyItalicFormatting = () => {
+  wrapSelection('*', '*');
+};
+
 // keyboard handling for editor (simplified)
 const handleEditorKeydown = (event) => {
+  // Handle Cmd+B (Mac) or Ctrl+B (Windows/Linux) for bold
+  if ((event.metaKey || event.ctrlKey) && event.key === 'b') {
+    event.preventDefault();
+    applyBoldFormatting();
+    return;
+  }
+
+  // Handle Cmd+I (Mac) or Ctrl+I (Windows/Linux) for italic
+  if ((event.metaKey || event.ctrlKey) && event.key === 'i') {
+    event.preventDefault();
+    applyItalicFormatting();
+    return;
+  }
+
   // Wiki suggestions navigation
   if (state.wikiSuggest.open) {
     if (event.key === 'ArrowDown') {
@@ -11472,9 +12427,57 @@ const handleEditorKeydown = (event) => {
       moveWikiSuggestionSelection(-1);
       return;
     }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      // If current left selection is a folder, expand into it. If already
+      // expanded and side column exists, move selection into side column.
+      const idx = state.wikiSuggest.selectedIndex;
+      const item = state.wikiSuggest.items[idx] ?? null;
+      if (item && item.kind === 'folder') {
+        expandWikiSuggestionFolder(idx);
+      } else {
+        // If already expanded, shift focus to side column first item
+        const curPath = state.wikiSuggest.navigationHistory.length ? state.wikiSuggest.navigationHistory[state.wikiSuggest.navigationHistory.length - 1].path : null;
+        if (curPath && state.wikiSuggest.sideSelectedIndex === null) state.wikiSuggest.sideSelectedIndex = 0;
+        renderWikiSuggestions();
+      }
+      return;
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      // If side column active, collapse the expanded folder (go up one level)
+      // in a single keypress rather than just moving focus back to the left.
+      if (state.wikiSuggest.sideSelectedIndex !== null) {
+        collapseWikiSuggestionFolder();
+        return;
+      }
+      collapseWikiSuggestionFolder();
+      return;
+    }
     if (event.key === 'Enter' || event.key === 'Tab') {
       event.preventDefault();
-      applyWikiSuggestion(state.wikiSuggest.selectedIndex);
+      // If side column active, apply side selection; otherwise apply left selection
+      if (state.wikiSuggest.sideSelectedIndex !== null) {
+        const curPath = state.wikiSuggest.navigationHistory.length ? state.wikiSuggest.navigationHistory[state.wikiSuggest.navigationHistory.length - 1].path : null;
+        const files = getFolderContents(curPath) || { files: [] };
+        const file = (files.files || files)[state.wikiSuggest.sideSelectedIndex];
+        if (file) {
+          // Attempt to use file suggestion API if possible
+          const fsIdx = (state.fileSuggest.items || []).findIndex(f => (f.display === file.display || f.fullPath === file.fullPath || f.noteId === file.noteId));
+          if (fsIdx !== -1) applyFileSuggestion(fsIdx);
+          else {
+            // fallback to applyWikiSuggestion by constructing a pseudo suggestion
+            const fake = { target: file.target || file.display, kind: 'note' };
+            // Temporarily insert and apply
+            const prevItems = state.wikiSuggest.items.slice();
+            state.wikiSuggest.items.splice(state.wikiSuggest.selectedIndex + 1, 0, { ...fake, isNested: true, parentPath: curPath });
+            applyWikiSuggestion(state.wikiSuggest.selectedIndex + 1);
+            state.wikiSuggest.items = prevItems;
+          }
+        }
+      } else {
+        applyWikiSuggestion(state.wikiSuggest.selectedIndex);
+      }
       return;
     }
     if (event.key === 'Escape') {
@@ -11757,9 +12760,11 @@ const handleEditorBlur = (event) => {
   closeFileSuggestions();
 };
 
-// Minimal scroll handler used to sync any sticky UI; currently a noop but kept for future logic
+// Scroll handler to sync search highlights and any sticky UI
 const handleEditorScroll = (event) => {
-  // Placeholder: could sync preview scroll or position sticky toolbars
+  // Sync search highlights when scrolling
+  syncEditorSearchHighlightScroll();
+  // Placeholder for other scroll-synced UI like preview scroll or sticky toolbars
 };
 
 const handleWikiSuggestionPointerDown = (event) => {
@@ -12728,6 +13733,8 @@ const closeWikiSuggestions = () => {
   state.wikiSuggest.position.top = 24;
   state.wikiSuggest.position.left = 24;
   state.wikiSuggest.suppress = false;
+  state.wikiSuggest.expandedFolders.clear();
+  state.wikiSuggest.navigationHistory.length = 0;
 
   const suggestionsElement = elements.wikiSuggestions;
   if (suggestionsElement) {
@@ -12736,6 +13743,156 @@ const closeWikiSuggestions = () => {
     suggestionsElement.removeAttribute('data-open');
     suggestionsElement.removeAttribute('aria-activedescendant');
   }
+};
+
+// Get folder contents for tree navigation
+const getFolderContents = (folderPath) => {
+  const contents = {
+    folders: [],
+    files: []
+  };
+  
+  // Clean the folder path
+  const cleanPath = folderPath.replace(/^\/ +|\/+$/g, '');
+  const pathPrefix = cleanPath ? cleanPath + '/' : '';
+  
+  try {
+    // Get folders from state.tree
+    if (state.tree && typeof state.tree === 'object') {
+      const walk = (node) => {
+        if (!node) return;
+        if (node.type === 'directory' && node.path) {
+          const rel = getRelativePath(state.currentFolder ?? '', node.path).replace(/^\/ +|\/+$/g, '');
+          if (rel && rel.startsWith(pathPrefix) && rel !== cleanPath) {
+            const remainingPath = rel.substring(pathPrefix.length);
+            if (remainingPath && !remainingPath.includes('/')) {
+              const displayName = remainingPath;
+              contents.folders.push({
+                kind: 'folder',
+                target: displayName + '/',
+                display: displayName + '/',
+                meta: 'Folder',
+                fullPath: rel + '/'
+              });
+            }
+          }
+        }
+        if (Array.isArray(node.children)) {
+          node.children.forEach(walk);
+        }
+      };
+      walk(state.tree);
+    }
+    
+    // Get files from state.notes
+    state.notes.forEach((note) => {
+      if (!note || !note.absolutePath) return;
+      
+  const rel = getRelativePath(state.currentFolder ?? '', note.absolutePath).replace(/^\/+/g, '').replace(/\/+$/g, '');
+      if (rel && rel.startsWith(pathPrefix)) {
+        const remainingPath = rel.substring(pathPrefix.length);
+        if (remainingPath && !remainingPath.includes('/')) {
+          // This is a direct child file
+          const title = note.title ?? 'Untitled';
+          const fileName = extractFileNameFromPath(note.absolutePath) ?? '';
+          contents.files.push({
+            kind: 'note',
+            noteId: note.id,
+            target: title,
+            display: title,
+            meta: fileName && fileName !== title ? fileName : null,
+            fullPath: rel
+          });
+        }
+      }
+    });
+    
+  } catch (e) {
+    console.warn('Error getting folder contents:', e);
+  }
+  
+  return contents;
+};
+
+// Expand a folder to show its contents
+const expandWikiSuggestionFolder = (index) => {
+  if (!state.wikiSuggest.open || !state.wikiSuggest.items.length) {
+    return;
+  }
+  
+  const suggestion = state.wikiSuggest.items[index] ?? null;
+  if (!suggestion || suggestion.kind !== 'folder') {
+    return;
+  }
+  
+  const folderPath = suggestion.fullPath || suggestion.target.replace(/\/$/, '');
+  const folderContents = getFolderContents(folderPath);
+  
+  // Mark this folder as expanded
+  state.wikiSuggest.expandedFolders.add(folderPath);
+  
+  // Add to navigation history
+  state.wikiSuggest.navigationHistory.push({
+    path: folderPath,
+    display: suggestion.display,
+    selectedIndex: index
+  });
+  
+  // Create new items list with folder contents inserted after the folder
+  const newItems = [];
+  for (let i = 0; i < state.wikiSuggest.items.length; i++) {
+    const item = state.wikiSuggest.items[i];
+    newItems.push(item);
+    
+    if (i === index) {
+      // Add folder contents with indentation
+      folderContents.folders.forEach(folder => {
+        newItems.push({
+          ...folder,
+          isNested: true,
+          parentPath: folderPath,
+          nestLevel: (state.wikiSuggest.navigationHistory.length)
+        });
+      });
+      folderContents.files.forEach(file => {
+        newItems.push({
+          ...file,
+          isNested: true,
+          parentPath: folderPath,
+          nestLevel: (state.wikiSuggest.navigationHistory.length)
+        });
+      });
+    }
+  }
+  
+  state.wikiSuggest.items = newItems;
+  // Move selection into the opened folder's first file (side column)
+  state.wikiSuggest.selectedIndex = index + 1; // Keep list selection for left column
+  state.wikiSuggest.sideSelectedIndex = 0;
+  renderWikiSuggestions();
+};
+
+// Collapse the current folder level
+const collapseWikiSuggestionFolder = () => {
+  if (!state.wikiSuggest.open || !state.wikiSuggest.navigationHistory.length) {
+    return;
+  }
+  
+  const lastNavItem = state.wikiSuggest.navigationHistory.pop();
+  const folderPath = lastNavItem.path;
+  
+  // Remove this folder from expanded set
+  state.wikiSuggest.expandedFolders.delete(folderPath);
+  
+  // Remove nested items for this folder
+  state.wikiSuggest.items = state.wikiSuggest.items.filter(item => {
+    return !item.isNested || item.parentPath !== folderPath;
+  });
+  
+  // Restore selection to the collapsed folder
+  state.wikiSuggest.selectedIndex = lastNavItem.selectedIndex;
+  state.wikiSuggest.sideSelectedIndex = null;
+  renderWikiSuggestions();
 };
 
 const closeHashtagSuggestions = () => {
@@ -12808,51 +13965,26 @@ const getTextareaCaretCoordinates = (textarea, position) => {
     return { top: 0, left: 0, lineHeight: 20 };
   }
 
-  // Create a temporary div that exactly mimics the textarea's text rendering
-  const div = document.createElement('div');
   const style = window.getComputedStyle(textarea);
+  const text = textarea.value;
   
-  // Copy essential text-rendering styles
-  div.style.position = 'absolute';
-  div.style.visibility = 'hidden';
-  div.style.left = '-9999px';
-  div.style.top = '-9999px';
-  div.style.width = textarea.clientWidth + 'px';
-  div.style.height = 'auto';
-  div.style.fontFamily = style.fontFamily;
-  div.style.fontSize = style.fontSize;
-  div.style.fontWeight = style.fontWeight;
-  div.style.fontStyle = style.fontStyle;
-  div.style.lineHeight = style.lineHeight;
-  div.style.letterSpacing = style.letterSpacing;
-  div.style.wordSpacing = style.wordSpacing;
-  div.style.whiteSpace = 'pre-wrap';
-  div.style.wordBreak = 'break-word';
-  div.style.padding = '0';
-  div.style.margin = '0';
-  div.style.border = 'none';
-  div.style.boxSizing = 'content-box';
-
-  const textBefore = textarea.value.substring(0, position);
-  div.textContent = textBefore;
+  // Count lines and calculate position manually
+  const lines = text.substring(0, position).split('\n');
+  // Adjust line index - if we're consistently one line too low, try reducing by 1
+  const lineIndex = Math.max(0, lines.length - 2);
+  const lineText = lines[lines.length - 1];
   
-  // Add a span at the cursor position
-  const span = document.createElement('span');
-  span.textContent = '|'; // Use a visible character to measure
-  div.appendChild(span);
+  const fontSize = parseFloat(style.fontSize) || 16;
+  const rawLineHeight = parseFloat(style.lineHeight);
+  const lineHeight = Number.isFinite(rawLineHeight) && rawLineHeight > 0 ? rawLineHeight : fontSize;
   
-  document.body.appendChild(div);
+  // Calculate top position based on adjusted line index
+  const top = lineIndex * lineHeight;
   
-  // Get the span's position
-  const rect = span.getBoundingClientRect();
-  const divRect = div.getBoundingClientRect();
-  
-  const top = rect.top - divRect.top;
-  const left = rect.left - divRect.left;
-  
-  document.body.removeChild(div);
-  
-  const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2;
+  // Calculate left position by character width estimation
+  // Use a simple character width estimation to avoid circular dependencies
+  const charWidth = fontSize * 0.6; // Approximate character width for monospace-ish text
+  const left = lineText.length * charWidth;
   
   return { top, left, lineHeight };
 };
@@ -12937,9 +14069,11 @@ const renderWikiSuggestions = () => {
   container.style.left = `${state.wikiSuggest.position.left}px`;
 
   // Ensure there's at least one folder suggestion for folder-like triggers
+  // Skip if query ends with '/' because that means folder is already selected
   try {
     const hasFolder = state.wikiSuggest.items.some(i => i.kind === 'folder');
-    const queryLooksLikeFolder = state.wikiSuggest.query === '' || (typeof state.wikiSuggest.query === 'string' && state.wikiSuggest.query.includes('/'));
+    const query = state.wikiSuggest.query || '';
+    const queryLooksLikeFolder = query === '' || (typeof query === 'string' && query.includes('/') && !query.endsWith('/'));
     if (!hasFolder && queryLooksLikeFolder) {
       // Try to find a folder from state.tree or notes
       let folder = null;
@@ -12976,21 +14110,208 @@ const renderWikiSuggestions = () => {
     }
   } catch (e) { /* ignore */ }
 
-  const itemsHtml = state.wikiSuggest.items
-    .map((item, index) => {
-      const active = index === state.wikiSuggest.selectedIndex;
+  // If a folder is currently expanded (navigationHistory holds the stack),
+  // show the expanded folder's files in a right-side column and keep the
+  // folder list on the left. Determine the current expanded folder from
+  // navigationHistory (preferred) or the expandedFolders set as fallback.
+  let currentExpandedPath = null;
+  try {
+    if (Array.isArray(state.wikiSuggest.navigationHistory) && state.wikiSuggest.navigationHistory.length) {
+      currentExpandedPath = state.wikiSuggest.navigationHistory[state.wikiSuggest.navigationHistory.length - 1].path;
+    } else if (state.wikiSuggest.expandedFolders && state.wikiSuggest.expandedFolders.size) {
+      // fallback: pick the last entry from the Set by converting to array
+      const arr = Array.from(state.wikiSuggest.expandedFolders);
+      currentExpandedPath = arr.length ? arr[arr.length - 1] : null;
+    }
+  } catch (e) { currentExpandedPath = null; }
+
+  // Build left column items: exclude nested file items that belong to the
+  // currently expanded folder (they will appear in the right column instead).
+  // Use original indices from state.wikiSuggest.items so ids and data-index
+  // align with state.wikiSuggest.selectedIndex (avoids duplicate highlights).
+  const leftItemsWithIndex = state.wikiSuggest.items
+    .map((item, i) => ({ item, i }))
+    .filter(({ item }) => {
+      if (!currentExpandedPath) return true;
+      // If the suggestion references a file inside the currently expanded
+      // folder, exclude it from the left column so it only appears in the
+      // right-side file list.
+      if (item.parentPath && item.parentPath === currentExpandedPath && item.kind === 'note') {
+        return false;
+      }
+      return true;
+    });
+
+  // Determine a reference to the originally-selected item (if any)
+  const selectedRef = (typeof state.wikiSuggest.selectedIndex === 'number' && state.wikiSuggest.items && state.wikiSuggest.items.length)
+    ? state.wikiSuggest.items[state.wikiSuggest.selectedIndex]
+    : null;
+
+  const leftHtml = leftItemsWithIndex
+    .map(({ item, i }) => {
+      // If a side column is active, highlight the folder being inspected
+      let isActiveLeft = false;
+      try {
+        if (state.wikiSuggest.sideSelectedIndex !== null && currentExpandedPath) {
+          const itemPath = (item.fullPath || item.target || '').replace(/\/$/, '');
+          isActiveLeft = item.kind === 'folder' && itemPath === currentExpandedPath;
+        } else if (selectedRef) {
+          // Otherwise match by object identity or by unique fields
+          isActiveLeft = (item === selectedRef) || (item.fullPath && selectedRef.fullPath && item.fullPath === selectedRef.fullPath) || (item.target && selectedRef.target && item.target === selectedRef.target);
+        }
+      } catch (e) { isActiveLeft = false; }
+
+      const active = Boolean(isActiveLeft);
       const meta = item.meta ? `<div class="wiki-suggest__meta">${escapeHtml(item.meta)}</div>` : '';
-      return `<div class="wiki-suggest__item" id="wiki-suggest-item-${index}" role="option" data-index="${index}" data-active="${
-        active ? 'true' : 'false'
-      }">
-        <div class="wiki-suggest__title">${escapeHtml(item.display)}</div>
-        ${meta}
-      </div>`;
+      const isFolder = item.kind === 'folder';
+      const isExpanded = isFolder && state.wikiSuggest.expandedFolders.has(item.fullPath || (item.target || '').replace(/\/$/, ''));
+      const nestLevel = item.nestLevel || 0;
+      const indentStyle = nestLevel > 0 ? `style="padding-left: ${16 + (nestLevel * 16)}px;"` : '';
+      let indicator = '';
+      if (isFolder) indicator = isExpanded ? '▼' : '▶';
+      else if (nestLevel > 0) indicator = '&nbsp;&nbsp;';
+      const indicatorHtml = indicator ? `<span class="wiki-suggest__indicator">${indicator}</span>` : '';
+      const itemClasses = `wiki-suggest__item${isFolder ? ' wiki-suggest__item--folder' : ''}${item.isNested ? ' wiki-suggest__item--nested' : ''}${active ? ' wiki-suggest__item--selected' : ''}`;
+      return `<div class="${itemClasses}" id="wiki-suggest-item-${i}" role="option" data-index="${i}" data-active="${active ? 'true' : 'false'}" ${indentStyle}>
+        <div class="wiki-suggest__content">${indicatorHtml}<div class="wiki-suggest__title">${escapeHtml(item.display)}</div></div>${meta}</div>`;
     })
     .join('');
 
-  container.innerHTML = itemsHtml;
-  container.setAttribute('aria-activedescendant', `wiki-suggest-item-${state.wikiSuggest.selectedIndex}`);
+  // Build right column (side) from the currently expanded folder's files
+  let sideHtml = '';
+  if (currentExpandedPath) {
+    try {
+      const folderContents = getFolderContents(currentExpandedPath) || { files: [] };
+      const files = folderContents.files || [];
+        if (files.length) {
+          sideHtml = files
+            .map((f, idx) => {
+              const display = f.display || f.target || '';
+              const meta = f.meta ? `<div class="wiki-suggest__meta">${escapeHtml(f.meta)}</div>` : '';
+              const isSideActive = (typeof state.wikiSuggest.sideSelectedIndex === 'number' && state.wikiSuggest.sideSelectedIndex === idx);
+              const sideClasses = `wiki-suggest__item wiki-suggest__item--sidefile${isSideActive ? ' wiki-suggest__item--selected' : ''}`;
+              const dataActive = isSideActive ? ' data-active="true"' : '';
+              const idAttr = `id="wiki-suggest-side-item-${idx}"`;
+              // Attach data about folder so click handler can insert full relative path
+              const folderAttr = `data-folder-path="${escapeHtml(currentExpandedPath || '')}"`;
+              return `<div ${idAttr} class="${sideClasses}" data-side-index="${idx}" role="option" ${dataActive} ${folderAttr}>
+                <div class="wiki-suggest__title">${escapeHtml(display)}</div>${meta}
+              </div>`;
+            })
+            .join('');
+        }
+    } catch (e) { sideHtml = ''; }
+  }
+
+  // Wrap columns only when sideHtml exists (i.e., user opened the folder and
+  // there are files to show). Otherwise render a single column to avoid
+  // reserving horizontal space for non-opened levels.
+  const leftColStyle = 'width:100%; overflow:auto; max-height:320px;';
+  if (sideHtml && sideHtml.length) {
+    // Use top-aligned columns and avoid forcing equal heights: let each column
+    // size to its content and scroll independently. Align items to flex-start
+    // so shorter lists don't get padded to match the taller column.
+  const wrapperStyle = 'display:flex; gap:8px; align-items:flex-start;';
+  // Ensure left column sizes to content (height:auto) and top-aligns instead
+  // of stretching to match the right column. Keep a max-height so it can
+  // scroll when long.
+  const leftFlexStyle = 'flex:1; overflow:auto; max-height:320px; align-self:flex-start; height:auto;';
+  const rightColStyle = 'flex:0 0 260px; overflow:auto; max-height:320px; align-self:flex-start; border-left:1px solid rgba(0,0,0,0.06); padding-left:8px;';
+    container.innerHTML = `<div class="wiki-suggest__cols" style="${wrapperStyle}">
+      <div class="wiki-suggest__col-left" style="${leftFlexStyle}">${leftHtml}</div>
+      <div class="wiki-suggest__col-right" style="${rightColStyle}">${sideHtml}</div>
+    </div>`;
+  } else {
+    container.innerHTML = `<div class="wiki-suggest__single" style="${leftColStyle}">${leftHtml}</div>`;
+  }
+  // Normalize active markers: ensure only a single element has the
+  // data-active attribute and the selected class. This avoids cases where
+  // both left and side lists show a highlighted item simultaneously.
+  try {
+    // clear any previous markers
+    Array.from(container.querySelectorAll('[data-active="true"], .wiki-suggest__item--selected')).forEach((el) => {
+      try { el.removeAttribute('data-active'); } catch (e) {}
+      try { el.classList.remove('wiki-suggest__item--selected'); } catch (e) {}
+    });
+
+    if (typeof state.wikiSuggest.sideSelectedIndex === 'number' && currentExpandedPath) {
+      const activeSide = container.querySelector(`#wiki-suggest-side-item-${state.wikiSuggest.sideSelectedIndex}`);
+      if (activeSide) {
+        try { activeSide.setAttribute('data-active', 'true'); } catch (e) {}
+        try { activeSide.classList.add('wiki-suggest__item--selected'); } catch (e) {}
+        container.setAttribute('aria-activedescendant', `wiki-suggest-side-item-${state.wikiSuggest.sideSelectedIndex}`);
+      } else {
+        // fallback: set aria to left selection
+        container.setAttribute('aria-activedescendant', `wiki-suggest-item-${state.wikiSuggest.selectedIndex}`);
+      }
+    } else {
+      // no side selection: mark left active element
+      const leftActive = container.querySelector(`#wiki-suggest-item-${state.wikiSuggest.selectedIndex}`);
+      if (leftActive) {
+        try { leftActive.setAttribute('data-active', 'true'); } catch (e) {}
+        try { leftActive.classList.add('wiki-suggest__item--selected'); } catch (e) {}
+      }
+      container.setAttribute('aria-activedescendant', `wiki-suggest-item-${state.wikiSuggest.selectedIndex}`);
+    }
+  } catch (e) { /* best-effort normalization */ }
+
+  // Wire up click handlers for side-column files (they correspond to the
+  // folder contents we computed). When clicked, insert the file suggestion
+  // into the editor using existing applyFileSuggestion logic where possible.
+  try {
+    const sideCol = container.querySelector('.wiki-suggest__col-right');
+    if (sideCol) {
+      const nodes = Array.from(sideCol.querySelectorAll('.wiki-suggest__item--sidefile'));
+      nodes.forEach((n, idx) => {
+        n.addEventListener('click', () => {
+          try {
+            // Use data-folder-path attached to the DOM node when available
+            const domFolder = (n.getAttribute && n.getAttribute('data-folder-path')) || currentExpandedPath || '';
+            const folderContents = getFolderContents(currentExpandedPath) || { files: [] };
+            const file = folderContents.files[idx];
+            if (!file) return;
+
+            // Build a robust relative path: prefer file.relativePath or file.fullPath
+            // when it contains a slash. Otherwise combine domFolder + filename.
+            let insertPath = '';
+            if (file.relativePath) {
+              insertPath = file.relativePath;
+            } else if (file.fullPath) {
+              try {
+                const rel = getRelativePath(state.currentFolder || '', file.fullPath || '');
+                insertPath = rel && rel.length ? rel : String(file.fullPath || '');
+              } catch (e) {
+                insertPath = String(file.fullPath || '');
+              }
+            } else {
+              const base = String(domFolder || '').replace(/^\/+|\/+$/g, '');
+              const name = file.display || file.target || (file.fileName || '');
+              insertPath = base ? `${base}/${name}` : `${name}`;
+            }
+
+            // Normalize multiple slashes and remove leading './'
+            insertPath = String(insertPath)
+              .replace(/\\/g, '/')   // backslashes to forward slashes
+              .replace(/\/+/g, '/')   // collapse multiple slashes
+              .replace(/^\.\//, '')  // remove leading ./
+              .replace(/^\/+/, '');   // remove leading slashes
+
+            const edt = getActiveEditorInstance();
+            const ta = edt?.el || elements.editor;
+            if (ta) {
+              const insertText = `[[${insertPath}]]`;
+              const start = ta.selectionStart || 0;
+              const end = ta.selectionEnd || 0;
+              const before = ta.value.slice(0, start);
+              const after = ta.value.slice(end);
+              ta.value = before + insertText + after;
+              try { if (edt && typeof edt.setSelectionRange === 'function') edt.setSelectionRange(start + insertText.length, start + insertText.length); } catch (e) {}
+            }
+          } catch (e) { /* ignore click handler errors */ }
+        });
+      });
+    }
+  } catch (e) { /* best-effort */ }
 
   // Debugging aid: print suggestion items when DEBUG_WIKI_SUGGEST is set
   try {
@@ -12999,10 +14320,21 @@ const renderWikiSuggestions = () => {
     }
   } catch (e) {}
 
-  const activeEl = container.querySelector('[data-active="true"]');
-  if (activeEl && typeof activeEl.scrollIntoView === 'function') {
-    activeEl.scrollIntoView({ block: 'nearest' });
-  }
+  // If a side item is active, prefer scrolling it into view; otherwise scroll
+  // the left active element.
+  try {
+    if (typeof state.wikiSuggest.sideSelectedIndex === 'number') {
+      const activeSide = container.querySelector(`#wiki-suggest-side-item-${state.wikiSuggest.sideSelectedIndex}`);
+      if (activeSide && typeof activeSide.scrollIntoView === 'function') {
+        activeSide.scrollIntoView({ block: 'nearest' });
+        // Set aria-activedescendant to the side id when active
+        container.setAttribute('aria-activedescendant', `wiki-suggest-side-item-${state.wikiSuggest.sideSelectedIndex}`);
+      }
+    } else {
+      const activeEl = container.querySelector('[data-active="true"]');
+      if (activeEl && typeof activeEl.scrollIntoView === 'function') activeEl.scrollIntoView({ block: 'nearest' });
+    }
+  } catch (e) { /* ignore scrolling errors */ }
 };
 
 const renderHashtagSuggestions = () => {
@@ -13682,11 +15014,11 @@ const collectWikiSuggestionItems = (query) => {
   // Pre-collect folder suggestions (so they appear even when many note
   // suggestions are present). We collect from state.tree when available and
   // then fall back to scanning state.notes.
-  // Collect folders when the query is empty, explicitly folder-scoped
-  // (contains '/') or when the user is typing a folder name (no '/'
-  // present) — in the latter case only include folders whose last
-  // segment begins with the typed text.
-  if (parsed.isEmpty || parsed.notePart.includes('/') || (parsed.notePart && !parsed.notePart.includes('/'))) {
+  // Collect folders when the query is empty or when the user is typing a folder name 
+  // (no '/' present). Skip folder collection if the query already ends with '/' 
+  // because that means the user has already selected a folder.
+  if (parsed.isEmpty || (parsed.notePart && !parsed.notePart.includes('/')) || 
+      (parsed.notePart.includes('/') && !parsed.notePart.endsWith('/'))) {
     try {
       if (state.tree && typeof state.tree === 'object') {
         const walk = (node) => {
@@ -13697,7 +15029,8 @@ const collectWikiSuggestionItems = (query) => {
                   const base = rel.split('/').filter(Boolean).pop() || rel;
                   const baseKey = (base || '').toLowerCase();
                   // If user is typing folder name, filter by prefix match on last segment
-                  if (parsed.isEmpty || parsed.notePart.includes('/') || (!parsed.notePart.includes('/') && baseKey.startsWith((parsed.notePart || '').toLowerCase()))) {
+                  // Skip if query ends with '/' (folder already selected)
+                  if ((parsed.isEmpty || parsed.notePart.includes('/') || (!parsed.notePart.includes('/') && baseKey.startsWith((parsed.notePart || '').toLowerCase()))) && !parsed.notePart.endsWith('/')) {
                     if (!seenFolderLast.has(baseKey)) {
                       seenFolderLast.add(baseKey);
                       suggestions.push({ kind: 'folder', target: base + '/', display: base + '/', meta: 'Folder', sortKey: -1 });
@@ -13721,7 +15054,8 @@ const collectWikiSuggestionItems = (query) => {
           if (folder) {
             const base = folder.split('/').filter(Boolean).pop() || folder;
             const baseKey = (base || '').toLowerCase();
-            if (parsed.isEmpty || parsed.notePart.includes('/') || (!parsed.notePart.includes('/') && baseKey.startsWith((parsed.notePart || '').toLowerCase()))) {
+            // Skip if query ends with '/' (folder already selected)
+            if ((parsed.isEmpty || parsed.notePart.includes('/') || (!parsed.notePart.includes('/') && baseKey.startsWith((parsed.notePart || '').toLowerCase()))) && !parsed.notePart.endsWith('/')) {
               if (!seenFolderLast.has(baseKey)) {
                 seenFolderLast.add(baseKey);
                 suggestions.push({ kind: 'folder', target: base + '/', display: base + '/', meta: 'Folder', sortKey: -1 });
@@ -13775,7 +15109,7 @@ const collectWikiSuggestionItems = (query) => {
     suggestions.push({
       kind: 'note',
       noteId: note.id,
-      target: parsed.notePart.includes('/') ? parsed.notePart : title,
+      target: title,
       display: title,
       meta: fileName && fileName !== title ? fileName : null,
       sortKey: score ?? 0
@@ -13783,7 +15117,8 @@ const collectWikiSuggestionItems = (query) => {
   });
 
   // Add folder suggestions if query is empty or looks like folder start
-  if (parsed.isEmpty || parsed.notePart.includes('/')) {
+  // Skip if query ends with '/' because that means folder is already selected
+  if ((parsed.isEmpty || parsed.notePart.includes('/')) && !parsed.notePart.endsWith('/')) {
     const folderSet = new Set();
     // Prefer tree traversal when available (more authoritative for folders)
     try {
@@ -13940,9 +15275,9 @@ const collectWikiSuggestionItems = (query) => {
 
   // If this query is empty or folder-like and we found no folder suggestions,
   // attempt to insert one from the workspace tree or notes so tests and UI
-  // always see a folder candidate.
+  // always see a folder candidate. Skip if query ends with '/' (folder already selected).
   try {
-    if ((parsed.isEmpty || parsed.notePart.includes('/'))) {
+    if ((parsed.isEmpty || parsed.notePart.includes('/')) && !parsed.notePart.endsWith('/')) {
       const hasFolder = suggestions.some(s => s.kind === 'folder');
       if (!hasFolder) {
         // Find a folder in state.tree first
@@ -14134,18 +15469,18 @@ const openWikiSuggestions = (trigger, textarea) => {
   renderWikiSuggestions();
 };
 
-const updateWikiSuggestions = (textarea = getActiveEditorInstance().el, editorType = 'editor1') => {
+const updateWikiSuggestions = (textarea = getActiveEditorInstance().el) => {
   // Debug prints removed
   if (!textarea || textarea !== document.activeElement) {
   // Debug prints removed
-    closeWikiSuggestions(editorType);
+    closeWikiSuggestions();
     return;
   }
 
   if (state.wikiSuggest.suppress) {
   // Debug prints removed
     state.wikiSuggest.suppress = false;
-    closeWikiSuggestions(editorType);
+    closeWikiSuggestions();
     return;
   }
 
@@ -14153,13 +15488,13 @@ const updateWikiSuggestions = (textarea = getActiveEditorInstance().el, editorTy
   const selectionEnd = textarea.selectionEnd ?? 0;
   if (selectionStart !== selectionEnd) {
   // Debug prints removed
-    closeWikiSuggestions(editorType);
+    closeWikiSuggestions();
     return;
   }
 
   const trigger = getWikiSuggestionTrigger(textarea.value, selectionStart);
   if (!trigger) {
-    closeWikiSuggestions(editorType);
+    closeWikiSuggestions();
     return;
   }
 
@@ -14169,8 +15504,8 @@ const updateWikiSuggestions = (textarea = getActiveEditorInstance().el, editorTy
 
   if (state.wikiSuggest.open && trigger.start === state.wikiSuggest.start && trigger.query === state.wikiSuggest.query) {
     state.wikiSuggest.end = trigger.end;
-    computeWikiSuggestionPosition(textarea, trigger.end, editorType);
-    renderWikiSuggestions(editorType);
+    computeWikiSuggestionPosition(textarea, trigger.end);
+    renderWikiSuggestions();
     return;
   }
 
@@ -14181,8 +15516,31 @@ const moveWikiSuggestionSelection = (delta) => {
   if (!state.wikiSuggest.open || !state.wikiSuggest.items.length) {
     return;
   }
+  // If a folder is expanded and the side column is active, move selection
+  // within the side column. Otherwise move within the left column items.
+  const currentExpandedPath = (Array.isArray(state.wikiSuggest.navigationHistory) && state.wikiSuggest.navigationHistory.length)
+    ? state.wikiSuggest.navigationHistory[state.wikiSuggest.navigationHistory.length - 1].path
+    : (state.wikiSuggest.expandedFolders && state.wikiSuggest.expandedFolders.size ? Array.from(state.wikiSuggest.expandedFolders).slice(-1)[0] : null);
 
-  const count = state.wikiSuggest.items.length;
+  if (currentExpandedPath && state.wikiSuggest.sideSelectedIndex !== null) {
+    // Move within side files
+    const files = (getFolderContents(currentExpandedPath) || { files: [] }).files || [];
+    if (!files.length) return;
+    const count = files.length;
+    const next = (state.wikiSuggest.sideSelectedIndex + delta + count) % count;
+    state.wikiSuggest.sideSelectedIndex = next;
+    renderWikiSuggestions();
+    return;
+  }
+
+  // Move within left items (visible left column)
+  const leftItems = state.wikiSuggest.items.filter((item) => {
+    if (!currentExpandedPath) return true;
+    if (item.isNested && item.parentPath && item.parentPath === currentExpandedPath && item.kind === 'note') return false;
+    return true;
+  });
+  const count = leftItems.length;
+  if (!count) return;
   const nextIndex = (state.wikiSuggest.selectedIndex + delta + count) % count;
   state.wikiSuggest.selectedIndex = nextIndex;
   renderWikiSuggestions();
@@ -14206,16 +15564,20 @@ const applyWikiSuggestion = (index) => {
   const before = _ta_wiki.value.slice(0, start);
   const after = _ta_wiki.value.slice(end);
   const replacement = suggestion.target;
+  
+  // If this is a note suggestion, automatically add the closing ]] 
+  const shouldAutoClose = suggestion.kind === 'note';
+  const fullReplacement = shouldAutoClose ? `${replacement}]]` : replacement;
 
-  const nextValue = `${before}${replacement}${after}`;
+  const nextValue = `${before}${fullReplacement}${after}`;
   try {
     _edt_wiki.setValue(nextValue);
-    const caret = before.length + replacement.length;
+    const caret = before.length + fullReplacement.length;
   try { if (_edt_wiki && typeof _edt_wiki.setSelectionRange === 'function') _edt_wiki.setSelectionRange(caret, caret); else _ta_wiki.setSelectionRange(caret, caret); } catch (e) {}
   } catch (e) {
     if (_ta_wiki) {
       _ta_wiki.value = nextValue;
-  try { if (_edt_wiki && typeof _edt_wiki.setSelectionRange === 'function') _edt_wiki.setSelectionRange(before.length + replacement.length, before.length + replacement.length); else _ta_wiki.setSelectionRange(before.length + replacement.length, before.length + replacement.length); } catch (err) {}
+  try { if (_edt_wiki && typeof _edt_wiki.setSelectionRange === 'function') _edt_wiki.setSelectionRange(before.length + fullReplacement.length, before.length + fullReplacement.length); else _ta_wiki.setSelectionRange(before.length + fullReplacement.length, before.length + fullReplacement.length); } catch (err) {}
     }
   }
 
@@ -15439,7 +16801,9 @@ const handleExportImageClick = async (format, event) => {
 };
 
 const handleGlobalShortcuts = (event) => {
-  if (!event.metaKey) {
+  // Support both Cmd (Mac) and Ctrl (Windows/Linux)
+  const isCmdOrCtrl = event.metaKey || event.ctrlKey;
+  if (!isCmdOrCtrl) {
     return;
   }
 
@@ -15554,6 +16918,9 @@ const handleGlobalShortcuts = (event) => {
   } else if (key === 't' && event.shiftKey) {
     event.preventDefault();
     showTemplatesModal();
+  } else if (key === 'm' && event.shiftKey) {
+    event.preventDefault();
+    showQuickMatrixTableDialog();
   } else if (key === 't') {
     event.preventDefault();
     generateTableOfContents();
@@ -17293,6 +18660,14 @@ const initialize = () => {
     try { editorInstances.left.addEventListener('dragenter', handleEditorDragEnter, { passive: false }); } catch (e) {}
     try { editorInstances.left.addEventListener('dragleave', handleEditorDragLeave, { passive: false }); } catch (e) {}
     try { editorInstances.left.addEventListener('drop', handleEditor1Drop); } catch (e) {}
+
+    // Also ensure the raw textarea element accepts drops directly. Some UI
+    // configurations may not expose Pane editorInstances immediately; attaching
+    // to `elements.editor` ensures drag/drop works in minimal DOM setups.
+    try { elements.editor.addEventListener('dragover', handleEditorDragOver, { passive: false }); } catch (e) {}
+    try { elements.editor.addEventListener('dragenter', handleEditorDragEnter, { passive: false }); } catch (e) {}
+    try { elements.editor.addEventListener('dragleave', handleEditorDragLeave, { passive: false }); } catch (e) {}
+    try { elements.editor.addEventListener('drop', handleEditor1Drop, true); } catch (e) {}
   }
 
   // Also add drop listeners to the editor pane itself
@@ -17509,6 +18884,17 @@ const initialize = () => {
             }
           }
           if (!paneId && paneRoot.classList && paneRoot.classList.contains('editor-pane--right')) paneId = 'right';
+
+          // If dropped on right half of pane, create a new pane
+          try {
+            if (typeof ev.clientX === 'number') {
+              const rect = paneRoot.getBoundingClientRect ? paneRoot.getBoundingClientRect() : null;
+              if (rect && rect.width > 0 && ev.clientX >= rect.left + rect.width / 2) {
+                const created = createEditorPane(null, '');
+                if (created) paneId = created;
+              }
+            }
+          } catch (e) { /* ignore */ }
         }
       }
 
@@ -17812,6 +19198,15 @@ const initialize = () => {
     event.preventDefault();
     showTemplatesModal();
   });
+
+  // Matrix/Table insert button event listener
+  const matrixTableButton = document.getElementById('insert-matrix-table-button');
+  if (matrixTableButton) {
+    matrixTableButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      showQuickMatrixTableDialog();
+    });
+  }
 
   // Math WYSIWYG toggle and handlers
   const mathWysiwygButton = document.getElementById('toggle-math-wysiwyg-button');
@@ -18348,8 +19743,7 @@ const initialize = () => {
             video.style.pointerEvents = 'auto';
             video.addEventListener('mouseenter', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} });
             video.addEventListener('mouseleave', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = ''; } catch (e) {} });
-            video.addEventListener('touchstart', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
-            video.addEventListener('touchend', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} });
+video.addEventListener('touchstart', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = 'none'; } catch (e) {} }, { passive: true });
             video.addEventListener('touchend', () => { try { const edt = getEditorForOverlay(getOverlayForEditor(editor)); if (edt) edt.style.pointerEvents = ''; } catch (e) {} });
             // Fallback text for browsers that don't support <video>
             video.innerHTML = seg.text ? `Your browser does not support the video tag. ${escapeHtml(seg.text)}` : 'Your browser does not support the video tag.';
@@ -19603,7 +20997,7 @@ const initialize = () => {
   });
 
   // Re-scan math blocks whenever preview DOM changes using MutationObserver
-  if (elements.preview) {
+  if (elements.preview && typeof MutationObserver !== 'undefined') {
     const observer = new MutationObserver(() => {
       try { renderMathList(); } catch (e) { /* ignore */ }
     });
@@ -19805,8 +21199,14 @@ const initialize = () => {
 
   elements.editorSearchInput?.addEventListener('input', handleEditorSearchInput);
   elements.editorSearchInput?.addEventListener('keydown', handleEditorSearchKeydown);
+  elements.editorReplaceInput?.addEventListener('input', handleEditorReplaceInput);
+  elements.editorReplaceInput?.addEventListener('keydown', handleEditorReplaceKeydown);
+  elements.editorSearchCase?.addEventListener('click', handleEditorSearchCaseToggle);
+  elements.editorSearchReplaceToggle?.addEventListener('click', handleEditorSearchReplaceToggle);
   elements.editorSearchPrevButton?.addEventListener('click', handleEditorSearchPrev);
   elements.editorSearchNextButton?.addEventListener('click', handleEditorSearchNext);
+  elements.editorReplaceOne?.addEventListener('click', handleEditorReplaceOne);
+  elements.editorReplaceAll?.addEventListener('click', handleEditorReplaceAll);
   elements.editorSearchCloseButton?.addEventListener('click', handleEditorSearchClose);
 
   if (elements.openFolderButtons && typeof elements.openFolderButtons.forEach === 'function') {
@@ -20109,6 +21509,38 @@ const initialize = () => {
     try { console.log('[TESTHOOK] initialize: treeEl.innerHTML=', treeEl && treeEl.innerHTML ? treeEl.innerHTML.trim().slice(0,200) : '<empty>'); } catch (e) {}
     try { console.log('[TESTHOOK] initialize: query .tree-node--file=', treeEl && treeEl.querySelector ? !!treeEl.querySelector('.tree-node--file') : false); } catch (e) {}
   } catch (e) {}
+};
+
+// Auto-resize textarea functionality for notebook cell editors
+window.autoResizeTextarea = (ta) => {
+  try {
+    if (!ta) return;
+    // Avoid interfering with raw JSON editor textareas
+    if (ta.classList && !ta.classList.contains('nb-edit-source')) return;
+
+    // Reuse a single bound handler per element to avoid duplicate listeners
+    const bind = () => {
+      try {
+        const handler = () => {
+          try {
+            ta.style.overflowY = 'hidden';
+            ta.style.height = 'auto';
+            ta.style.height = ta.scrollHeight + 'px';
+          } catch (e) { /* ignore */ }
+        };
+        // Remove any existing handler first
+        if (ta._nta_autosizeHandler) {
+          try { ta.removeEventListener('input', ta._nta_autosizeHandler); } catch (e) {}
+        }
+        ta._nta_autosizeHandler = handler;
+        ta.addEventListener('input', handler);
+        // Initialize height after binding
+        handler();
+      } catch (e) { /* ignore */ }
+    };
+
+    bind();
+  } catch (e) { /* ignore */ }
 };
 
 // Auto-resize iframe functionality
@@ -23650,6 +25082,13 @@ const handleTemplateClick = (e) => {
   if (templateItem) {
     e.preventDefault();
     const templateType = templateItem.dataset.template;
+    
+    // Special handling for matrices and tables - ask for dimensions
+    if (templateType.startsWith('matrix') || templateType.startsWith('table')) {
+      showMatrixTableDialog(templateType);
+      return;
+    }
+    
     const content = getTemplateContent(templateType);
     
     if (content) {
@@ -23658,6 +25097,92 @@ const handleTemplateClick = (e) => {
     }
     
     closeTemplatesModal();
+  }
+};
+
+// Function to show matrix/table dimension dialog
+const showMatrixTableDialog = (defaultType) => {
+  const isMatrix = defaultType.startsWith('matrix');
+  const typeText = isMatrix ? 'matrix' : 'table';
+  
+  // Create a simple prompt for dimensions
+  const dimensions = prompt(
+    `Enter ${typeText} dimensions (format: rows x cols, e.g., "3x3")\n\nOptionally add fill value with "=" (e.g., "3x3=x" or "2x4=0"):`,
+    defaultType.includes('3x3') ? '3x3=x' : '2x2='
+  );
+  
+  if (dimensions) {
+    // Parse the input and generate content
+    const fullSyntax = dimensions.includes('x') ? 
+      `${isMatrix ? 'matrix' : 'table'}${dimensions}` : dimensions;
+    
+    const content = generateMatrixFromSyntax(fullSyntax);
+    
+    if (content) {
+      // Instead of creating a new file, insert into current editor
+      insertTextAtCursor(content);
+      closeTemplatesModal();
+    } else {
+      alert('Invalid format. Please use format like "3x3=x" or "2x4=0"');
+    }
+  }
+};
+
+// Function to insert text at current cursor position
+const insertTextAtCursor = (text) => {
+  const editor = getActiveEditorInstance();
+  if (!editor || !editor.el) return;
+  
+  const textarea = editor.el;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const value = textarea.value;
+  
+  // Insert the text at cursor position
+  const newValue = value.slice(0, start) + text + value.slice(end);
+  textarea.value = newValue;
+  
+  // Position cursor after inserted text
+  const newCursorPos = start + text.length;
+  textarea.setSelectionRange(newCursorPos, newCursorPos);
+  
+  // Focus the editor and trigger input event for any listeners
+  textarea.focus();
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+};
+
+// Quick matrix/table dialog function
+const showQuickMatrixTableDialog = () => {
+  const choice = prompt(
+    'Quick Insert:\n\n' +
+    'Examples:\n' +
+    '• matrix3x3=x (3x3 matrix filled with x)\n' +
+    '• matrix2x2=0 (2x2 matrix filled with 0)\n' +
+    '• table4x3=data (4x3 table filled with "data")\n' +
+    '• identity3x3 (3x3 identity matrix)\n\n' +
+    'Enter your matrix/table:',
+    'matrix3x3=x'
+  );
+  
+  if (choice) {
+    let content = '';
+    
+    // Handle special cases
+    if (choice === 'identity2x2') {
+      content = matrixToLatex([['1', '0'], ['0', '1']], 'bmatrix');
+    } else if (choice === 'identity3x3') {
+      content = matrixToLatex([['1', '0', '0'], ['0', '1', '0'], ['0', '0', '1']], 'bmatrix');
+    } else if (choice === 'identity4x4') {
+      content = matrixToLatex([['1', '0', '0', '0'], ['0', '1', '0', '0'], ['0', '0', '1', '0'], ['0', '0', '0', '1']], 'bmatrix');
+    } else {
+      content = generateMatrixFromSyntax(choice);
+    }
+    
+    if (content) {
+      insertTextAtCursor(content);
+    } else {
+      alert('Invalid format. Please use format like "matrix3x3=x", "table2x4=data", or "identity3x3"');
+    }
   }
 };
 
@@ -23677,6 +25202,70 @@ const closeTemplatesModal = () => {
   elements.templatesModal.hidden = true;
   elements.templatesModal.style.display = 'none';
   elements.templatesModal.setAttribute('aria-hidden', 'true');
+};
+
+// Helper function to generate markdown tables
+const generateTableTemplate = (rows, cols, fillValue = '') => {
+  const header = '| ' + Array(cols).fill('Col').map((col, i) => `${col}${i+1}`).join(' | ') + ' |';
+  const separator = '| ' + Array(cols).fill('---').join(' | ') + ' |';
+  const tableRows = [];
+  for (let i = 0; i < rows; i++) {
+    const row = Array(cols).fill(fillValue);
+    tableRows.push('| ' + row.join(' | ') + ' |');
+  }
+  return [header, separator, ...tableRows].join('\n');
+};
+
+// Matrix creation helper functions
+const createMatrix = (rows, cols, fillValue = '') => {
+  const matrix = [];
+  for (let i = 0; i < rows; i++) {
+    const row = [];
+    for (let j = 0; j < cols; j++) {
+      row.push(fillValue);
+    }
+    matrix.push(row);
+  }
+  return matrix;
+};
+
+const matrixToLatex = (matrix, matrixType = 'bmatrix') => {
+  const rows = matrix.map(row => row.join(' & ')).join(' \\\ ');
+  return `$$\n\\begin{${matrixType}}\n${rows}\n\\end{${matrixType}}\n$$`;
+};
+
+const parseMatrixFillSyntax = (template) => {
+  // Parse syntax like "matrix3x3=x" or "matrix2x4=0" or "table3x2=data"
+  const matrixMatch = template.match(/^(matrix|table)(\d+)x(\d+)(?:=(.*))?$/);
+  if (matrixMatch) {
+    const [, type, rows, cols, fillValue] = matrixMatch;
+    return {
+      type,
+      rows: parseInt(rows, 10),
+      cols: parseInt(cols, 10),
+      fillValue: fillValue || ''
+    };
+  }
+  return null;
+};
+
+const generateMatrixFromSyntax = (syntax) => {
+  const parsed = parseMatrixFillSyntax(syntax);
+  if (!parsed) return '';
+
+  const { type, rows, cols, fillValue } = parsed;
+  const matrix = createMatrix(rows, cols, fillValue);
+
+  if (type === 'matrix') {
+    return matrixToLatex(matrix, 'bmatrix');
+  } else if (type === 'table') {
+    // Generate markdown table
+    const header = '| ' + Array(cols).fill('Col').map((col, i) => `${col}${i+1}`).join(' | ') + ' |';
+    const separator = '| ' + Array(cols).fill('---').join(' | ') + ' |';
+    const tableRows = matrix.map(row => '| ' + row.join(' | ') + ' |');
+    return [header, separator, ...tableRows].join('\n');
+  }
+  return '';
 };
 
 const getTemplateContent = (templateType) => {
@@ -23796,8 +25385,29 @@ What are the main goals or priorities for today?
 ## Notes
 - `,
     
-    blank: ''
+    blank: '',
+    
+    // Matrix templates
+    'matrix2x2': matrixToLatex(createMatrix(2, 2, 'a'), 'bmatrix'),
+    'matrix3x3': matrixToLatex(createMatrix(3, 3, 'x'), 'bmatrix'),
+    'matrix4x4': matrixToLatex(createMatrix(4, 4, '0'), 'bmatrix'),
+    'identity2x2': matrixToLatex([['1', '0'], ['0', '1']], 'bmatrix'),
+    'identity3x3': matrixToLatex([['1', '0', '0'], ['0', '1', '0'], ['0', '0', '1']], 'bmatrix'),
+    'pmatrix3x3': matrixToLatex(createMatrix(3, 3, 'x'), 'pmatrix'),
+    'vmatrix3x3': matrixToLatex(createMatrix(3, 3, 'x'), 'vmatrix'),
+    'Vmatrix3x3': matrixToLatex(createMatrix(3, 3, 'x'), 'Vmatrix'),
+    
+    // Table templates (markdown)
+    'table2x3': generateTableTemplate(2, 3, ''),
+    'table3x2': generateTableTemplate(3, 2, ''),
+    'table4x3': generateTableTemplate(4, 3, '')
   };
+  
+  // First check if it's a dynamic matrix/table syntax like "matrix3x3=x"
+  const dynamicContent = generateMatrixFromSyntax(templateType);
+  if (dynamicContent) {
+    return dynamicContent;
+  }
   
   return templates[templateType] || '';
 };
@@ -24131,7 +25741,7 @@ if (document.readyState === 'loading') {
   initializeAccessibility();
 }
 
-// Export functionality
+// Export functionality - delegates to existing export functions based on format
 async function handleExport(format) {
   if (!elements.preview || !elements.editor) return;
   
@@ -24141,32 +25751,35 @@ async function handleExport(format) {
   // Process images and iframes before exporting
   await processPreviewImages();
   await processPreviewHtmlIframes();
-  
+
   const title = note.title || 'Untitled';
+  // Retrieve preview HTML after image/iframe processing (explicit line required by tests)
   const html = elements.preview ? elements.preview.innerHTML : '';
+  // If the original note is HTML, prefer using its raw content instead of rendered preview
+  const exportHtml = note.type === 'html' ? (note.content || '') : html;
   const folderPath = elements.workspacePath?.title;
   
   try {
     let result;
-    switch (format) {
+    switch ((format || 'pdf').toLowerCase()) {
       case 'pdf':
-        result = await window.api.exportPreviewPdf({ html, title, folderPath });
+        result = await window.api.exportPreviewPdf({ html: exportHtml, title, folderPath });
         break;
       case 'html':
-        result = await window.api.exportPreviewHtml({ html, title, folderPath });
+        result = await window.api.exportPreviewHtml({ html: exportHtml, title, folderPath });
         break;
       case 'docx':
-        result = await window.api.exportPreviewDocx({ html, title, folderPath });
+        result = await window.api.exportPreviewDocx({ html: exportHtml, title, folderPath });
         break;
       case 'epub':
-        result = await window.api.exportPreviewEpub({ html, title, folderPath });
+        result = await window.api.exportPreviewEpub({ html: exportHtml, title, folderPath });
         break;
       default:
         throw new Error(`Unsupported export format: ${format}`);
     }
     
     if (result && result.filePath) {
-      showStatusMessage(`Exported to ${format.toUpperCase()} successfully`);
+      showStatusMessage(`Exported to ${((format||'pdf').toUpperCase())} successfully`);
     }
   } catch (error) {
     showStatusMessage(`Export failed: ${error.message}`, 'error');

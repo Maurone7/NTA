@@ -107,21 +107,6 @@
             </div>
             <div class="workspace__filepath" id="file-path">Open a folder and select a file to get started.</div>
           </div>
-          <div id="editor-search" class="workspace__search" hidden>
-            <input
-              id="editor-search-input"
-              type="text"
-              placeholder="Search in note… (⌘F)"
-              aria-label="Search in current note"
-              autocomplete="off"
-            />
-            <div class="workspace__search-controls">
-              <button type="button" id="editor-search-prev" aria-label="Previous match (↑)" title="Previous match (↑)">↑</button>
-              <button type="button" id="editor-search-next" aria-label="Next match (↓)" title="Next match (↓)">↓</button>
-              <button type="button" id="editor-search-close" aria-label="Close search (Esc)" title="Close search (Esc)">✕</button>
-            </div>
-            <div id="editor-search-count" class="workspace__search-count" aria-live="polite">0 / 0</div>
-          </div>
           <div class="workspace__actions">
             <button
               id="toggle-sidebar-button"
@@ -192,6 +177,15 @@
             >
               <span class="icon" aria-hidden="true">📝</span>
             </button>
+            <button
+              id="insert-matrix-table-button"
+              type="button"
+              class="ghost icon-button"
+              title="Insert Matrix/Table (⌘⇧M)"
+              aria-label="Insert Matrix or Table"
+            >
+              <span class="icon" aria-hidden="true">🔢</span>
+            </button>
             <div class="export-dropdown">
               <button
                 id="export-dropdown-button"
@@ -258,6 +252,41 @@
             </div>
             <textarea id="note-editor" spellcheck="true" aria-label="Markdown editor (left)"></textarea>
             <div id="editor-math-overlay" class="editor-math-overlay" aria-hidden="true" hidden></div>
+            
+            <!-- Search Overlay -->
+            <div id="editor-search" class="editor-search-overlay" hidden>
+              <div class="search-inputs">
+                <input
+                  id="editor-search-input"
+                  type="text"
+                  placeholder="Search in note… (⌘F)"
+                  aria-label="Search in current note"
+                  autocomplete="off"
+                />
+                <input
+                  id="editor-replace-input"
+                  type="text"
+                  placeholder="Replace with…"
+                  aria-label="Replace with"
+                  autocomplete="off"
+                  hidden
+                />
+              </div>
+              <div class="search-controls">
+                <div class="left-controls">
+                  <button type="button" id="editor-search-case" aria-label="Match case" title="Match case (Aa)" class="search-toggle">Aa</button>
+                  <button type="button" id="editor-search-replace-toggle" aria-label="Toggle replace" title="Toggle replace mode" class="search-toggle">⇄</button>
+                  <button type="button" id="editor-search-prev" aria-label="Previous match (↑)" title="Previous match (↑)">↑</button>
+                  <button type="button" id="editor-search-next" aria-label="Next match (↓)" title="Next match (↓)">↓</button>
+                  <button type="button" id="editor-replace-one" aria-label="Replace" title="Replace current match" hidden>Replace</button>
+                  <button type="button" id="editor-replace-all" aria-label="Replace All" title="Replace all matches" hidden>All</button>
+                </div>
+                <div class="right-controls">
+                  <div id="editor-search-count" class="search-count" aria-live="polite">0 / 0</div>
+                  <button type="button" id="editor-search-close" aria-label="Close search (Esc)" title="Close search (Esc)">✕</button>
+                </div>
+              </div>
+            </div>
             
             <!-- Math Preview Popup -->
             <div id="math-preview-popup" class="math-preview-popup" hidden>
@@ -369,8 +398,8 @@
               </div>
             </figure>
             <div id="html-viewer" class="html-viewer" aria-label="HTML preview">
-              <!-- The viewer iframe should not have allow-same-origin to prevent sandbox escape. -->
-              <iframe id="html-viewer-frame" title="HTML Viewer" sandbox="allow-scripts allow-forms allow-popups"></iframe>
+              <!-- HTML viewer iframe with sandbox allowing scripts and same-origin for proper functionality. -->
+              <iframe id="html-viewer-frame" title="HTML Viewer" sandbox="allow-scripts allow-forms allow-popups allow-same-origin"></iframe>
               <div id="html-viewer-error" class="html-viewer__fallback" hidden>
                 Unable to load this HTML file.
               </div>
@@ -513,7 +542,32 @@
                     <div class="template-item" data-template="research">
                       <div class="template-icon">🔬</div>
                       <div class="template-name">Research Notes</div>
-                      <div class="template-description">Academic or technical research</div>
+                      <div class="template-description">Research planning and tracking</div>
+                    </div>
+                    <div class="template-item" data-template="journal">
+                      <div class="template-icon">📓</div>
+                      <div class="template-name">Daily Journal</div>
+                      <div class="template-description">Daily reflection template</div>
+                    </div>
+                    <div class="template-item" data-template="todo">
+                      <div class="template-icon">✅</div>
+                      <div class="template-name">Task List</div>
+                      <div class="template-description">Organized todo list</div>
+                    </div>
+                    <div class="template-item" data-template="matrix3x3">
+                      <div class="template-icon">🔢</div>
+                      <div class="template-name">3×3 Matrix</div>
+                      <div class="template-description">Mathematical matrix template</div>
+                    </div>
+                    <div class="template-item" data-template="identity3x3">
+                      <div class="template-icon">🆔</div>
+                      <div class="template-name">Identity Matrix</div>
+                      <div class="template-description">3×3 identity matrix</div>
+                    </div>
+                    <div class="template-item" data-template="table3x2">
+                      <div class="template-icon">📊</div>
+                      <div class="template-name">3×2 Table</div>
+                      <div class="template-description">Markdown table template</div>
                     </div>
                     <div class="template-item" data-template="journal">
                       <div class="template-icon">📔</div>
@@ -759,6 +813,13 @@
                     <option value="docx">DOCX</option>
                     <option value="epub">EPUB</option>
                   </select>
+                </div>
+                <div class="settings-item">
+                  <label class="settings-item__label">Direct Export with Cmd+E</label>
+                  <div class="toggle-group">
+                    <input type="checkbox" id="cmd-e-direct-export-toggle" class="settings-toggle">
+                    <label for="cmd-e-direct-export-toggle" class="toggle-label">When enabled, Cmd+E exports using the default format. When disabled, opens the export menu.</label>
+                  </div>
                 </div>
                 <div class="settings-item">
                   <label class="settings-item__label">Export Settings</label>

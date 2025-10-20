@@ -3,7 +3,18 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
-const SUPPORTED_EXTS = new Set(['md', 'pdf', 'ipynb', 'html', 'htm', 'txt']);
+const SUPPORTED_EXTS = new Set([
+  'md', 'markdown', 'mdx',
+  'pdf',
+  'ipynb',
+  'html', 'htm',
+  'txt', 'text',
+  // LaTeX and auxiliaries
+  'tex', 'aux', 'log', 'toc', 'cls', 'bib',
+  // Common code files
+  'js', 'jsx', 'ts', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'hpp', 'rb', 'go', 'rs', 'php', 'swift', 'kt', 'kts', 'scala',
+  'json', 'yml', 'yaml', 'xml', 'html', 'css', 'scss', 'md'
+]);
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'tif', 'tiff', 'avif', 'ico']);
 const VIDEO_EXTS = new Set(['mp4', 'webm', 'ogg', 'ogv', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'm4v']);
 
@@ -16,6 +27,8 @@ function getNoteType(ext) {
   if (ext === 'pdf') return 'pdf';
   if (ext === 'html' || ext === 'htm') return 'html';
   if (ext === 'txt') return 'text';
+  if (ext === 'tex') return 'latex';
+  if (ext === 'bib') return 'bib';
   if (IMAGE_EXTS.has(ext)) return 'image';
   if (VIDEO_EXTS.has(ext)) return 'video';
   return 'markdown';
@@ -170,36 +183,79 @@ ipcMain.handle('notes:paths', async () => {
 });
 
 ipcMain.handle('workspace:resolveResource', async (_event, payload) => {
-  // Return a simple file:// URL for local absolute paths so the renderer can fetch them.
+  // Resolve resource paths with awareness of note/folder context.
   try {
     const src = payload && payload.src ? String(payload.src) : null;
+    const notePath = payload && payload.notePath ? String(payload.notePath) : null;
+    const folderPath = payload && payload.folderPath ? String(payload.folderPath) : null;
     if (!src) return { value: null };
-    if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) {
+
+    // External or already data/file URLs can be returned as-is
+    if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:') || src.startsWith('file://')) {
       return { value: src };
     }
-    // For local files, return a file:// URL
-    const resolved = path.isAbsolute(src) ? src : path.resolve(src);
-    // If the file is a PDF or a text-like file, attempt to read and return
-    // a data: URI so the renderer (and sandboxed iframe) can load it reliably.
-    try {
-      const ext = String(resolved).split('.').pop().toLowerCase();
-      if (ext === 'pdf') {
-        const buf = await fs.promises.readFile(resolved).catch(() => null);
-        if (buf && Buffer.isBuffer(buf)) {
-          const b64 = buf.toString('base64');
-          return { value: `data:application/pdf;base64,${b64}`, mimeType: 'application/pdf' };
-        }
-      }
-      if (['md','txt','html'].includes(ext)) {
-        const txt = await fs.promises.readFile(resolved, { encoding: 'utf8' }).catch(() => null);
-        if (typeof txt === 'string') {
-          const enc = encodeURIComponent(txt);
-          return { value: `data:text/plain;charset=utf-8,${enc}`, mimeType: 'text/plain' };
-        }
-      }
-    } catch (e) {
-      // fall back to file:// on any failure
+
+    // Normalize slashes for consistent handling
+    const normalizedSrc = src.replace(/\\/g, '/');
+
+    // Determine candidate absolute path in order of preference:
+    // 1) If src is absolute (POSIX or Windows drive), use it
+    // 2) If folderPath provided, resolve relative to folderPath
+    // 3) If notePath provided, resolve relative to dirname(notePath)
+    // 4) Fallback to path.resolve(src)
+    let candidatePath = null;
+    if (normalizedSrc.startsWith('/')) {
+      candidatePath = normalizedSrc;
+    } else if (/^[A-Za-z]:\//.test(normalizedSrc)) {
+      // Windows drive letter style (C:/...)
+      candidatePath = normalizedSrc;
+    } else if (folderPath) {
+      candidatePath = path.join(folderPath, normalizedSrc);
+    } else if (notePath) {
+      candidatePath = path.join(path.dirname(notePath), normalizedSrc);
+    } else {
+      candidatePath = path.resolve(normalizedSrc);
     }
+
+    // If the resolved candidate exists, prefer returning either a data: URI
+    // for PDFs/text or a file:// URL for other files. If it doesn't exist,
+    // fall back to returning a file:// for the best-effort path.resolve result.
+    let stat = await fs.promises.stat(candidatePath).catch(() => null);
+    if (!stat) {
+      // Try a last-resort path.resolve(src) before giving up
+      const fallback = path.resolve(normalizedSrc);
+      stat = await fs.promises.stat(fallback).catch(() => null);
+      if (stat) candidatePath = fallback;
+    }
+
+    if (stat && stat.isFile()) {
+      const ext = String(candidatePath).split('.').pop().toLowerCase();
+      try {
+        if (ext === 'pdf') {
+          const buf = await fs.promises.readFile(candidatePath).catch(() => null);
+          if (buf && Buffer.isBuffer(buf)) {
+            const b64 = buf.toString('base64');
+            return { value: `data:application/pdf;base64,${b64}`, mimeType: 'application/pdf' };
+          }
+        }
+        if (['md', 'txt', 'html', 'ipynb', 'json'].includes(ext)) {
+          const txt = await fs.promises.readFile(candidatePath, { encoding: 'utf8' }).catch(() => null);
+          if (typeof txt === 'string') {
+            const enc = encodeURIComponent(txt);
+            return { value: `data:text/plain;charset=utf-8,${enc}`, mimeType: 'text/plain' };
+          }
+        }
+      } catch (e) {
+        // If reading fails, fall back to file:// below
+      }
+
+      // Default: return file:// URL
+      return { value: `file://${candidatePath}` };
+    }
+
+    // If we couldn't find a file, return a best-effort file:// based on
+    // path.resolve so the renderer can attempt to fetch it or display an error.
+    const resolved = path.resolve(normalizedSrc);
     return { value: `file://${resolved}` };
   } catch (e) {
     return { value: null };
@@ -249,10 +305,239 @@ ipcMain.handle('workspace:revealInFinder', async (_event, p) => {
 ipcMain.handle('workspace:deleteFile', noopAsync);
 ipcMain.handle('workspace:pasteFile', noopAsync);
 
-ipcMain.handle('preview:exportPdf', noopAsync);
-ipcMain.handle('preview:exportHtml', noopAsync);
+// Export preview handlers with save dialog
+ipcMain.handle('preview:exportPdf', async (_event, data) => {
+  try {
+    const html = data && data.html ? String(data.html) : '';
+  const title = data && data.title ? String(data.title) : 'export';
+  // If the title includes a file extension (e.g. 'note.md'), remove it so
+  // the default save filename doesn't become 'note.md.pdf'. Use path parsing
+  // to safely strip a single trailing extension.
+  const parsed = path.parse(title || '');
+  const safeTitle = parsed.name || title || 'export';
+    
+    if (!html) return null;
+    
+    // Show save dialog
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    // If renderer provided a folderPath or notePath, use it to seed the save dialog
+    const folderPath = data && data.folderPath ? String(data.folderPath) : (data && data.notePath ? path.dirname(String(data.notePath)) : null);
+  const defaultPdfPath = folderPath ? path.join(folderPath, `${safeTitle}.pdf`) : `${safeTitle}.pdf`;
+    try { console.debug && console.debug('preview:exportPdf defaultPath ->', defaultPdfPath); } catch (e) {}
+    const result = await dialog.showSaveDialog(win, {
+      defaultPath: defaultPdfPath,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }]
+    });
+    
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+    
+    // Build a small wrapper HTML that includes app CSS and KaTeX so the
+    // printed result matches the live preview as closely as possible.
+    // Read styles from renderer and katex CSS from node_modules if available.
+    let appStyles = '';
+    let katexStyles = '';
+    try {
+      const stylesPath = path.join(__dirname, 'renderer', 'styles.css');
+      appStyles = await fs.promises.readFile(stylesPath, { encoding: 'utf8' }).catch(() => '');
+    } catch (e) { appStyles = ''; }
+    try {
+      const katexPath = path.join(__dirname, '..', 'node_modules', 'katex', 'dist', 'katex.min.css');
+      katexStyles = await fs.promises.readFile(katexPath, { encoding: 'utf8' }).catch(() => '');
+    } catch (e) { katexStyles = ''; }
+
+    const themeClass = (data && data.theme && String(data.theme).toLowerCase() === 'dark') ? 'theme-dark' : '';
+    const wrapper = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1" />` +
+      `<style>${katexStyles}</style><style>${appStyles}</style></head><body class="${themeClass}">${html}</body></html>`;
+
+    // Create a hidden BrowserWindow to render the HTML then print to PDF
+    const bw = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      }
+    });
+
+    const base = `file://${path.join(__dirname, 'renderer')}/`;
+    await bw.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(wrapper)}`, { baseURLForDataURL: base });
+
+    // Wait until the content finishes loading
+    await new Promise((resolve) => {
+      bw.webContents.once('did-finish-load', resolve);
+      // Fallback in case did-finish-load doesn't fire for some reason
+      setTimeout(resolve, 1000);
+    });
+
+    // Print to PDF (include backgrounds). Page size left to defaults (A4-ish) but can be configured.
+    const pdfOptions = { printBackground: true };
+    const pdfBuffer = await bw.webContents.printToPDF(pdfOptions);
+    // Write output
+    await fs.promises.writeFile(result.filePath, pdfBuffer);
+    try { bw.destroy(); } catch (e) { /* ignore */ }
+
+    // Reveal the exported file in the OS file manager (Finder on macOS)
+    try {
+      const { shell } = require('electron');
+      if (result.filePath && shell && typeof shell.showItemInFolder === 'function') shell.showItemInFolder(result.filePath);
+    } catch (e) { /* ignore best-effort */ }
+
+    return { filePath: result.filePath, canceled: false };
+  } catch (error) {
+    console.error('Preview PDF export error:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('preview:exportHtml', async (_event, data) => {
+  try {
+    const html = data && data.html ? String(data.html) : '';
+  const title = data && data.title ? String(data.title) : 'export';
+  const parsedHtml = path.parse(title || '');
+  const safeHtmlTitle = parsedHtml.name || title || 'export';
+    
+    if (!html) return null;
+    
+    // Show save dialog
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    const folderPath = data && data.folderPath ? String(data.folderPath) : (data && data.notePath ? path.dirname(String(data.notePath)) : null);
+  const defaultHtmlPath = folderPath ? path.join(folderPath, `${safeHtmlTitle}.html`) : `${safeHtmlTitle}.html`;
+    try { console.debug && console.debug('preview:exportHtml defaultPath ->', defaultHtmlPath); } catch (e) {}
+    const result = await dialog.showSaveDialog(win, {
+      defaultPath: defaultHtmlPath,
+      filters: [{ name: 'HTML', extensions: ['html'] }]
+    });
+    
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+    
+    // Ensure exported HTML is complete - wrap fragment content if needed
+    let exportHtml = html;
+    if (!html.toLowerCase().includes('<!doctype') && !html.toLowerCase().includes('<html')) {
+      // HTML fragment - wrap in complete document
+      exportHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+    }
+    
+    // Write HTML to file
+    try {
+      await fs.promises.writeFile(result.filePath, exportHtml, { encoding: 'utf-8' });
+      // Reveal in Finder
+      try { const { shell } = require('electron'); if (result.filePath && shell && typeof shell.showItemInFolder === 'function') shell.showItemInFolder(result.filePath); } catch (e) {}
+      return { filePath: result.filePath, canceled: false };
+    } catch (writeError) {
+      console.error('Failed to write HTML file:', writeError);
+      return null;
+    }
+  } catch (error) {
+    console.error('Preview HTML export error:', error);
+    return null;
+    }
+});
+
 ipcMain.handle('preview:exportDocx', noopAsync);
 ipcMain.handle('preview:exportEpub', noopAsync);
+
+// Export an already-compiled PDF (preferred when preview is showing compiled output)
+ipcMain.handle('preview:exportCompiledPdf', async (_event, data) => {
+  try {
+    const pdfPath = data && data.pdfPath ? String(data.pdfPath) : null;
+  const title = data && data.title ? String(data.title) : 'export';
+  const parsedCompiled = path.parse(title || '');
+  const safeCompiledTitle = parsedCompiled.name || title || 'export';
+    if (!pdfPath) return null;
+
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    const folderPath = data && data.folderPath ? String(data.folderPath) : (data && data.notePath ? path.dirname(String(data.notePath)) : null);
+  const defaultPdfPath = folderPath ? path.join(folderPath, `${safeCompiledTitle}.pdf`) : `${safeCompiledTitle}.pdf`;
+    try { console.debug && console.debug('preview:exportCompiledPdf defaultPath ->', defaultPdfPath); } catch (e) {}
+    const result = await dialog.showSaveDialog(win, {
+      defaultPath: defaultPdfPath,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+
+  // Copy compiled PDF to destination
+  await fs.promises.copyFile(pdfPath, result.filePath);
+  // Reveal in Finder
+  try { const { shell } = require('electron'); if (result.filePath && shell && typeof shell.showItemInFolder === 'function') shell.showItemInFolder(result.filePath); } catch (e) {}
+  return { filePath: result.filePath, canceled: false };
+  } catch (e) {
+    console.error('Export compiled PDF failed:', e);
+    return null;
+  }
+});
+
+// Compile a LaTeX .tex file into PDF using latexmk or pdflatex as fallback.
+ipcMain.handle('workspace:compileLatex', async (_event, data) => {
+  try {
+    const absolutePath = data && data.absolutePath ? String(data.absolutePath) : null;
+    if (!absolutePath) return { success: false, error: 'No path provided' };
+    const exists = await fs.promises.stat(absolutePath).catch(() => null);
+    if (!exists || !exists.isFile()) return { success: false, error: 'File not found' };
+
+    const { spawn } = require('child_process');
+    const os = require('os');
+    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'nta-tex-'));
+    const baseName = path.basename(absolutePath);
+    const targetPath = path.join(tmpDir, baseName);
+
+    // Copy source file into temp dir so compilation doesn't touch original folder
+    await fs.promises.copyFile(absolutePath, targetPath);
+
+    // Prefer latexmk if available
+    const tryExec = (cmd, args, opts) => new Promise((resolve) => {
+      const p = spawn(cmd, args, opts);
+      let stdout = '';
+      let stderr = '';
+      p.stdout && p.stdout.on('data', (d) => { stdout += String(d); });
+      p.stderr && p.stderr.on('data', (d) => { stderr += String(d); });
+      p.on('error', (err) => resolve({ code: 127, error: String(err), stdout, stderr }));
+      p.on('close', (code) => resolve({ code, stdout, stderr }));
+    });
+
+    const texFilename = path.basename(targetPath);
+    // First try latexmk -pdf -interaction=nonstopmode -halt-on-error <file>
+    let res = await tryExec('latexmk', ['-pdf', '-interaction=nonstopmode', '-halt-on-error', texFilename], { cwd: tmpDir });
+    if (res.code !== 0) {
+      // fallback to running pdflatex twice
+      res = await tryExec('pdflatex', ['-interaction=nonstopmode', texFilename], { cwd: tmpDir });
+      if (res.code === 0) {
+        // run a second pass
+        await tryExec('pdflatex', ['-interaction=nonstopmode', texFilename], { cwd: tmpDir });
+      }
+    }
+
+    // Expected output PDF in tmpDir with same base name but .pdf ext
+    const pdfName = texFilename.replace(/\.tex$/i, '.pdf');
+    const pdfPath = path.join(tmpDir, pdfName);
+    const pdfExists = await fs.promises.stat(pdfPath).catch(() => null);
+    if (pdfExists && pdfExists.isFile()) {
+      return { success: true, pdfPath };
+    }
+
+    // If compilation failed, return stderr/stdout where available
+    return { success: false, error: 'Compilation failed', detail: res && (res.stderr || res.stdout) ? (res.stderr || res.stdout) : null };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+});
 
 ipcMain.handle('debug:write', noopAsync);
 ipcMain.handle('debug:readReplaceLog', noopAsync);

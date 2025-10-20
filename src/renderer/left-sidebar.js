@@ -204,7 +204,26 @@ module.exports = ({ state, elements, treeModule, windowApi, adoptWorkspace, rend
                           label2.appendChild(chev);
                         } else {
                           el.classList.add('tree-node--file');
-                          const icon = document.createElement('span'); icon.className = 'tree-node__icon'; icon.textContent = '•';
+                          const icon = document.createElement('span'); icon.className = 'tree-node__icon';
+                          try {
+                            const ext = String(child.ext || '').toLowerCase();
+                            const isImage = ['.png','.jpg','.jpeg','.gif','.webp','.svg','.bmp','.tif','.tiff','.avif','.ico'].includes(ext);
+                            const isVideo = ['.mp4','.webm','.ogg','.ogv','.avi','.mov','.wmv','.flv','.mkv','.m4v'].includes(ext);
+                            const isHtml = ['.html','.htm'].includes(ext);
+                            if (ext === '.md' || ext === '.markdown' || ext === '.mdx') icon.textContent = '📝';
+                            else if (ext === '.tex') icon.textContent = '∑';
+                            else if (ext === '.pdf') icon.textContent = '📄';
+                            else if (ext === '.py') icon.textContent = '🐍';
+                            else if (ext === '.js' || ext === '.mjs') icon.textContent = '🟨';
+                            else if (ext === '.ts') icon.textContent = '🔷';
+                            else if (ext === '.css') icon.textContent = '🎨';
+                            else if (ext === '.json') icon.textContent = '📋';
+                            else if (ext === '.ipynb') icon.textContent = '📓';
+                            else if (isImage) icon.textContent = '🖼️';
+                            else if (isVideo) icon.textContent = '🎬';
+                            else if (isHtml) icon.textContent = '🌐';
+                            else icon.textContent = '•';
+                          } catch (e) { icon.textContent = '•'; }
                           label2.appendChild(icon);
                         }
 
@@ -229,6 +248,30 @@ module.exports = ({ state, elements, treeModule, windowApi, adoptWorkspace, rend
                                 el2.dataset.path = c2.path || '';
                                 el2.style.setProperty('--depth', 2);
                                 const label3 = document.createElement('div'); label3.className = 'tree-node__label';
+                                // Add icon for files in fallback path
+                                if (c2.type === 'file') {
+                                  const icon3 = document.createElement('span'); icon3.className = 'tree-node__icon';
+                                  try {
+                                    const ext2 = String(c2.ext || '').toLowerCase();
+                                    const isImage2 = ['.png','.jpg','.jpeg','.gif','.webp','.svg','.bmp','.tif','.tiff','.avif','.ico'].includes(ext2);
+                                    const isVideo2 = ['.mp4','.webm','.ogg','.ogv','.avi','.mov','.wmv','.flv','.mkv','.m4v'].includes(ext2);
+                                    const isHtml2 = ['.html','.htm'].includes(ext2);
+                                    if (ext2 === '.md' || ext2 === '.markdown' || ext2 === '.mdx') icon3.textContent = '📝';
+                                    else if (ext2 === '.tex') icon3.textContent = '∑';
+                                    else if (ext2 === '.pdf') icon3.textContent = '📄';
+                                    else if (ext2 === '.py') icon3.textContent = '🐍';
+                                    else if (ext2 === '.js' || ext2 === '.mjs') icon3.textContent = '🟨';
+                                    else if (ext2 === '.ts') icon3.textContent = '🔷';
+                                    else if (ext2 === '.css') icon3.textContent = '🎨';
+                                    else if (ext2 === '.json') icon3.textContent = '📋';
+                                    else if (ext2 === '.ipynb') icon3.textContent = '📓';
+                                    else if (isImage2) icon3.textContent = '🖼️';
+                                    else if (isVideo2) icon3.textContent = '🎬';
+                                    else if (isHtml2) icon3.textContent = '🌐';
+                                    else icon3.textContent = '•';
+                                  } catch (e) { icon3.textContent = '•'; }
+                                  label3.appendChild(icon3);
+                                }
                                 const name3 = document.createElement('span'); name3.className = 'tree-node__name'; name3.textContent = c2.name || c2.path || '';
                                 label3.appendChild(name3);
                                 el2.appendChild(label3);

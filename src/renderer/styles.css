@@ -1,3 +1,117 @@
+/* CSS Reset */
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/* Notebook cells editor styles */
+.notebook-cell-editor {
+  position: absolute;
+  /* Leave room for the pane tab bar (approx 34px) */
+  top: 34px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px;
+  overflow: auto;
+  z-index: 3; /* above hidden textarea and search highlight overlay */
+}
+
+.nb-edit-cell {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.nb-edit-cell .nb-edit-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-soft);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nb-edit-type {
+  appearance: none;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 28px 6px 10px;
+  font-size: 13px;
+  line-height: 1.2;
+  min-width: 140px;
+  cursor: pointer;
+  position: relative;
+  z-index: 1; /* ensure dropdown opens above surrounding elements */
+}
+
+/* Provide a simple dropdown indicator */
+.nb-edit-type {
+  background-image: linear-gradient(45deg, transparent 50%, var(--fg-soft) 50%),
+                    linear-gradient(135deg, var(--fg-soft) 50%, transparent 50%);
+  background-position: calc(100% - 16px) calc(50% + 2px), calc(100% - 10px) calc(50% + 2px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.nb-edit-source {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 10px 12px;
+  min-height: 120px;
+  /* Auto-resize textareas: no internal scrollbars or manual resize handle */
+  overflow: hidden;
+  resize: none;
+  line-height: 1.5;
+}
+
+/* Typography by cell type */
+.nb-edit-cell--code .nb-edit-source {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.nb-edit-cell--markdown .nb-edit-source,
+.nb-edit-cell--raw .nb-edit-source {
+  font-family: var(--font-family);
+}
+
+/* Focus ring */
+.nb-edit-type:focus, .nb-edit-source:focus {
+  outline: 2px solid var(--accent-weak);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-weak);
+}
+
+/* Compact viewer controls inside the viewer (when visible) */
+.notebook-viewer .edit-raw-button,
+.notebook-viewer .edit-cells-button,
+.notebook-viewer .nb-save-btn,
+.notebook-viewer .nb-cancel-btn {
+  margin-right: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+}
+
 :root {
   color-scheme: light dark;
   --title-bar-height: 0px; /* Default to 0 for non-mac platforms */
@@ -311,7 +425,7 @@ body.platform-linux {
 
 /* Adjust app layout for tab bar */
 .app-shell {
-  height: calc(100vh - var(--title-bar-height) - 35px);
+  height: calc(100vh - var(--title-bar-height));
   position: relative; /* anchor absolute children like the sidebar resize handle */
 }
 
@@ -1492,10 +1606,13 @@ button[data-tooltip]:hover::after {
 }
 
 .tree-node--file .tree-node__icon {
-  width: 14px;
+  display: inline-block;
+  width: 16px;
+  min-width: 16px;
   text-align: center;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--fg-soft);
+  margin-right: 4px;
 }
 
 .tree-node--file.tree-node--unsupported .tree-node__label {
@@ -1878,60 +1995,136 @@ button.primary:hover {
   gap: 8px;
 }
 
-/* Search Panel */
-.workspace__search {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 10px;
+/* In-Editor Search Overlay */
+.editor-search-overlay {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 280px;
+  max-width: 350px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg);
-  box-shadow: 0 6px 16px rgba(15, 17, 23, 0.08);
-}
-
-.workspace__search[hidden] {
-  display: none;
-}
-
-#editor-search-input {
-  width: 200px;
-  min-width: 140px;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--fg);
-  font-size: 14px;
-}
-
-#editor-search-input::placeholder {
-  color: var(--fg-soft);
-}
-
-.workspace__search-controls {
-  display: flex;
-  align-items: center;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  padding: 6px;
+  z-index: 1000;
+  display: flex !important;
+  flex-direction: column;
   gap: 4px;
 }
 
-.workspace__search-controls button,
-#editor-search-close {
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--fg-soft);
-  line-height: 1;
-  font-size: 13px;
+.editor-search-overlay[hidden] {
+  display: none !important;
 }
 
-.workspace__search-controls button:hover,
-#editor-search-close:hover {
+.editor-search-overlay .search-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.editor-search-overlay #editor-search-input,
+.editor-search-overlay #editor-replace-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
   color: var(--fg);
-  border-color: var(--border);
-  background: var(--bg-elevated);
+  font-size: 13px;
+  padding: 4px 6px;
+  outline: none;
+  height: 24px;
+  box-sizing: border-box;
 }
 
+.editor-search-overlay #editor-search-input:focus,
+.editor-search-overlay #editor-replace-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-weak);
+}
+
+.editor-search-overlay #editor-search-input::placeholder,
+.editor-search-overlay #editor-replace-input::placeholder {
+  color: var(--fg-soft);
+}
+
+.editor-search-overlay .search-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+}
+
+.editor-search-overlay .search-controls .left-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.editor-search-overlay .search-controls .right-controls {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.editor-search-overlay .search-toggle {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-soft);
+  min-width: 24px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.editor-search-overlay .search-toggle:hover {
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+
+.editor-search-overlay .search-toggle.active {
+  background: var(--accent-weak);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.editor-search-overlay .search-controls button {
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-soft);
+  font-size: 10px;
+  cursor: pointer;
+  line-height: 1;
+  height: 20px;
+}
+
+.editor-search-overlay .search-controls button:hover {
+  background: var(--bg-muted);
+  color: var(--fg);
+}
+
+.editor-search-overlay .search-count {
+  font-size: 9px;
+  color: var(--fg-soft);
+  padding: 1px 4px;
+  background: var(--bg-muted);
+  border-radius: 8px;
+  min-width: 32px;
+  text-align: center;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editor-search-overlay.replace-mode {
+  min-width: 320px;
+}
 .workspace__search-count {
   font-size: 12px;
   color: var(--fg-soft);
@@ -2254,11 +2447,6 @@ button.small {
   display: none;
 }
 
-.workspace__content.html-mode .editor-pane,
-.workspace__content.html-mode .workspace__splitter {
-  display: none;
-}
-
 .workspace__content.html-mode .preview-pane {
   flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
   width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
@@ -2299,6 +2487,36 @@ button.small {
   background: var(--bg-hover);
 }
 
+/* Preview highlight for creating a new pane on right-half drop */
+.editor-pane.editor-drop-new-pane-right::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 50%;
+  height: 100%;
+  background: rgba(76, 110, 245, 0.18); /* accent tint */
+  border-left: 2px dashed var(--accent);
+  box-shadow: inset 0 0 0 2px rgba(76,110,245,0.25);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* Preview highlight for opening in the current pane (left side -> full pane) */
+.editor-pane.editor-drop-left-half::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.07);
+  border: 2px dashed var(--border);
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.12);
+  pointer-events: none;
+  z-index: 3;
+}
+
 .tree-node[draggable="true"] {
   cursor: grab;
 }
@@ -2308,10 +2526,11 @@ button.small {
 }
 
 .editor-drop-target {
-  /* Highlight removed: neutralize any visual effects when class is present. */
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
+  /* Visible dashed highlight for drop targets */
+  background: rgba(0, 122, 255, 0.06) !important;
+  border: 2px dashed rgba(0, 122, 255, 0.35) !important;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.08) !important;
+  transition: background 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
 }
 
 .preview-pane {
@@ -2687,25 +2906,25 @@ body[data-theme="dark"] .editor-pane:not(.active) {
   position: fixed;
   top: 24px;
   left: 24px;
-  min-width: 220px;
-  max-width: min(360px, calc(100% - 48px));
-  max-height: 280px;
+  min-width: 180px;
+  max-width: min(520px, calc(100% - 48px));
+  max-height: 260px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--bg-elevated);
-  box-shadow: 0 12px 40px rgba(15, 17, 23, 0.16);
+  box-shadow: 0 8px 20px rgba(15, 17, 23, 0.12);
   overflow: hidden; /* Disable scrolling */
-  padding: 6px 0;
+  padding: 4px 0;
   z-index: 10000;
 }
 
 .wiki-suggest__item {
-  padding: 8px 14px;
+  padding: 6px 10px;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--fg);
 }
 
@@ -2716,14 +2935,24 @@ body[data-theme="dark"] .editor-pane:not(.active) {
 
 .wiki-suggest__title {
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.2;
 }
 
 .wiki-suggest__meta {
   font-size: 11px;
   color: var(--fg-soft);
-  line-height: 1.2;
+  line-height: 1.1;
 }
+
+/* Compact column and selected styles */
+.wiki-suggest__cols { gap: 6px; }
+.wiki-suggest__col-left, .wiki-suggest__single { padding: 4px; }
+.wiki-suggest__col-right { padding: 4px; }
+.wiki-suggest__cols { display:flex; align-items:flex-start; }
+.wiki-suggest__col-left { align-self:flex-start; height:auto; max-height:320px; overflow:auto; }
+.wiki-suggest__col-right { align-self:flex-start; height:auto; max-height:320px; overflow:auto; }
+.wiki-suggest__item--selected { background: var(--accent-weak); }
+.wiki-suggest__item--sidefile { padding: 6px 8px; }
 
 #note-editor:focus {
   outline: none;
