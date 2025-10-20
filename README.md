@@ -57,13 +57,13 @@ Click the **gear icon** in the bottom status bar to access comprehensive customi
 
 ### 🌈 Appearance
 - **Theme Options**:
-  - **System** (default): Automatically follows your macOS appearance setting
+  - **System** (default): Automatically follows your macOS appearance settings
   - **Light**: Force light theme regardless of system preference
   - **Dark**: Force dark theme regardless of system preference
 - **Custom Background Colors**: Choose any background color that suits your style with smart color variations
 
 ### ✍️ Typography
-- **Font Family**: Choose from popular fonts including:
+- **Font Family**: Choose from popular fonts, including:
   - System Font (SF Pro) - Native macOS appearance
   - Inter, Roboto, Open Sans, Source Sans Pro - Modern sans-serif options
   - JetBrains Mono, Fira Code, Monaco - Monospace fonts for code-focused work
@@ -148,9 +148,10 @@ $$\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}$$
 ```
 
 ### Smart Content Tools
-- Type `&matrix 3x3` to generate LaTeX matrices
-- Type `&table 4x6` to create Markdown tables
+- Type `&matrix 3x3` to generate LaTeX matrices. You can also type `&matrix 3x3 =0` for a 3x3 matrix filled with zeros
+- Type `&table 4x6` to create Markdown tables.  You can also type `&table 3x3 =0` for a 3x3 table filled with zeros
 - Type `&quote Author` for formatted blockquotes
+- Type `&code xxxxx` and replace xxxx with a coding language to create a code block in that coding language
 
 ## 🔗 Wiki-Style Linking Explained
 
@@ -183,7 +184,7 @@ Important reminder: ![[Daily Checklist]]
 **Pro tip**: Use `[[Note|Custom Text]]` to change how the link appears while keeping the same target.
 
 ### Hidden Embded Links: `![[Note Name]]`
-Embeds the actual content of another note inline, but hide it's from another file
+Embeds the actual content of another note inline, but hides the fact that it's from another file
 
 ### PDF Viewing
 
@@ -221,7 +222,7 @@ Embeds the actual content of another note inline, but hide it's from another fil
 - **Use the workspace explorer** on the left to drill into sub-folders and click files to open them instantly.
 - **Create wiki links** by wrapping note titles in double brackets (e.g. `[[Daily Log]]`); existing notes open immediately, missing ones prompt you to create them. Add an exclamation mark (`![[Daily Log]]`) to embed the note inside the current page or use `![[diagram.png]]` to display images inline.
 - **Insert code blocks** with the toolbar button or ⌘⇧C — a quick picker lets you choose a language and remembers the last one you used (hold ⌥ while pressing ⌘⇧C to reuse it instantly).
-- **Type inline commands** on their own line (`&code python`, `&math`, `&table 3x4`, etc.) and press Enter to instantly expand them into rich snippets with focused placeholders.
+- **Type inline commands** on their own line (`&code python`, `&math`, `&table 3x4`, etc.) and press Enter to expand them into rich snippets with focused placeholders instantly.
     - Pair `&code` with a language (`&code js`) to prefill the block, then edit the command and press Enter again to change the language; the helper line stays in the editor but is hidden in the preview and exported PDFs.
     - Use `&table ROWSxCOLS` (e.g. `&table 3x4`) to drop a Markdown table scaffold, then tweak the command and press Enter again to resize—existing content is preserved when expanding or shrinking.
     - Use matrix commands like `&bmatrix 3x3`, `&pmatrix 2x4`, `&vmatrix 3x3` to generate LaTeX matrices with automatic `$$` wrapping. Change dimensions and existing content is preserved.
@@ -231,4 +232,4 @@ Embeds the actual content of another note inline, but hide it's from another fil
 - **Resize the sidebar**: drag the thin handle between the sidebar and main content to adjust the workspace width (your preference is automatically saved).
 - **Resize the panes** by dragging the vertical divider (or focus it and use the arrow keys for keyboard control).
 - **Collect related ideas** by dropping `#hashtags` anywhere in your Markdown; the sidebar’s Hashtags panel groups them so you can focus on every matching note at once (use Clear to reset the filter).
-- **Auto-save** happens on every keystroke, so there's no Save button.
+- **Auto-save** You can set the app to autosave every specified amount of time, or turn it off and save it only when you want to
