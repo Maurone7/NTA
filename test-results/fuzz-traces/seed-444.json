@@ -1,0 +1,58 @@
+{
+  "seed": 444,
+  "actions": [
+    {
+      "type": "open",
+      "pane": "left",
+      "id": "n2"
+    },
+    {
+      "type": "resize",
+      "x": 218
+    },
+    {
+      "type": "open",
+      "pane": "left",
+      "id": "n1"
+    },
+    {
+      "type": "open",
+      "pane": "right",
+      "id": "n1"
+    },
+    {
+      "type": "resize",
+      "x": 514
+    },
+    {
+      "type": "resize",
+      "x": 798
+    },
+    {
+      "type": "open",
+      "pane": "right",
+      "id": "n1"
+    },
+    {
+      "type": "resize",
+      "x": 680
+    },
+    {
+      "type": "resize",
+      "x": 263
+    },
+    {
+      "type": "resize",
+      "x": 480
+    },
+    {
+      "type": "open",
+      "pane": "right",
+      "id": "n2"
+    },
+    {
+      "type": "resize",
+      "x": 262
+    }
+  ]
+}
