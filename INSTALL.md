@@ -64,3 +64,9 @@ spctl -a -v /path/to/NTA.app
 # Check code signature (will fail for unsigned apps but useful to show the output)
 codesign --verify -vvv --deep --strict /path/to/NTA.app || true
 ```
+
+## Security & Distribution Notes
+
+- These instructions let users run unsigned builds locally but do not replace proper code signing and notarization. For distribution to a broad audience (public releases), signing with a Developer ID certificate and notarizing through Apple is the recommended route.
+- If you later join the Apple Developer Program, you can sign and notarize binaries so Gatekeeper won't require these manual steps.
+- Include these instructions in your Release notes or attach `install.sh` and a short `INSTALL.md` to make the process smooth for non-technical users.

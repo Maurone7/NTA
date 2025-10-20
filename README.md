@@ -25,7 +25,7 @@ open ./NTA.app
 
 ## 🔄 Stay Updated
 
-NTA checks for updates when you first open the app and notifies you when new versions are available. You can also manually check for updates anytime through the settings (gear icon in bottom status bar).
+NTA checks for updates when you first open the app and notifies you when new versions are available. You can also manually check for updates anytime through the settings (gear icon in bottom status bar). Just click "Download" when prompted, and the app will update itself automatically.
 
 ## 📞 Support
 
@@ -156,21 +156,18 @@ $$\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}$$
 
 NTA supports two types of wiki-style links to connect your notes:
 
-### Embed Links: `[[Note Name]]`
-Embeds the actual content of another note inline:
+### Regular Links: `[[Note Name]]`
+Creates a clickable link to another note:
 ```markdown
 Check out my [[Research Notes]] for more details.
 See also: [[Project Ideas]] and [[Meeting Notes]]
 ```
-- **Existing notes**: Displays the full content of the linked note
-- **Missing notes**: Shows a placeholder to create them
+- **Existing notes**: Click to open immediately
+- **Missing notes**: Click to create them automatically
 - **Auto-complete**: Start typing `[[` to see suggestions
 
-### Transclusion Links: `![[Note Name]]`
-Also embeds content (for compatibility):
-```markdown
-![[Important Quote]]
-```
+### Embed Links: `![[Note Name]]`
+Embeds the actual content of another note inline:
 ```markdown
 Here's my summary: ![[Key Findings]]
 
@@ -232,3 +229,9 @@ Embeds the actual content of another note inline, but hide it's from another fil
 - **Resize the panes** by dragging the vertical divider (or focus it and use the arrow keys for keyboard control).
 - **Collect related ideas** by dropping `#hashtags` anywhere in your Markdown; the sidebar’s Hashtags panel groups them so you can focus on every matching note at once (use Clear to reset the filter).
 - **Auto-save** happens on every keystroke, so there's no Save button.
+
+# TO-DOs
+Implement drag and drop function that opens a new pane
+Implement function that allows user to change color of certain characters/patterns
+Fix search function
+Make "x" to close window more neat

@@ -1,0 +1,38 @@
+// Editor UI wiring: setup tab and editor-related event listeners.
+module.exports = ({ state: _state, elements, createTab, renderTabs, getActiveEditorInstance }) => {
+  function init() {
+    try {
+      // New tab buttons
+      if (elements.newTabButton) {
+        elements.newTabButton.addEventListener('click', () => {
+          try {
+            const paneId = null; // default left pane
+            const noteId = `file-${Date.now()}`;
+            createTab(noteId, 'Untitled', paneId);
+            renderTabs();
+            try { renderTabs(); } catch (e) { /* ignore */ }
+          } catch (err) { /* ignore */ }
+        });
+      }
+
+      // Left new tab alternative (left side button)
+      if (elements.newTabButtonLeft) {
+        elements.newTabButtonLeft.addEventListener('click', () => {
+          try { createTab(`file-${Date.now()}`, 'Untitled', null); renderTabs(); } catch (err) { /* ignore */ }
+        });
+      }
+
+      // Simple keyboard shortcut for focusing editor
+      window.addEventListener('keydown', (ev) => {
+        try {
+          if ((ev.ctrlKey || ev.metaKey) && ev.key === 'e') {
+            const edt = getActiveEditorInstance();
+            try { edt && edt.focus(); } catch (e) { /* ignore */ }
+          }
+        } catch (e) { /* ignore */ }
+      });
+    } catch (e) { /* best-effort wiring */ }
+  }
+
+  return { init };
+};

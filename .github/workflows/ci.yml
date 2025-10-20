@@ -13,8 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [20]
-
+        node-version: [18]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,45 +27,28 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests (Mocha + JUnit)
+      - name: Run tests (JUnit output)
         env:
           NTA_TEST: '1'
-        shell: bash
         run: |
-          mkdir -p reports logs
-          echo "--- START MOCHA $(date -u +%FT%TZ) ---" > logs/mocha.full.log
-          # Explicitly list folders so Mocha doesn't import Playwright tests
-          npx mocha tests/citation tests/unit tests/dom tests/smoke --reporter mocha-junit-reporter --reporter-options mochaFile=reports/junit.xml 2>&1 | tee -a logs/mocha.full.log || true
-          echo "MOCHA_EXIT:$?" >> logs/mocha.full.log
-          # Capture helper logs under /tmp (many CI helper scripts write there)
-          ls -la /tmp 2>/dev/null | sed -n '1,200p' >> logs/mocha.full.log || true
-          for f in /tmp/*.out; do
-            [ -e "$f" ] && echo "--- FILE: $f ---" >> logs/mocha.full.log && tail -n +1 "$f" >> logs/mocha.full.log
-          done || true
+          # Run Mocha with the JUnit reporter via npx so we get a machine-readable report
+          mkdir -p reports
+          npx mocha --recursive tests --reporter mocha-junit-reporter --reporter-options mochaFile=reports/junit.xml --ignore tests/e2e/**
 
-      - name: Upload JUnit report
+      - name: Upload test report
         uses: actions/upload-artifact@v4
         with:
           name: junit-report-${{ matrix.os }}
           path: reports/junit.xml
 
-      - name: Upload test logs
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-logs-${{ matrix.os }}
-          path: |
-            logs
-            reports/junit.xml
-
       - name: Run Playwright E2E tests (ubuntu only)
         if: matrix.os == 'ubuntu-latest'
-        shell: bash
-        env:
-          CI: '1'
         run: |
           npm ci
           npx playwright install --with-deps
           npx playwright test --reporter=list
+        env:
+          CI: '1'
 
   package-windows:
     name: Build Windows installer
@@ -76,10 +58,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Use Node.js 20
+      - name: Use Node.js 18
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 18
           cache: 'npm'
 
       - name: Install dependencies
@@ -104,10 +86,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Use Node.js 20
+      - name: Use Node.js 18
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 18
           cache: 'npm'
 
       - name: Install dependencies
