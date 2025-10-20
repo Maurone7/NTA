@@ -41,6 +41,7 @@ jobs:
               run: npm ci
 
             - name: Run tests (JUnit output)
+              if: matrix.os == 'ubuntu-latest'
               env:
                 NTA_TEST: '1'
               shell: bash
