@@ -1,0 +1,11 @@
+version: 0.0.5
+files:
+  - url: NTA-0.0.5-arm64.zip
+    sha512: test-sha512-for-testing-update-arm64
+    size: 103183985
+  - url: NTA-0.0.5-x64.zip
+    sha512: test-sha512-for-testing-update-x64
+    size: 108768688
+path: NTA-0.0.5-arm64.zip
+sha512: test-sha512-for-testing-update-arm64
+releaseDate: '2025-10-07T13:00:00Z'
