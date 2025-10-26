@@ -321,7 +321,13 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
           if (actions.canPasteNote && actions.canPasteNote()) actions.pasteNote && await actions.pasteNote();
           break;
         case 'rename':
-          if (actions.canRenameNote && actions.canRenameNote(note)) actions.startRenameFile && actions.startRenameFile(noteId);
+          if (actions.canRenameNote && actions.canRenameNote(note)) {
+            if (typeof window !== 'undefined' && typeof window.startRenameFile === 'function') {
+              window.startRenameFile(noteId);
+            } else {
+              actions.startRenameFile && actions.startRenameFile(noteId);
+            }
+          }
           break;
         case 'reveal':
           if (note.absolutePath && actions.revealInFinder) actions.revealInFinder(note.absolutePath);

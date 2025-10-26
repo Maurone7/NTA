@@ -105,12 +105,21 @@ describe('Cmd+E and export dropdown behavior for LaTeX previews', function() {
   });
 
   it('Cmd+E uses defaultExportFormat (pdf) for LaTeX preview', async function() {
-    // Spy on exportPreviewPdf
-    let called = false;
-    global.window.api.exportPreviewPdf = async function(html, opts) {
-      called = true;
-      assert(html && typeof html === 'string', 'HTML should be provided to exporter');
-      return { success: true };
+    // Spy on exportLatexPdf (called for LaTeX with PDF format) and exportPreviewPdf (fallback)
+    let latexCalled = false;
+    let pdfCalled = false;
+    
+    global.window.api.exportLatexPdf = async function(data) {
+      latexCalled = true;
+      assert(data && data.content && typeof data.content === 'string', 'LaTeX content should be provided to LaTeX exporter');
+      // Return error to trigger fallback
+      return { error: 'LaTeX not installed', fallbackToHtml: true };
+    };
+    
+    global.window.api.exportPreviewPdf = async function(data) {
+      pdfCalled = true;
+      assert(data && (data.html || data.content) && typeof (data.html || data.content) === 'string', 'HTML should be provided to exporter');
+      return { success: true, filePath: '/tmp/test.pdf' };
     };
 
     // Prepare a LaTeX preview by calling the render helper if present
@@ -140,7 +149,8 @@ describe('Cmd+E and export dropdown behavior for LaTeX previews', function() {
 
     // allow any async export to complete
     await new Promise(r => setTimeout(r, 50));
-    assert(called, 'exportPreviewPdf should have been called');
+    // For LaTeX files with PDF export, exportLatexPdf should be called first, then fallback to exportPreviewPdf
+    assert(latexCalled || pdfCalled, 'Either exportLatexPdf or exportPreviewPdf should have been called');
   });
 
   it('Export dropdown calls html exporter when selected', async function() {

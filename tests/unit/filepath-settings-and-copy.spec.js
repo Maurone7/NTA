@@ -42,8 +42,10 @@ function makeWindow() {
 describe('Unit: filepath settings and copy behavior', function() {
   it('toggle show filename only via checkbox and persist setting', function() {
     const window = makeWindow();
-  // Install globals before requiring the app so initialize() binds handlers
-  global.window = window; global.document = window.document; global.localStorage = window.localStorage; global.MutationObserver = window.MutationObserver;
+    // Install globals before requiring the app so initialize() binds handlers
+    global.window = window; global.document = window.document; global.localStorage = window.localStorage; global.MutationObserver = window.MutationObserver;
+    // Ensure navigator exists for platform detection
+    global.navigator = window.navigator = window.navigator || {};
   // Ensure clipboard exists for the copy handler
   window.navigator = window.navigator || {};
   window.navigator.clipboard = window.navigator.clipboard || { writeText: async (s) => { window._lastCopied = s; } };

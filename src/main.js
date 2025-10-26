@@ -1,7 +1,55 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const os = require('os');
+const pty = require('node-pty');
+
+// Folder manager provides filesystem helpers used by renderer IPC handlers
+const folderManager = require('./store/folderManager');
+// LaTeX compiler for PDF export
+const { checkLatexInstalled, compileLatexToPdf, getLatexInstallationStatus } = require('./latex-compiler');
+// LaTeX installer helper
+const { attemptAutoInstall } = require('./latex-installer');
+
+// PTY sessions for terminals - one per window
+const ptyProcesses = new Map();
+const windowSessions = new Map();  // Map windowId to BrowserWindow
+
+function getPtyProcess(windowId, browserWindow, requestedCwd = null) {
+  if (!ptyProcesses.has(windowId)) {
+    const spawnCwd = requestedCwd || os.homedir();
+    const shell = pty.spawn(process.env.SHELL || '/bin/bash', [], {
+      name: 'xterm-256color',
+      cols: 120,
+      rows: 30,
+      cwd: spawnCwd
+    });
+
+    ptyProcesses.set(windowId, shell);
+    windowSessions.set(windowId, browserWindow);
+
+    // Send PTY output to renderer
+    shell.onData((data) => {
+      if (browserWindow && !browserWindow.isDestroyed()) {
+        browserWindow.webContents.send('terminal:output', data);
+      }
+    });
+  }
+  return ptyProcesses.get(windowId);
+}
+
+function closePtyProcess(windowId) {
+  if (ptyProcesses.has(windowId)) {
+    try {
+      ptyProcesses.get(windowId).kill();
+    } catch (e) {
+      // Already closed
+    }
+    ptyProcesses.delete(windowId);
+    windowSessions.delete(windowId);
+  }
+}
 
 const SUPPORTED_EXTS = new Set([
   'md', 'markdown', 'mdx',
@@ -268,7 +316,21 @@ ipcMain.handle('workspace:readBibliography', noopAsync);
 ipcMain.handle('workspace:chooseBibFile', noopAsync);
 ipcMain.handle('workspace:saveExternalMarkdown', noopAsync);
 ipcMain.handle('workspace:saveNotebook', noopAsync);
-ipcMain.handle('workspace:createMarkdownFile', noopAsync);
+// Implement createMarkdownFile by delegating to store/folderManager
+ipcMain.handle('workspace:createMarkdownFile', async (_event, data) => {
+  try {
+    const folderPath = data && data.folderPath ? String(data.folderPath) : null;
+    const fileName = data && data.fileName ? String(data.fileName) : '';
+    const initialContent = data && data.initialContent ? String(data.initialContent) : '';
+    if (!folderPath) return null;
+    const result = await folderManager.createMarkdownFile(folderPath, fileName, initialContent);
+    return result;
+  } catch (e) {
+    console.error('Error creating markdown file:', e);
+    return null;
+  }
+});
+// Keep rename handler as a stub for now (or delegate similarly if desired)
 ipcMain.handle('workspace:renameMarkdownFile', noopAsync);
 // Read a PDF file and return a plain Buffer (serialized over IPC). Returns null on error.
 ipcMain.handle('workspace:readPdfBinary', async (_event, data) => {
@@ -304,6 +366,21 @@ ipcMain.handle('workspace:revealInFinder', async (_event, p) => {
 });
 ipcMain.handle('workspace:deleteFile', noopAsync);
 ipcMain.handle('workspace:pasteFile', noopAsync);
+
+// Clipboard helper: provide a simple writeText handler for renderer convenience
+ipcMain.handle('clipboard:writeText', async (_event, text) => {
+  try {
+    const { clipboard } = require('electron');
+    if (typeof text === 'string' || Buffer.isBuffer(text)) {
+      clipboard.writeText(String(text));
+      return { success: true };
+    }
+    return { success: false };
+  } catch (e) {
+    console.error('clipboard:writeText handler error', e);
+    return { success: false, error: String(e) };
+  }
+});
 
 // Export preview handlers with save dialog
 ipcMain.handle('preview:exportPdf', async (_event, data) => {
@@ -347,9 +424,18 @@ ipcMain.handle('preview:exportPdf', async (_event, data) => {
       katexStyles = await fs.promises.readFile(katexPath, { encoding: 'utf8' }).catch(() => '');
     } catch (e) { katexStyles = ''; }
 
+    // Add PDF-specific CSS to constrain images to page width
+    const pdfStyles = `
+      body { margin: 20px; }
+      img { max-width: 100%; height: auto; display: block; }
+      figure { margin: 1em 0; }
+      figure img { max-width: 100%; height: auto; }
+      @page { margin: 20mm; }
+    `;
+
     const themeClass = (data && data.theme && String(data.theme).toLowerCase() === 'dark') ? 'theme-dark' : '';
     const wrapper = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1" />` +
-      `<style>${katexStyles}</style><style>${appStyles}</style></head><body class="${themeClass}">${html}</body></html>`;
+      `<style>${katexStyles}</style><style>${appStyles}</style><style>${pdfStyles}</style></head><body class="${themeClass}">${html}</body></html>`;
 
     // Create a hidden BrowserWindow to render the HTML then print to PDF
     const bw = new BrowserWindow({
@@ -484,6 +570,80 @@ ipcMain.handle('preview:exportCompiledPdf', async (_event, data) => {
   }
 });
 
+// Export LaTeX content as PDF using pdflatex compilation
+ipcMain.handle('preview:exportLatexPdf', async (_event, data) => {
+  try {
+    const latexContent = data && data.content ? String(data.content) : '';
+    const title = data && data.title ? String(data.title) : 'export';
+    const parsed = path.parse(title || '');
+    const safeTitle = parsed.name || title || 'export';
+
+    if (!latexContent) {
+      return { canceled: true, error: 'No LaTeX content provided' };
+    }
+
+    // Check if LaTeX is installed
+    const latexStatus = checkLatexInstalled();
+    if (!latexStatus.installed) {
+      return {
+        canceled: true,
+        error: 'LaTeX not installed',
+        message: getLatexInstallationStatus().message,
+        fallbackToHtml: true
+      };
+    }
+
+    // Show save dialog
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    const folderPath = data && data.folderPath ? String(data.folderPath) : (data && data.notePath ? path.dirname(String(data.notePath)) : null);
+    const defaultPdfPath = folderPath ? path.join(folderPath, `${safeTitle}.pdf`) : `${safeTitle}.pdf`;
+
+    const result = await dialog.showSaveDialog(win, {
+      defaultPath: defaultPdfPath,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }]
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+
+    // Compile LaTeX to PDF
+    const compileResult = await compileLatexToPdf(latexContent, result.filePath, {
+      engine: latexStatus.engine,
+      maxIterations: 2,
+      timeout: 60000,
+      verbose: true
+    });
+
+    if (!compileResult.success) {
+      return {
+        canceled: false,
+        error: compileResult.error,
+        stderr: compileResult.stderr,
+        filePath: null,
+        fallbackToHtml: true
+      };
+    }
+
+    // Reveal the exported file in the OS file manager (Finder on macOS)
+    try {
+      const { shell } = require('electron');
+      if (result.filePath && shell && typeof shell.showItemInFolder === 'function') {
+        shell.showItemInFolder(result.filePath);
+      }
+    } catch (e) { /* ignore best-effort */ }
+
+    return { filePath: result.filePath, canceled: false };
+  } catch (error) {
+    console.error('Export LaTeX PDF failed:', error);
+    return {
+      canceled: false,
+      error: error.message,
+      fallbackToHtml: true
+    };
+  }
+});
+
 // Compile a LaTeX .tex file into PDF using latexmk or pdflatex as fallback.
 ipcMain.handle('workspace:compileLatex', async (_event, data) => {
   try {
@@ -551,6 +711,15 @@ ipcMain.handle('notes:selectPdf', noopAsync);
 
 app.whenReady().then(() => {
   createWindow();
+  
+  // Register global keyboard shortcut: Ctrl+Shift+` to toggle embedded terminal
+  globalShortcut.register('Ctrl+Shift+`', () => {
+    const win = BrowserWindow.getFocusedWindow();
+    if (win) {
+      win.webContents.send('terminal:toggle');
+    }
+  });
+  
   // If tests requested auto-trace behavior, start the watcher/timeout
   try { maybeExitAfterAutoTrace(); } catch (e) {}
 
@@ -600,8 +769,65 @@ app.whenReady().then(() => {
   });
 });
 
+// Handle LaTeX installation request from renderer
+ipcMain.handle('app:installLatex', async (_event) => {
+  try {
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    if (!win) {
+      return { success: false, error: 'No window available' };
+    }
+    
+    const result = await attemptAutoInstall(win);
+    return result;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Handle terminal command execution with persistent shell
+// Terminal PTY IPC handlers
+ipcMain.handle('terminal:init', (event, payload) => {
+  const windowId = event.sender.id;
+  const browserWindow = BrowserWindow.fromWebContents(event.sender);
+  // Allow renderer to request a specific cwd for the PTY (e.g., the opened workspace)
+  const requestedCwd = payload && payload.folderPath ? String(payload.folderPath) : null;
+  if (browserWindow) {
+    getPtyProcess(windowId, browserWindow, requestedCwd);  // Create PTY for this window with reference to window
+  }
+  return { success: true };
+});
+
+ipcMain.on('terminal:data', (event, data) => {
+  const windowId = event.sender.id;
+  const ptyProcess = ptyProcesses.get(windowId);
+  if (ptyProcess && !ptyProcess.killed) {
+    ptyProcess.write(data);
+  }
+});
+
+ipcMain.on('terminal:resize', (event, { cols, rows }) => {
+  const windowId = event.sender.id;
+  const ptyProcess = ptyProcesses.get(windowId);
+  if (ptyProcess && !ptyProcess.killed) {
+    ptyProcess.resize(cols, rows);
+  }
+});
+
+ipcMain.handle('terminal:cleanup', (_event, windowId) => {
+  closePtyProcess(windowId);
+  return { success: true };
+});
+
 app.on('window-all-closed', () => {
   try {
+    // Clean up all PTY processes
+    for (const [windowId] of ptyProcesses) {
+      closePtyProcess(windowId);
+    }
+    
+    // Unregister global shortcuts before quitting
+    globalShortcut.unregisterAll();
+    
     // In normal operation on macOS we keep the app alive when all windows are closed.
     // During automated tests we sometimes need the main process to exit as soon as
     // windows are closed. When the test runner sets NTA_FORCE_QUIT=1 we force quit
@@ -612,3 +838,4 @@ app.on('window-all-closed', () => {
     }
   } catch (e) { try { app.quit(); } catch (err) {} }
 });
+

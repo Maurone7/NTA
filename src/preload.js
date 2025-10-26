@@ -18,6 +18,7 @@ const api = {
   resolveResource: (data) => ipcRenderer.invoke('workspace:resolveResource', data),
   compileLatex: (data) => ipcRenderer.invoke('workspace:compileLatex', data),
   getPaths: () => ipcRenderer.invoke('notes:paths'),
+  exportLatexPdf: (data) => ipcRenderer.invoke('preview:exportLatexPdf', data),
   exportPreviewPdf: (data) => ipcRenderer.invoke('preview:exportPdf', data),
   exportPreviewHtml: (data) => ipcRenderer.invoke('preview:exportHtml', data),
   exportCompiledPdf: (data) => ipcRenderer.invoke('preview:exportCompiledPdf', data),
@@ -31,8 +32,6 @@ const api = {
   readReplaceLog: () => ipcRenderer.invoke('debug:readReplaceLog'),
   listWorkspaceDebug: () => ipcRenderer.invoke('debug:listWorkspaceDebug'),
   readWorkspaceDebugFile: (filename) => ipcRenderer.invoke('debug:readWorkspaceDebugFile', filename),
-  killWorkspaceReplacer: () => ipcRenderer.invoke('debug:killWorkspaceReplacer'),
-  openWorkspaceReplacedApp: () => ipcRenderer.invoke('debug:openWorkspaceReplacedApp'),
   killWorkspaceReplacer: () => ipcRenderer.invoke('debug:killWorkspaceReplacer'),
   openWorkspaceReplacedApp: () => ipcRenderer.invoke('debug:openWorkspaceReplacedApp'),
   
@@ -54,8 +53,13 @@ const api = {
   devCheckForUpdates: () => ipcRenderer.invoke('app:devCheckForUpdates'),
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   
+  // LaTeX installation helper
+  installLatex: () => ipcRenderer.invoke('app:installLatex'),
+  
   // Generic invoke for backward compatibility with existing renderer code
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  // Allow renderer to send fire-and-forget messages (e.g. terminal:data, terminal:resize)
+  send: (channel, ...args) => ipcRenderer.send(channel, ...args),
   
   // IPC listeners
   onWorkspaceChanged: (callback) => {
@@ -67,7 +71,8 @@ const api = {
   
   // Update event listeners
   on: (channel, callback) => {
-    const validChannels = ['update-available', 'update-progress', 'update-downloaded', 'update-not-available', 'update-error', 'workspace:changed', 'custom-update-progress', 'custom-update-started', 'custom-update-result', 'fallback-started', 'fallback-result', 'fallback-available', 'fallback-progress'];
+    // Add terminal:output so renderer can receive PTY output
+    const validChannels = ['update-available', 'update-progress', 'update-downloaded', 'update-not-available', 'update-error', 'workspace:changed', 'custom-update-progress', 'custom-update-started', 'custom-update-result', 'fallback-started', 'fallback-result', 'fallback-available', 'fallback-progress', 'latex:installation-progress', 'latex:installation-complete', 'latex:installation-error', 'terminal:toggle', 'terminal:output'];
     if (validChannels.includes(channel)) {
       ipcRenderer.on(channel, (_event, data) => callback(data));
     }

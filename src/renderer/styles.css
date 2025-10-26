@@ -993,7 +993,10 @@ textarea {
      thin visible indicator so users can grab the lit line easily. */
   position: absolute;
   top: 0;
-  bottom: 0;
+  /* Don't extend the vertical hit area into the terminal when it is
+    visible. The terminal code updates the CSS variable --terminal-height
+    so the handle stops above the terminal and does not overlap it. */
+  bottom: var(--terminal-height, 0px);
   /* Keep a reasonably large interactive width but position it so the left edge
      is on the sidebar/workspace boundary for precise edge alignment. */
   width: 24px; /* interactive width extending to the right of the boundary - matches workspace splitter */
@@ -1005,15 +1008,43 @@ textarea {
   background: transparent;
   transform: translateX(0);
   pointer-events: auto;
-  z-index: 2147483645; /* very high so it stays above content/scrollbars */
-  /* Ensure the sidebar handle is above the workspace splitter which uses 2147483646 */
-  z-index: 9000;
+  /* Keep the sidebar handle below the terminal overlay so it doesn't
+    visually cover terminal content when the terminal is visible. The
+    terminal container uses z-index:1000, so choose a lower value here. */
+  z-index: 100;
   -webkit-user-select: none;
   user-select: none;
   touch-action: none; /* prevent touch-driven scrolling artifacts */
   -webkit-appearance: none;
   appearance: none;
   outline: none;
+}
+
+/* Top handle for resizing the embedded terminal. Placed just above the
+   terminal container so it does not overlap terminal content. Visible
+   hit area is small and centered. */
+.nta-terminal-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 12px; /* interactive zone */
+  top: -12px; /* sit just above the terminal content */
+  cursor: ns-resize;
+  z-index: 1002; /* above terminal container so it's grabable */
+  background: transparent;
+  pointer-events: auto;
+}
+
+.nta-terminal-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 2px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
 }
 
 /* Thin visual indicator at the left edge of the interactive hit area. The line
@@ -1036,6 +1067,17 @@ textarea {
   background: var(--accent);
   opacity: 1;
   width: 2px; /* expand to 2px on hover to match workspace splitter */
+}
+
+/* When the embedded terminal is visible we avoid accenting the sidebar
+   resize handle on hover so it doesn't appear active while the cursor is
+   over the terminal area. The `terminal-visible` class is toggled on the
+   document root by JS when the terminal is open. */
+.terminal-visible .sidebar-resize-handle:hover::after,
+.terminal-visible .sidebar-resize-handle:active::after {
+  background: var(--border);
+  opacity: 0.85;
+  width: 1px;
 }
 
 .explorer__header {
@@ -2382,8 +2424,9 @@ button.small {
   /* Show the PDF in the preview pane but keep editor panes visible.
      Previously editor panes and the splitter were hidden which caused
      the PDF to occupy the full workspace. Keep the split layout so
-     users can keep editing while previewing PDFs. */
-  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+     users can keep editing while previewing PDFs.
+     Use flex-shrink: 0 to prevent preview from shrinking during editor resize. */
+  flex: 0 0 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
   width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
 }
 
@@ -2425,7 +2468,8 @@ button.small {
 }
 
 .workspace__content.image-mode .preview-pane {
-  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  /* Use flex-shrink: 0 to prevent preview from shrinking during editor resize. */
+  flex: 0 0 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
   width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
 }
 
@@ -2439,7 +2483,8 @@ button.small {
 }
 
 .workspace__content.video-mode .preview-pane {
-  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  /* Use flex-shrink: 0 to prevent preview from shrinking during editor resize. */
+  flex: 0 0 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
   width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
 }
 
@@ -2448,7 +2493,8 @@ button.small {
 }
 
 .workspace__content.html-mode .preview-pane {
-  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  /* Use flex-shrink: 0 to prevent preview from shrinking during editor resize. */
+  flex: 0 0 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
   width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
 }
 
@@ -2457,7 +2503,8 @@ button.small {
 }
 
 .workspace__content.latex-mode .preview-pane {
-  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  /* Use flex-shrink: 0 to prevent preview from shrinking during editor resize. */
+  flex: 0 0 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
   width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
 }
 
@@ -2535,7 +2582,8 @@ button.small {
 
 .preview-pane {
   /* Fixed-width right sidebar for live preview */
-  flex: 0 1 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
+  /* Use flex-shrink: 0 to prevent preview from shrinking when editor panes are resized */
+  flex: 0 0 calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
   width: calc((1 - var(--local-editor-ratio, 0.5)) * 100%);
   max-width: 100%;
   min-width: 0px; /* Allow preview to be minimized completely */
@@ -2737,7 +2785,7 @@ body[data-theme="dark"] .editor-pane:not(.active) {
   background: transparent;
   margin-left: -12px; /* Pull 6px into the editor pane */
   margin-right: -12px; /* Pull 6px into the preview pane */
-  z-index: 9000; /* Ensure it's above both panes and editor dividers but below modals */
+  z-index: 900; /* Keep below terminal overlay (z-index:1000) */
   pointer-events: auto; /* Ensure splitter receives pointer events */
 }
 
@@ -2754,7 +2802,7 @@ body[data-theme="dark"] .editor-pane:not(.active) {
   background: transparent;
   margin-left: -6px;
   margin-right: -6px;
-  z-index: 1200;
+  z-index: 900; /* Keep below terminal overlay (z-index:1000) */
   pointer-events: auto;
 }
 
@@ -4879,4 +4927,44 @@ body[data-high-contrast="true"] .keybinding-input:focus {
   font-size: 0.65em;
   color: var(--fg-soft);
   line-height: 1.2;
+}
+
+/* Terminal Container */
+.nta-terminal-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  /* Use a CSS variable so other UI elements (resize handles) can avoid
+     overlapping the terminal when it is visible. Default to 280px. */
+  --terminal-height: 280px;
+  height: var(--terminal-height, 280px);
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border-top: 1px solid #2b2b2b;
+  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+}
+
+.nta-terminal {
+  flex: 1;
+  overflow: hidden;
+  padding: 0.25rem; /* smaller padding */
+  font-size: 12px; /* ensure compact font for any non-xterm fallback */
+  line-height: 1.1;
+}
+
+/* Make xterm's .xterm-viewport and .xterm-screen fill the container cleanly */
+.nta-terminal .xterm {
+  height: 100% !important;
+}
+.nta-terminal .xterm-viewport {
+  padding: 0 !important;
+}
+.nta-terminal .xterm-screen {
+  /* Reserve roughly four terminal lines of breathing room at the bottom */
+  padding-bottom: calc(4 * 1.1em);
+  box-sizing: border-box;
 }
