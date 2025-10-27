@@ -23679,13 +23679,38 @@ function switchToTab(targetTabId) {
 async function loadAppVersion() {
   try {
     let version = 'Unknown';
+    // Preferred: ask the preload/native API (main process) for the app version
     if (window.api && typeof window.api.getVersion === 'function') {
-      version = await window.api.getVersion();
+      try { version = await window.api.getVersion(); } catch (e) { /* ignore and fallback */ }
     } else if (window.api && typeof window.api.invoke === 'function') {
-      version = await window.api.invoke('app:getVersion');
+      try { version = await window.api.invoke('app:getVersion'); } catch (e) { /* ignore and fallback */ }
     }
+
+    // Fallback 1: Node/npm env (useful during `npm start` or dev tooling)
+    try {
+      if ((!version || version === 'Unknown') && typeof process !== 'undefined' && process.env && process.env.npm_package_version) {
+        version = process.env.npm_package_version;
+      }
+    } catch (e) { /* ignore */ }
+
+    // Fallback 2: try to fetch package.json relative to the renderer if served
+    if ((!version || version === 'Unknown') && typeof fetch === 'function') {
+      try {
+        // Try a few relative locations; do not throw on network errors
+        const candidates = ['package.json', '../package.json', '/package.json'];
+        for (const c of candidates) {
+          try {
+            const res = await fetch(c, { cache: 'no-store' });
+            if (!res || res.status >= 400) continue;
+            const json = await res.json();
+            if (json && json.version) { version = json.version; break; }
+          } catch (e) { /* try next */ }
+        }
+      } catch (e) { /* ignore fetch errors */ }
+    }
+
     if (elements.appVersion) {
-      elements.appVersion.textContent = version;
+      elements.appVersion.textContent = version || 'Unknown';
     }
   } catch (error) {
     if (elements.appVersion) {
