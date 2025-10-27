@@ -50,6 +50,11 @@ try {
         document.documentElement.style.setProperty('--sidebar-width', `${Math.round(val)}px`);
         // mirror into state to keep app code consistent
         try { state.sidebarWidth = Math.round(val); } catch (e) {}
+        // Allow tests to trigger a layout recalculation so UI helpers (like
+        // the preview-toggle positioning) can respond immediately in headless
+        // environments where pointer events are not simulated.
+        try { if (typeof updatePreviewTogglePosition === 'function') updatePreviewTogglePosition(); } catch (e) {}
+        try { if (window.__nta_debug_push) window.__nta_debug_push({ type: 'test_setSidebarWidth', width: Math.round(val) }); } catch (e) {}
         return true;
       } catch (e) { return false; }
     };
@@ -5045,6 +5050,8 @@ const applySidebarCollapsed = (collapsed) => {
   } else {
     elements.workspaceTree?.setAttribute('aria-hidden', 'true');
   }
+  // Ensure preview toggle is repositioned when the left sidebar state changes
+  try { updatePreviewTogglePosition(); } catch (e) {}
 };
 
 const toggleSidebarCollapsed = () => {
@@ -5060,6 +5067,14 @@ const applyPreviewState = (collapsed) => {
   if (elements.workspaceContent) {
     elements.workspaceContent.classList.toggle('preview-collapsed', collapsed);
   }
+
+  // Lock preview placement when collapsed to avoid races where other
+  // layout callbacks re-apply a center placement. Tests and debug helpers
+  // can read `data-nta-preview-locked` to know the renderer's intent.
+  try {
+    if (collapsed) document.documentElement.setAttribute('data-nta-preview-locked', 'collapsed');
+    else document.documentElement.removeAttribute('data-nta-preview-locked');
+  } catch (e) {}
 
   if (elements.togglePreviewButton) {
     let label, title, icon;
@@ -5098,7 +5113,102 @@ const applyPreviewState = (collapsed) => {
       elements.workspaceSplitter.setAttribute('tabindex', '0');
     }
   }
+  // Update preview toggle position after changing preview state
+  try { updatePreviewTogglePosition(); } catch (e) {}
 };
+
+// Expose the preview state applier for integration tests and external modules
+try { if (typeof window !== 'undefined') window.applyPreviewState = applyPreviewState; } catch (e) {}
+
+// Position the preview toggle button centered on the workspace splitter.
+// This ensures the preview toggle is always anchored to the preview's resize
+// handle instead of being influenced by other panes (e.g., left sidebar).
+const updatePreviewTogglePosition = () => {
+  try {
+    const btn = elements.togglePreviewButton;
+    const splitter = elements.workspaceSplitter || document.getElementById('workspace-splitter');
+    const wc = elements.workspaceContent || document.querySelector('.workspace__content');
+    if (!btn || !splitter || !wc) return;
+
+    // When preview is collapsed, the button uses a fixed edge-placement via CSS.
+    const previewCollapsed = wc.classList.contains('preview-collapsed') || state.previewCollapsed;
+    try { if (window.__nta_debug_push) window.__nta_debug_push({ type: 'updatePreviewTogglePosition.start', previewCollapsed }); } catch (e) {}
+    if (previewCollapsed) {
+      // Force fixed placement at the right edge so the toggle is always
+      // anchored to the app edge when the preview is collapsed. Use inline
+      // styles here to ensure it doesn't depend on CSS selector specificity
+      // or DOM order.
+      // Remove any previous horizontal placement that may interfere.
+  try { /* ensure left is not a fixed px value that would override right */ btn.style.left = 'auto'; } catch (e) {}
+  try { btn.style.removeProperty('right'); } catch (e) {}
+  try { btn.style.position = 'fixed'; } catch (e) {}
+  try { btn.style.right = '8px'; } catch (e) {}
+      try { btn.style.top = '50%'; } catch (e) {}
+      // Ensure only vertical translate is applied so previous translateX
+      // values don't persist and offset the fixed placement.
+  try { btn.style.transform = 'translateY(-50%)'; } catch (e) {}
+      try { btn.style.zIndex = '1100'; } catch (e) {}
+      try { if (window.__nta_debug_push) window.__nta_debug_push({ type: 'updatePreviewTogglePosition.collapsed', computed: { right: btn.style.right, position: btn.style.position } }); } catch (e) {}
+      try { btn.setAttribute('data-nta-position', 'collapsed'); } catch (e) {}
+      try { document.documentElement.setAttribute('data-nta-last-preview-position', JSON.stringify({ mode: 'collapsed', right: btn.style.right, position: btn.style.position })); } catch (e) {}
+          // Ensure the button is visible even when layout changes elsewhere
+          try { btn.style.display = 'flex'; } catch (e) {}
+      return;
+    }
+
+    // Ensure splitter is visible and has layout.
+    const wcRect = wc.getBoundingClientRect();
+    const spRect = splitter.getBoundingClientRect();
+    // If the splitter has no width (hidden or momentary zero), fall back to
+    // centering the toggle inside the workspace so it remains visible and
+    // approximately on the splitter location.
+    let useFallbackCenter = false;
+    if (!spRect || spRect.width === 0) {
+      useFallbackCenter = true;
+    }
+
+    // If another part of the app has locked preview placement to 'collapsed',
+    // do not apply a center placement — this avoids races from other layout
+    // callbacks re-applying the wrong position while the user expects the
+    // toggle to be pinned to the edge.
+    try {
+      if (document.documentElement.getAttribute('data-nta-preview-locked') === 'collapsed') {
+        try { if (window.__nta_debug_push) window.__nta_debug_push({ type: 'updatePreviewTogglePosition.bailed_locked' }); } catch (e) {}
+        return;
+      }
+    } catch (e) {}
+
+    // Compute center X relative to the workspace container and apply as inline left.
+    const centerX = useFallbackCenter
+      ? Math.round(wcRect.width / 2)
+      : Math.round(spRect.left - wcRect.left + spRect.width / 2);
+
+  try { if (window.__nta_debug_push) window.__nta_debug_push({ type: 'updatePreviewTogglePosition.center', centerX, spRect: { left: Math.round(spRect.left), width: Math.round(spRect.width) }, wcRect: { left: Math.round(wcRect.left), width: Math.round(wcRect.width) } }); } catch (e) {}
+  try { btn.setAttribute('data-nta-position', `center:${centerX}`); } catch (e) {}
+  try { document.documentElement.setAttribute('data-nta-last-preview-position', JSON.stringify({ mode: 'center', centerX, spRect: { left: Math.round(spRect.left), width: Math.round(spRect.width) }, wcRect: { left: Math.round(wcRect.left), width: Math.round(wcRect.width) } })); } catch (e) {}
+
+  // Ensure visible and position the button absolutely inside the workspace content and center it on the splitter.
+  try { btn.style.display = 'flex'; } catch (e) {}
+    btn.style.position = 'absolute';
+    btn.style.left = `${centerX}px`;
+    // Keep vertical centering via existing CSS top:50% + transform; ensure transform centers horizontally
+    btn.style.transform = 'translate(-50%, -50%)';
+    // Clear any right-hand positioning that might conflict in some states
+    btn.style.right = '';
+  try { if (window.__nta_debug_push) window.__nta_debug_push({ type: 'updatePreviewTogglePosition.applied', left: btn.style.left, position: btn.style.position }); } catch (e) {}
+  try { document.documentElement.setAttribute('data-nta-last-preview-applied', JSON.stringify({ left: btn.style.left, position: btn.style.position })); } catch (e) {}
+  } catch (e) {
+    /* non-fatal */
+  }
+};
+
+// Keep preview toggle positioned during window resizes and splitter drags
+window.addEventListener('resize', () => {
+  try { updatePreviewTogglePosition(); } catch (e) {}
+});
+
+// Initial placement after startup to ensure toggle is positioned correctly
+try { setTimeout(() => { try { updatePreviewTogglePosition(); } catch (e) {} }, 50); } catch (e) {}
 
 const togglePreviewCollapsed = () => {
   // Toggle between collapsed and side-by-side preview
@@ -10545,6 +10655,62 @@ try {
 
 // second editor UI removed
 
+// Helper to check if any editor panes have active visible content/windows
+const hasActiveEditorWindows = () => {
+  try {
+    // Check if there are any visible editor pane DOM elements
+    const wc = elements.workspaceContent;
+    if (!wc) return false;
+    
+    const paneEls = Array.from(wc.querySelectorAll('.editor-pane'));
+    for (const paneEl of paneEls) {
+      // Check if the pane element itself is visible (not hidden and not display:none)
+      if (paneEl && !paneEl.hidden) {
+        const cs = window.getComputedStyle(paneEl);
+        if (cs && cs.display !== 'none' && cs.visibility !== 'hidden') {
+          return true;
+        }
+      }
+    }
+    return false;
+  } catch (e) {
+    return false;
+  }
+};
+
+// Helper to ensure at least one editor pane is visible
+const ensureEditorPaneVisible = () => {
+  try {
+    const wc = elements.workspaceContent;
+    if (!wc) return false;
+    
+    // First try to show the left pane (most common case)
+    const leftPane = wc.querySelector('.editor-pane--left');
+    if (leftPane) {
+      leftPane.hidden = false;
+      try { leftPane.style.display = ''; } catch (e) {}
+      setActiveEditorPane('left');
+      return true;
+    }
+    
+    // Fallback: show any editor pane that's available
+    const paneEls = Array.from(wc.querySelectorAll('.editor-pane'));
+    for (const paneEl of paneEls) {
+      if (paneEl) {
+        paneEl.hidden = false;
+        try { paneEl.style.display = ''; } catch (e) {}
+        const paneId = paneEl.getAttribute('data-pane-id') || 'left';
+        setActiveEditorPane(paneId);
+        return true;
+      }
+    }
+    
+    return false;
+  } catch (e) {
+    return false;
+  }
+};
+
 const handleWorkspaceTreeClick = (event) => {
   // Only handle file opens here; directory expand/collapse is handled by sidebar wiring
   const label = event.target.closest('.tree-node__label');
@@ -10573,6 +10739,16 @@ const handleWorkspaceTreeClick = (event) => {
     if (!noteId) {
   debugLog('No noteId on clicked node');
       return;
+    }
+
+    // If no editor windows are visible, automatically show one (make left pane visible)
+    if (!hasActiveEditorWindows()) {
+      try {
+        ensureEditorPaneVisible();
+        updateEditorPaneVisuals();
+      } catch (e) {
+        console.error('Failed to ensure editor pane is visible:', e);
+      }
     }
 
     // If the note exists in state, open it. Prefer openNoteInPane which will
@@ -13649,6 +13825,10 @@ const handleSplitterPointerMove = (event) => {
   try { _sidebarDragDebug.update(`splitter:move clientX:${event.clientX} left:${state._splitterBounds?.left ?? 'n/a'} targetRatio:${(state.editorRatio).toFixed(3)}`); } catch (e) { }
   debugLog('[SplitterDrag] pointermove', { clientX: event.clientX, editorRatio: state.editorRatio });
   try { window.__nta_debug_push && window.__nta_debug_push({ type: 'splitter:pointermove', clientX: event.clientX, editorRatio: state.editorRatio }); } catch (e) {}
+  // Keep preview toggle tracking the splitter during live drags so it
+  // remains visually anchored to the handle instead of lagging until
+  // pointerup/layout flush.
+  try { updatePreviewTogglePosition(); } catch (e) {}
 };
 
 const handleSplitterPointerUp = (event) => {
@@ -13676,6 +13856,9 @@ const handleSplitterPointerUp = (event) => {
   state.splitterPointerId = null;
   elements.workspaceSplitter?.classList.remove('workspace__splitter--active');
   setEditorRatio(state.editorRatio, true);
+  // Ensure final placement is applied immediately after pointerup so tests
+  // and users see the preview toggle pinned to the final splitter position.
+  try { updatePreviewTogglePosition(); } catch (e) {}
   // Clear temporary bounds stored during drag
   try { state._splitterBounds = null; } catch (e) {}
   try { state._splitterBoundaryScreenX = null; } catch (e) {}
@@ -13951,6 +14134,7 @@ const handleEditorSplitterPointerMove = (event) => {
     // Apply explicit flex-basis to left and right panes so layout updates immediately
     try { leftPane.style.flex = `0 0 ${desiredLeftPx}px`; } catch (e) {}
     try { rightPane.style.flex = `0 0 ${rightPx}px`; } catch (e) {}
+    try { updatePreviewTogglePosition(); } catch (e) {}
   } catch (e) { /* ignore styling errors */ }
 };
 
@@ -14024,6 +14208,7 @@ const handleEditorSplitterPointerUp = (event) => {
 
         leftPane.style.flex = `0 0 ${leftPx}px`;
         rightPane.style.flex = `0 0 ${rightPx}px`;
+        try { updatePreviewTogglePosition(); } catch (e) {}
       } catch (e) { /* ignore normalization errors */ }
     }
   } catch (e) { /* ignore */ }
@@ -19666,7 +19851,6 @@ const initialize = () => {
   }
 
   // Split editor toggle wiring
-  const toggleSplitBtn = document.getElementById('toggle-split-button');
   const editorPaneRight = document.querySelector('.editor-pane--right');
   const restoreSplitVisible = () => {
     const val = localStorage.getItem(storageKeys.editorSplitVisible);
@@ -19682,12 +19866,10 @@ const initialize = () => {
         editorPaneRight.hidden = false;
         // remove inline display to allow CSS to determine layout
         try { editorPaneRight.style.display = ''; } catch (e) {}
-        toggleSplitBtn?.setAttribute('aria-pressed', 'true');
       } else {
         editorPaneRight.hidden = true;
         // force inline hide to override any CSS display rules
         try { editorPaneRight.style.display = 'none'; } catch (e) {}
-        toggleSplitBtn?.setAttribute('aria-pressed', 'false');
       }
       // Persist as string so restoreSplitVisible can read it
       localStorage.setItem(storageKeys.editorSplitVisible, visible ? 'true' : 'false');
@@ -19702,29 +19884,9 @@ const initialize = () => {
     }
   };
 
-  if (toggleSplitBtn) {
-    // Initialize state from storage (default hidden)
-    const visible = restoreSplitVisible();
-    setSplitVisible(visible);
-    toggleSplitBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-  // Debug prints removed
-      // If the left pane is hidden, show it; otherwise create a new dynamic pane
-      if (panes.left && panes.left.root && panes.left.root.style.display === 'none') {
-        panes.left.root.style.display = '';
-        setActiveEditorPane('left');
-        updateEditorPaneVisuals();
-      } else {
-        const paneId = createEditorPane(null, ``);
-        if (!paneId) {
-          // Limit reached; no-op (UI shows feedback elsewhere)
-        } else {
-          // pane created successfully
-        }
-      }
-  // Debug prints removed
-    });
-  }
+  // Initialize split visibility from storage
+  const visible = restoreSplitVisible();
+  setSplitVisible(visible);
 
   // Close button for right editor pane (newly added in index.html)
   const closeRightBtn = document.getElementById('close-right-editor');
