@@ -53,10 +53,15 @@ describe('Workspace context menu', () => {
   // ensure localStorage is available as a global (app.js references it)
   try { global.localStorage = window.localStorage; } catch (e) { global.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }; }
 
-    // stubbed api surface
+    // stubbed api surface (include no-op event helpers used by app.js)
     window.api = {
       revealInFinder: async (p) => { window._revealed = p; },
-      deleteFile: async (p) => { window._deleted = p; }
+      deleteFile: async (p) => { window._deleted = p; },
+      // event emitter helpers (no-ops for tests)
+      on: () => {},
+      once: () => {},
+      removeListener: () => {},
+      off: () => {}
     };
 
   const path = require('path');
@@ -191,5 +196,66 @@ describe('Workspace context menu', () => {
         done();
       }, 50);
     } catch (err) { done(err); }
+  });
+
+  it('delete action removes note from app state and DOM', (done) => {
+    const tree = document.getElementById('workspace-tree');
+    assert.ok(tree);
+    const node = tree.querySelector('.tree-node--file') || tree.firstElementChild;
+    assert.ok(node, 'tree node exists');
+
+    // Ensure the node references our test note
+    node.dataset.noteId = 'note1';
+
+    // Ensure app state references note1
+    const appState = app.__test__.state;
+    assert.ok(appState && appState.notes && appState.notes.has('note1'));
+
+    // Open menu and trigger delete
+    if (app && app.__test__ && typeof app.__test__.openContextMenu === 'function') {
+      app.__test__.openContextMenu('note1', 10, 10);
+    }
+
+    const menu = document.getElementById('workspace-context-menu');
+    assert.ok(menu);
+
+    // stub confirm to accept deletion
+    const origConfirm = window.confirm || global.confirm;
+    window.confirm = () => true;
+    global.confirm = () => true;
+
+    // trigger delete via exposed helper
+    if (app && app.__test__ && typeof app.__test__.handleContextMenuAction === 'function') {
+      app.__test__.handleContextMenuAction('delete');
+    } else {
+      const delBtn = menu.querySelector('button[data-action="delete"]');
+      assert.ok(delBtn);
+      delBtn.click();
+    }
+
+    // allow async deletion to complete
+    setTimeout(() => {
+      try {
+        // API delete should have been called (stub sets window._deleted)
+        assert.strictEqual(window._deleted, '/tmp/sample.md');
+
+        // app state should no longer contain the note
+        assert.ok(!(appState.notes && appState.notes.has('note1')),
+          'note1 should be removed from state.notes after deletion');
+
+        // DOM should no longer contain an element referencing the deleted note
+        const removed = tree.querySelector('[data-note-id="note1"]');
+        assert.strictEqual(removed, null, 'tree should not contain a node for deleted note');
+
+        // restore confirm
+        window.confirm = origConfirm;
+        if (global.confirm !== origConfirm) delete global.confirm;
+        done();
+      } catch (err) {
+        window.confirm = origConfirm;
+        if (global.confirm !== origConfirm) delete global.confirm;
+        done(err);
+      }
+    }, 80);
   });
 });

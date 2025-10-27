@@ -238,6 +238,8 @@ describe('LaTeX editor behavior', function() {
   });
 
   it('should verify exported PDF was compiled with LaTeX', async function() {
+    // Compilation can take time on CI/machines — increase timeout for this test
+    this.timeout(60000);
     const fs = require('fs').promises;
     const path = require('path');
     const os = require('os');

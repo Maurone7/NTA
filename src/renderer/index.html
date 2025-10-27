@@ -14,34 +14,8 @@
   <body>
     <!-- Skip to main content link for accessibility -->
     <a href="#main-content" class="skip-link">Skip to main content</a>
-    <!-- Custom Title Bar for macOS -->
-    <div id="title-bar" class="title-bar">
-        <div class="title-bar__content">
-    <div class="title-bar__title"></div>
-        </div>
-      </div>
-
-    <!-- Update Notification -->
-    <div id="update-notification" class="update-notification" hidden>
-      <div class="update-notification__content">
-        <div class="update-notification__icon">📦</div>
-        <div class="update-notification__text">
-          <div class="update-notification__title">Update Available</div>
-          <div class="update-notification__message">A new version of NoteTakingApp is available.</div>
-          <div class="update-notification__submessage" aria-live="polite"></div>
-          <div class="update-notification__progress" hidden>
-            <div class="update-notification__progress-bar">
-              <div class="update-notification__progress-fill"></div>
-            </div>
-            <div class="update-notification__progress-text">Downloading...</div>
-          </div>
-        </div>
-        <div class="update-notification__actions">
-          <button id="update-install-button" class="button primary small" hidden>Install & Restart</button>
-          <button id="update-dismiss-button" class="button ghost small">Later</button>
-        </div>
-      </div>
-    </div>
+  <!-- Title bar removed: macOS custom title bar has been removed per user request -->
+    <!-- Update notification removed -->
 
     <!-- Tab Bar (removed) -->
 
@@ -618,6 +592,10 @@
     <script src="../../node_modules/katex/dist/contrib/auto-render.min.js"></script>
     <link rel="stylesheet" href="../../node_modules/xterm/css/xterm.css">
     <script src="../../node_modules/xterm/lib/xterm.js"></script>
+    <script type="module">
+      import { createTreeModule } from './tree.js';
+      window.createTreeModule = createTreeModule;
+    </script>
     <script type="module" src="./app.js"></script>
 
     <div id="workspace-context-menu" class="context-menu" role="menu" hidden>
@@ -955,12 +933,7 @@
                     </select>
                   </div>
                   
-                  <!-- Title Bar Specific Setting -->
-                  <div class="settings-item" id="titlebar-specific-setting" hidden>
-                    <label class="settings-item__label">Show Full Path</label>
-                    <input type="checkbox" id="titlebar-show-path" class="settings-checkbox" checked>
-                    <span class="settings-description">When unchecked, only the note name will be shown</span>
-                  </div>
+                  <!-- Title bar-specific setting removed (macOS titlebar is handled by OS) -->
                 </div>
                 
                 <!-- Status Bar Position Setting -->
@@ -1054,30 +1027,7 @@
                 
                 <!-- Super Advanced Settings (Hidden by default) -->
                 <div id="super-advanced" class="settings-advanced" hidden>
-                  <div class="settings-item">
-                    <label class="settings-item__label">Title Bar Size</label>
-                    <div class="slider-group">
-                      <input type="range" id="title-bar-size-slider" class="settings-slider" min="24" max="48" value="32" step="2">
-                      <span id="title-bar-size-value" class="slider-value">32px</span>
-                      <button id="reset-title-bar-size" class="settings-button--secondary">Reset</button>
-                    </div>
-                  </div>
-                  <div class="settings-item">
-                    <label class="settings-item__label">Traffic Light Position</label>
-                    <select id="traffic-light-position-select" class="settings-select">
-                      <option value="center">Centered with Title</option>
-                      <option value="top-left">Top Left Corner</option>
-                      <option value="custom">Custom Position</option>
-                    </select>
-                  </div>
-                  <div class="settings-item" id="traffic-light-custom-container" hidden>
-                    <label class="settings-item__label">Traffic Light Offset</label>
-                    <div class="slider-group">
-                      <input type="range" id="traffic-light-offset-slider" class="settings-slider" min="0" max="20" value="8" step="1">
-                      <span id="traffic-light-offset-value" class="slider-value">8px</span>
-                      <button id="reset-traffic-light-offset" class="settings-button--secondary">Reset</button>
-                    </div>
-                  </div>
+                  <!-- Title bar / traffic-light controls removed -->
                   <div class="settings-item">
                     <label class="settings-item__label">Status Bar Size</label>
                     <div class="slider-group">
@@ -1107,17 +1057,17 @@
             <div class="settings-tab" id="application-tab">
               <div class="settings-section">
                 <div class="settings-item">
-                  <label class="settings-item__label">Check for Updates</label>
-                    <div class="update-check-row">
-                      <div class="check-button-column">
-                        <button id="check-updates-btn" class="settings-button">Check Now</button>
-                        <div id="check-updates-submessage" class="settings-submessage" aria-live="polite"></div>
-                      </div>
-                      <div>
-                        <button id="update-download-button" class="settings-button">Open Release Page</button>
-                      </div>
+                      <label class="settings-item__label">Check for Updates</label>
+                        <div class="update-check-row">
+                          <div class="check-button-column">
+                            <button id="check-updates-btn" class="settings-button">Check Now</button>
+                            <div id="check-updates-submessage" class="settings-submessage" aria-live="polite"></div>
+                          </div>
+                          <div>
+                            <button id="update-download-button" class="settings-button">Open Release Page</button>
+                          </div>
+                        </div>
                     </div>
-                </div>
                 <div class="settings-item">
                   <label class="settings-item__label">App Version</label>
                   <div id="app-version">Loading...</div>

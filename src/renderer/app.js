@@ -392,7 +392,6 @@ const elements = {
   borderThicknessSlider: document.getElementById('border-thickness-slider') || document.createElement('input'),
   borderThicknessValue: document.getElementById('border-thickness-value') || document.createElement('span'),
   resetBorderThicknessButton: document.getElementById('reset-border-thickness') || document.createElement('button'),
-  checkUpdatesButton: document.getElementById('check-updates-btn') || document.createElement('button'),
   // New advanced settings
   autosaveIntervalSlider: document.getElementById('autosave-interval-slider') || document.createElement('input'),
   autosaveIntervalValue: document.getElementById('autosave-interval-value') || document.createElement('span'),
@@ -462,7 +461,8 @@ const elements = {
   resetComponentTextColorButton: document.getElementById('reset-component-text-color') || document.createElement('button'),
   componentUseGlobalStyle: document.getElementById('component-use-global-style') || document.createElement('input'),
   componentFontStyleSelect: document.getElementById('component-font-style-select') || document.createElement('select'),
-  componentShowPath: document.getElementById('titlebar-show-path') || document.createElement('input'),
+  // Titlebar show-path control removed from DOM; provide a harmless fallback input
+  componentShowPath: document.createElement('input'),
   superAdvancedToggle: document.getElementById('super-advanced-toggle') || document.createElement('button'),
   fontImportInput: document.getElementById('font-import') || document.createElement('input'),
   fontImportBtn: document.getElementById('font-import-btn') || document.createElement('button'),
@@ -1333,36 +1333,7 @@ const state = {
   lastRenderableNoteId: null
 };
 
-// Load tree helpers from separate module to keep file smaller and easier to
-// debug. Use a defensive require so tests or browser-only environments that
-// don't have CommonJS don't break initialization.
-let treeModule = null;
-try {
-  // eslint-disable-next-line global-require
-  const treeFactory = require('./tree');
-  treeModule = treeFactory({ state, elements, imageExtensions, videoExtensions, htmlExtensions });
-} catch (e) {
-  treeModule = null;
-}
-
-// Initialize tree module with callbacks so it can perform app-level actions
-try {
-  if (treeModule && typeof treeModule.init === 'function') {
-    treeModule.init({
-      canCutCopyNote,
-      canPasteNote,
-      canRenameNote,
-      canDeleteNote,
-      cutNote,
-      copyNote,
-      pasteNote,
-      startRenameFile,
-      deleteNote,
-      revealInFinder: (p) => window.api?.revealInFinder ? window.api.revealInFinder(p) : null,
-      setStatus: (msg, persistent) => setStatus(msg, persistent)
-    });
-  }
-} catch (e) { /* ignore init failures */ }
+// Tree module will be initialized later after extension variables are declared
 
 // Wire editor and right-sidebar modules
 let editorUIModule = null;
@@ -4063,6 +4034,16 @@ const htmlExtensions = new Set([
   '.html',
   '.htm'
 ]);
+
+// Create tree module early (it will be initialized later in initialize() after callbacks are defined)
+let treeModule = null;
+try {
+  if (typeof window !== 'undefined' && window.createTreeModule) {
+    treeModule = window.createTreeModule({ state, elements, imageExtensions, videoExtensions, htmlExtensions });
+  }
+} catch (e) {
+  treeModule = null;
+}
 
 const blockLabelPattern = /(?:^|\s)\^([a-zA-Z0-9_-]{1,64})(?:\s+(?:"([^"\n]{1,160})"|'([^'\n]{1,160})'))?(?=\s*(?:\n|$))/gm;
 
@@ -8912,6 +8893,8 @@ const updateFileMetadataUI = (note, options = {}) => {
     elements.filePath.textContent = 'Stored inside the application library.';
   }
   elements.filePath.title = location;
+  // Ensure the macOS title bar reflects the currently selected note
+  // Title bar removed — no-op
 };
 
 // Update visual state of editor panes (badges and active class)
@@ -10409,11 +10392,35 @@ function safeAdoptWorkspace(payload, preferredActiveId = null) {
     try { window.__nta_debug_push && window.__nta_debug_push({ type: 'safeAdoptWorkspace:called', hasPayload: !!payload, folderPath: payload?.folderPath ?? null }); } catch (e) {}
     try { console.debug && console.debug('[safeAdoptWorkspace] called', { folderPath: payload?.folderPath ?? null, hasTree: !!payload?.tree }); } catch (e) {}
     adoptWorkspace(payload, preferredActiveId || payload?.preferredActiveId);
+    // Collapse all subfolders on startup
+    if (state.tree && state.tree.children) {
+      function collectDirs(node) {
+        if (node.type === 'directory' && node.path) {
+          state.collapsedFolders.add(node.path);
+        }
+        if (node.children) {
+          node.children.forEach(collectDirs);
+        }
+      }
+      state.tree.children.forEach(collectDirs);
+    }
   } catch (err) {
     try {
       // Minimal, dependency-free adoption: populate state.notes and some metadata
       state.currentFolder = payload?.folderPath ?? null;
       state.tree = payload?.tree ?? null;
+      // Collapse all subfolders on startup
+      if (state.tree && state.tree.children) {
+        function collectDirs(node) {
+          if (node.type === 'directory' && node.path) {
+            state.collapsedFolders.add(node.path);
+          }
+          if (node.children) {
+            node.children.forEach(collectDirs);
+          }
+        }
+        state.tree.children.forEach(collectDirs);
+      }
       state.notes = new Map();
       if (Array.isArray(payload?.notes)) {
         payload.notes.forEach((n) => {
@@ -16424,8 +16431,13 @@ const renameWikiLinksInContent = (markdown, oldSlug, newBaseName) => {
       return match;
     }
 
+    // Handle both simple names and folder-prefixed paths
+    // For "folder/note.md", extract folder prefix
+    const lastSlashIndex = basePart.lastIndexOf('/');
+    const folderPrefix = lastSlashIndex >= 0 ? basePart.slice(0, lastSlashIndex + 1) : '';
+    
     const originalExtension = /\.[^./\\]+$/.test(basePart) ? getExtensionFromName(basePart) : '';
-    const replacementBase = originalExtension ? `${newBaseName}${originalExtension}` : newBaseName;
+    const replacementBase = originalExtension ? `${folderPrefix}${newBaseName}${originalExtension}` : `${folderPrefix}${newBaseName}`;
     changed = true;
     return `${embedMarker ?? ''}[[${replacementBase}${trailing}${arrowSuffix}${aliasSuffix}]]`;
   });
@@ -16442,12 +16454,15 @@ const applyWikiLinkRename = async (oldSlug, newBaseName, newFileName) => {
   let changedCount = 0;
   let activeChanged = false;
 
+  // Update all markdown files that contain wiki links to the renamed file
+  // This works for renaming ANY file type (markdown, pdf, image, etc.)
+  // because markdown files can reference any file type with [[filename.ext]]
   state.notes.forEach((note) => {
     if (!note || note.type !== 'markdown') {
       return;
     }
 
-  const { content, changed } = renameWikiLinksInContent(note.content ?? '', oldSlug, newBaseName);
+    const { content, changed } = renameWikiLinksInContent(note.content ?? '', oldSlug, newBaseName);
     if (!changed) {
       return;
     }
@@ -16498,8 +16513,16 @@ const applyWikiLinkRename = async (oldSlug, newBaseName, newFileName) => {
   return changedCount;
 };
 
-const canRenameNote = (note) =>
-  Boolean(note && note.type === 'markdown' && note.absolutePath && state.currentFolder);
+const canRenameNote = (note) => {
+  // Allow renaming any file type that has an absolutePath and is in the workspace
+  const supportedTypes = ['markdown', 'pdf', 'image', 'video', 'html', 'notebook'];
+  return Boolean(
+    note && 
+    supportedTypes.includes(note.type) && 
+    note.absolutePath && 
+    state.currentFolder
+  );
+};
 
 const closeRenameFileForm = (restoreFocus = false) => {
   if (!elements.renameFileForm || !elements.renameFileInput || !elements.fileName) {
@@ -16564,10 +16587,37 @@ const startRenameFile = (noteId) => {
 // `window.startRenameFile` can spy on it.
 try { if (typeof window !== 'undefined') window.startRenameFile = startRenameFile; } catch (e) {}
 
+// Perform inline rename from tree: takes noteId and new filename
+const performRename = async (noteId, newFilename) => {
+  try {
+    if (!noteId) return false;
+    // Get the note by ID
+    const note = state.notes.get(noteId);
+    if (!note) {
+      setStatus('Note not found.', false);
+      return false;
+    }
+    // Temporarily set active note so renameActiveNote works correctly
+    const previousActiveNoteId = state.activeNoteId;
+    state.activeNoteId = noteId;
+    try {
+      const result = await renameActiveNote(newFilename, note);
+      return result;
+    } finally {
+      state.activeNoteId = previousActiveNoteId;
+    }
+  } catch (e) {
+    setStatus(`Rename failed: ${String(e)}`, false);
+    return false;
+  }
+};
+
+try { if (typeof window !== 'undefined') window.performRename = performRename; } catch (e) {}
+
 const renameActiveNote = async (rawName, snapshot = null) => {
   const note = snapshot ?? getActiveNote();
   if (!canRenameNote(note)) {
-    setStatus('Only workspace Markdown files can be renamed.', false);
+    setStatus('This file cannot be renamed.', false);
     return false;
   }
 
@@ -16588,13 +16638,18 @@ const renameActiveNote = async (rawName, snapshot = null) => {
   const oldSlug = toWikiSlug(oldBaseName);
 
   try {
+    console.log('[RENAME] Attempting to rename file:', { oldFileName, newFileName, workspaceFolder: state.currentFolder, oldPath: note.absolutePath });
+    
     const result = await window.api.renameMarkdownFile({
       workspaceFolder: state.currentFolder,
       oldPath: note.absolutePath,
       newFileName
     });
 
+    console.log('[RENAME] API response:', result);
+    
     if (!result) {
+      console.log('[RENAME] API returned null/false');
       setStatus('Could not rename file — check logs.', false);
       return false;
     }
@@ -16641,6 +16696,12 @@ const handleRenameInputKeydown = (event) => {
   if (event.key === 'Escape') {
     event.preventDefault();
     closeRenameFileForm(true);
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    // Submit the form by calling the submit handler directly
+    if (elements.renameFileForm) {
+      elements.renameFileForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    }
   }
 };
 
@@ -18957,12 +19018,38 @@ const closeContextMenu = () => {
 };
 
 const handleContextMenuAction = async (action) => {
-  const noteId = state.contextMenu.targetNoteId;
+  let noteId = state.contextMenu.targetNoteId;
   if (!noteId) {
     return;
   }
 
-  const note = state.notes.get(noteId);
+  // Try to resolve the note object. In some runtime states the tree node's
+  // dataset.noteId may not match an entry in state.notes (e.g. metadata lag).
+  // Attempt a fallback: look up the DOM node's data-path and match against
+  // state.notes' absolutePath/storedPath fields.
+  let note = state.notes.get(noteId);
+  if (!note) {
+    try {
+      const nodeEl = elements.workspaceTree && elements.workspaceTree.querySelector
+        ? elements.workspaceTree.querySelector(`[data-note-id="${noteId}"]`)
+        : null;
+      const path = nodeEl && nodeEl.dataset ? nodeEl.dataset.path : null;
+      if (path) {
+        for (const [nid, n] of state.notes.entries()) {
+          try {
+            if (!n) continue;
+            if (n.absolutePath === path || n.storedPath === path) {
+              note = n;
+              noteId = nid;
+              break;
+            }
+          } catch (e) { /* per-note ignore */ }
+        }
+      }
+    } catch (e) {
+    }
+  }
+
   if (!note) {
     return;
   }
@@ -19267,6 +19354,27 @@ const deleteNote = async (noteId) => {
 };
 
 const initialize = () => {
+  // Initialize tree module with callbacks now that all functions are defined
+  try {
+    if (treeModule && typeof treeModule.init === 'function') {
+      treeModule.init({
+        canCutCopyNote,
+        canPasteNote,
+        canRenameNote,
+        canDeleteNote,
+        cutNote,
+        copyNote,
+        pasteNote,
+        startRenameFile,
+        performRename,
+        deleteNote,
+        revealInFinder: (p) => window.api?.revealInFinder ? window.api.revealInFinder(p) : null,
+        setStatus: (msg, persistent) => setStatus(msg, persistent)
+      });
+    }
+  } catch (e) {
+  }
+
   // Test hook: if a test injected an adoption payload on window before
   // initialize() is called, perform a minimal synchronous adoption so
   // tests that require state.tree immediately will observe it.
@@ -19321,9 +19429,20 @@ const initialize = () => {
           const treeEl = document.getElementById('workspace-tree');
           const hasFileNode = treeEl && treeEl.querySelector && treeEl.querySelector('.tree-node--file');
           if (!hasFileNode && state.tree && Array.isArray(state.tree.children) && state.tree.children.length > 0) {
-            const child = state.tree.children[0];
-            if (child) {
-              const html = `<div class="tree-node tree-node--file" data-path="${(child.path||'').replace(/"/g,'')}"><div class="tree-node__label"><span class="tree-node__name">${(child.name||child.path||'file').replace(/</g,'&lt;')}</span></div></div>`;
+            // Find the first file in the tree
+            function findFirstFile(node) {
+              if (node.type === 'file') return node;
+              if (node.children) {
+                for (const child of node.children) {
+                  const found = findFirstFile(child);
+                  if (found) return found;
+                }
+              }
+              return null;
+            }
+            const firstFile = findFirstFile(state.tree.children[0]);
+            if (firstFile) {
+              const html = `<div class="tree-node tree-node--file" data-path="${(firstFile.path||'').replace(/"/g,'')}"><div class="tree-node__label"><span class="tree-node__name">${(firstFile.name||firstFile.path||'file').replace(/</g,'&lt;')}</span></div></div>`;
               try { treeEl.innerHTML = html; treeEl.hidden = false; if (elements.workspaceEmpty) elements.workspaceEmpty.hidden = true; } catch (e) {}
             }
           }
@@ -21963,7 +22082,7 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
   // Settings modal event listeners
   elements.settingsButton?.addEventListener('click', openSettingsModal);
   elements.settingsClose?.addEventListener('click', closeSettingsModal);
-  elements.checkUpdatesButton?.addEventListener('click', checkForUpdatesManually);
+  // Update functionality removed: check-for-updates UI is deprecated and no-op.
   elements.themeSelect?.addEventListener('change', handleThemeChange);
   elements.bgColorPicker?.addEventListener('change', handleBgColorChange);
   elements.resetBgColorButton?.addEventListener('click', resetBgColor);
@@ -22359,6 +22478,46 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
     });
   }
 
+  // Listen for file-deleted notifications from main so UI can update without a full reload
+  if (window.api?.onFileDeleted) {
+    window.api.onFileDeleted((absolutePath) => {
+      try {
+        for (const [nid, note] of state.notes.entries()) {
+          try {
+            if (!note) continue;
+            const p = String(note.absolutePath || note.storedPath || '');
+            if (p && p === absolutePath) {
+              // Remove from state and update UI
+              if (state.activeNoteId === nid) state.activeNoteId = null;
+              state.notes.delete(nid);
+              state.tabs = Array.isArray(state.tabs) ? state.tabs.filter(t => t.noteId !== nid) : [];
+              // Also remove from state.tree
+              function removeFromTree(tree, pathToRemove) {
+                if (!tree || !Array.isArray(tree.children)) return;
+                tree.children = tree.children.filter(child => {
+                  if (child.type === 'file' && child.path === pathToRemove) {
+                    return false;
+                  }
+                  if (child.type === 'directory') {
+                    removeFromTree(child, pathToRemove);
+                  }
+                  return true;
+                });
+              }
+              if (state.tree) removeFromTree(state.tree, absolutePath);
+              try { renderWorkspaceTree(); } catch (e) {}
+              try { renderTabs(); } catch (e) {}
+              try { renderActiveNote(); } catch (e) {}
+              try { updateEditorPaneVisuals(); } catch (e) {}
+              setStatus(`Deleted "${note.title || absolutePath}"`, true);
+              break;
+            }
+          } catch (e) { /* per-note ignore */ }
+        }
+      } catch (e) { /* ignore */ }
+    });
+  }
+
   // Initialize sidebar width
   setSidebarWidth(state.sidebarWidth);
 
@@ -22567,78 +22726,19 @@ window.dumpResourceCaches = () => {
   }
 };
 
-// Update notification functionality
-const updateNotification = document.getElementById('update-notification');
-const updateMessage = document.querySelector('.update-notification__message');
-const updateProgress = document.querySelector('.update-notification__progress');
-const updateProgressFill = document.querySelector('.update-notification__progress-fill');
-const updateProgressText = document.querySelector('.update-notification__progress-text');
-const updateDownloadButton = document.getElementById('update-download-button');
-const updateInstallButton = document.getElementById('update-install-button');
-const updateDismissButton = document.getElementById('update-dismiss-button');
+// Update mechanism removed. Keep minimal stubs to avoid runtime errors when
+// code elsewhere references update-related variables or APIs.
+const updateNotification = null;
+const updateMessage = null;
+const updateProgress = null;
+const updateProgressFill = null;
+const updateProgressText = null;
+const updateDownloadButton = null;
+const updateInstallButton = null;
+const updateDismissButton = null;
 
-// Listen for update events from main process
-window.api.on('update-available', (info) => {
-  updateMessage.textContent = `Version ${info.version} is available for download.`;
-  updateNotification.hidden = false;
-});
-
-window.api.on('update-progress', (progressObj) => {
-  updateProgress.hidden = false;
-  updateDownloadButton.hidden = true;
-  updateProgressFill.style.width = `${progressObj.percent}%`;
-  updateProgressText.textContent = `Downloading... ${Math.round(progressObj.percent)}%`;
-});
-
-window.api.on('update-downloaded', (info) => {
-  updateProgress.hidden = true;
-  updateDownloadButton.hidden = true;
-  updateInstallButton.hidden = false;
-  updateMessage.textContent = `Version ${info.version} has been downloaded and is ready to install.`;
-});
-
-// Handle update actions
-if (updateDownloadButton) updateDownloadButton.addEventListener('click', async () => {
-  updateDownloadButton.disabled = true;
-  updateDownloadButton.textContent = 'Downloading...';
-  try {
-    // Prefer direct method if available, fall back to invoke-style if present
-    if (window.api && typeof window.api.checkForUpdates === 'function') {
-      await window.api.checkForUpdates();
-    } else if (window.api && typeof window.api.invoke === 'function') {
-      await window.api.invoke('app:checkForUpdates');
-    } else {
-      throw new Error('Update API unavailable');
-    }
-  } catch (error) {
-    updateDownloadButton.disabled = false;
-    updateDownloadButton.textContent = 'Download';
-  }
-});
-
-if (updateInstallButton) updateInstallButton.addEventListener('click', async () => {
-  if (window.api && typeof window.api.quitAndInstall === 'function') {
-    await window.api.quitAndInstall();
-  } else if (window.api && typeof window.api.invoke === 'function') {
-    await window.api.invoke('app:quitAndInstall');
-  }
-});
-
-if (updateDismissButton) updateDismissButton.addEventListener('click', () => {
-  updateNotification.hidden = true;
-});
-
-// Check for updates on app startup (only once)
+// Initialize common settings controls on load (kept separate from update checks)
 window.addEventListener('load', async () => {
-  try {
-    if (window.api && typeof window.api.checkForUpdates === 'function') {
-      await window.api.checkForUpdates();
-    } else if (window.api && typeof window.api.invoke === 'function') {
-      await window.api.invoke('app:checkForUpdates');
-    }
-  } catch (error) {
-  }
-  // Initialize common settings controls (autosave, spellcheck, softwrap, default export)
   try { if (typeof initCommonSettingsControls === 'function') initCommonSettingsControls(); } catch (e) {  }
 });
 
@@ -22653,55 +22753,12 @@ function openSettingsModal() {
 }
 
 // Compute centered traffic light coordinates from the current DOM title bar and title text.
+// Title bar and traffic-light centering removed. Provide a small stable stub
 function computeCenteredTrafficLightCoords() {
-  const titleBarEl = document.querySelector('.workspace__toolbar');
-  const titleEl = document.querySelector('.title-bar__title') || document.querySelector('.workspace__filemeta .workspace__filename') || titleBarEl;
-
-  // Defaults (in case DOM is not available)
-  let centerX = 12;
-  let y = 8;
-
-  try {
-    const titleBarRect = titleBarEl && typeof titleBarEl.getBoundingClientRect === 'function' ? titleBarEl.getBoundingClientRect() : null;
-
-    if (titleEl && typeof titleEl.getBoundingClientRect === 'function' && titleBarRect) {
-      const rect = titleEl.getBoundingClientRect();
-      // Compute title center in global (viewport) coordinates (use only for vertical alignment)
-      const titleCenterGlobalY = rect.top + rect.height / 2;
-
-      const titleBarTop = titleBarRect.top;
-
-      // Heuristic for traffic light height
-      const approxTrafficHeight = 16;
-
-      // X: keep a fixed left margin matching the top-left preset so switching modes doesn't jump
-      // Use 12px to match the main process's top-left default.
-      // Y: align vertically with the center of the title text inside the title bar
-      y = Math.round(titleCenterGlobalY - titleBarTop - Math.round(approxTrafficHeight / 2) - 2); // 2px upward correction
-      y = Math.max(4, y);
-    } else if (titleBarRect) {
-      // Fallback: center vertically within title bar, keep fixed X
-      centerX = 12;
-      y = Math.max(4, Math.round(titleBarRect.height / 2) - 2);
-    } else {
-      // Final fallback: use stored title bar size or 32px
-      const titleBarHeight = parseInt(localStorage.getItem('titleBarSize') || '32', 10);
-      centerX = 12;
-      y = Math.max(4, Math.round(titleBarHeight / 2) - 2);
-    }
-  } catch (err) {
-  }
-
-  // Debug output so we can verify values during testing
-  try {
-  // Debug prints removed
-  } catch (e) {}
-
-  // Ensure helper is reachable from other runtime code during reloads
-  if (typeof window !== 'undefined') {
-    window.computeCenteredTrafficLightCoords = computeCenteredTrafficLightCoords;
-  }
-
+  const centerX = 12;
+  const y = 8;
+  // Keep the helper available for other code paths that may call it.
+  if (typeof window !== 'undefined') window.computeCenteredTrafficLightCoords = computeCenteredTrafficLightCoords;
   return { x: centerX, y, mode: 'absolute' };
 }
 
@@ -22845,33 +22902,9 @@ function initializeAdvancedToggles() {
 }
 
 function loadTrafficLightSettings() {
-  // Restore saved traffic light position
-  const savedPosition = localStorage.getItem('trafficLightPosition') || 'center';
-  const positionSelect = document.getElementById('traffic-light-position-select');
-  if (positionSelect) {
-    positionSelect.value = savedPosition;
-    applyTrafficLightPosition(savedPosition);
-    
-    // Show custom controls if needed
-    const customContainer = document.getElementById('traffic-light-custom-container');
-    if (customContainer) {
-      if (savedPosition === 'custom') {
-        customContainer.removeAttribute('hidden');
-      } else {
-        customContainer.setAttribute('hidden', '');
-      }
-    }
-  }
-  
-  // Restore saved traffic light offset
-  const savedOffset = localStorage.getItem('trafficLightOffset') || '8';
-  const offsetSlider = document.getElementById('traffic-light-offset-slider');
-  const offsetValue = document.getElementById('traffic-light-offset-value');
-  if (offsetSlider && offsetValue) {
-    offsetSlider.value = savedOffset;
-    offsetValue.textContent = `${savedOffset}px`;
-    applyTrafficLightOffset(savedOffset);
-  }
+  // Title-bar / traffic-light UI removed from renderer.
+  // Keep this function as a safe no-op so calls from other code paths are harmless.
+  return;
 }
 
 function initializeComponentSelector() {
@@ -22915,12 +22948,7 @@ function updateComponentSettings(component) {
       textColor: '#374151',
       showTitlebarSpecific: false
     },
-    titlebar: {
-      bgColor: '#ffffff',
-      fontSize: { min: 11, max: 18, default: 14 },
-      textColor: '#1f2933',
-      showTitlebarSpecific: true
-    }
+    // Note: titlebar-specific settings removed from renderer UI (macOS traffic-light/titlebar handled by the OS)
   };
 
   const settings = componentSettings[component];
@@ -24789,23 +24817,9 @@ function applyTitleBarStyles() {
   `;
 }
 
+// Title bar removed. Keep a noop for compatibility with any callers.
 function updateTitleBarDisplay() {
-  const showPath = localStorage.getItem('titlebar-show-path') !== 'false';
-  const titleElement = document.querySelector('.title-bar__title');
-  
-  const activeNote = getActiveNote();
-  if (titleElement && activeNote?.path) {
-    if (showPath) {
-      // Show full path
-      titleElement.textContent = activeNote.path;
-    } else {
-      // Show only filename
-      const fileName = activeNote.path.split(/[\\/]/).pop() || 'Untitled';
-      titleElement.textContent = fileName;
-    }
-  } else if (titleElement) {
-    titleElement.textContent = 'NTA';
-  }
+  // intentionally empty — renderer no longer manages a macOS title bar
 }
 
 // Helper functions to get current global colors from CSS custom properties
@@ -24963,54 +24977,10 @@ function resetBorderThickness() {
   }
 }
 
+// Update functionality removed: keep a noop for compatibility
 async function checkForUpdatesManually() {
-  if (elements.checkUpdatesButton) {
-    const originalText = elements.checkUpdatesButton.textContent;
-    elements.checkUpdatesButton.disabled = true;
-    elements.checkUpdatesButton.textContent = 'Checking...';
-    
-    try {
-      // Check if running in development mode
-      let version = 'Unknown';
-      if (window.api && typeof window.api.getVersion === 'function') {
-        version = await window.api.getVersion();
-      } else if (window.api && typeof window.api.invoke === 'function') {
-        version = await window.api.invoke('app:getVersion');
-      }
-      if (String(version).includes('dev') || process.env.NODE_ENV === 'development') {
-        elements.checkUpdatesButton.textContent = 'Dev Mode - N/A';
-        setTimeout(() => {
-          elements.checkUpdatesButton.disabled = false;
-          elements.checkUpdatesButton.textContent = originalText;
-        }, 2000);
-        return;
-      }
-      
-      if (window.api && typeof window.api.checkForUpdates === 'function') {
-        await window.api.checkForUpdates();
-      } else if (window.api && typeof window.api.invoke === 'function') {
-        await window.api.invoke('app:checkForUpdates');
-      }
-      elements.checkUpdatesButton.textContent = 'Check Complete';
-      setTimeout(() => {
-        elements.checkUpdatesButton.disabled = false;
-        elements.checkUpdatesButton.textContent = originalText;
-      }, 2000);
-    } catch (error) {
-      
-      // Check if it's a development mode error
-      if (error.message && error.message.includes('not packed')) {
-        elements.checkUpdatesButton.textContent = 'Dev Mode Only';
-      } else {
-        elements.checkUpdatesButton.textContent = 'Check Failed';
-      }
-      
-      setTimeout(() => {
-        elements.checkUpdatesButton.disabled = false;
-        elements.checkUpdatesButton.textContent = originalText;
-      }, 2000);
-    }
-  }
+  // Intentionally a no-op: update/check functionality removed from renderer.
+  return;
 }
 
 // Handle ESC key to close settings modal
@@ -27101,6 +27071,8 @@ try {
       updateWikiSuggestions: typeof updateWikiSuggestions === 'function' ? updateWikiSuggestions : null,
       applyWikiSuggestion: typeof applyWikiSuggestion === 'function' ? applyWikiSuggestion : null,
       renderMarkdownPreview: typeof renderMarkdownPreview === 'function' ? renderMarkdownPreview : null,
+      renameWikiLinksInContent: typeof renameWikiLinksInContent === 'function' ? renameWikiLinksInContent : null,
+      applyWikiLinkRename: typeof applyWikiLinkRename === 'function' ? applyWikiLinkRename : null,
       state,
       getRelativePath: typeof getRelativePath === 'function' ? getRelativePath : null,
       collectWikiSuggestionItems: typeof collectWikiSuggestionItems === 'function' ? collectWikiSuggestionItems : null,

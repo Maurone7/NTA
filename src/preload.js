@@ -42,15 +42,7 @@ const api = {
   setTrafficLightPosition: (position) => ipcRenderer.invoke('window:setTrafficLightPosition', position),
   setTrafficLightOffset: (offset) => ipcRenderer.invoke('window:setTrafficLightOffset', offset),
   
-  // Update methods
-  checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
-  quitAndInstall: () => ipcRenderer.invoke('app:quitAndInstall'),
-  // Note: download/update APIs removed - app no longer performs automatic downloads.
-  // Custom in-app updater: verified download + progress events
-  customCheckAndUpdate: (opts) => ipcRenderer.invoke('app:customCheckAndUpdate', opts || {}),
-  
-  // Dev-only check which queries GitHub directly (works in unpacked/dev mode)
-  devCheckForUpdates: () => ipcRenderer.invoke('app:devCheckForUpdates'),
+  // Update methods removed: updater removed from this build
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   
   // LaTeX installation helper
@@ -68,11 +60,17 @@ const api = {
   removeWorkspaceChangedListener: () => {
     ipcRenderer.removeAllListeners('workspace:changed');
   },
+
+  onFileDeleted: (callback) => {
+    ipcRenderer.on('workspace:fileDeleted', (_event, data) => callback(data));
+  },
+  removeFileDeletedListener: () => {
+    ipcRenderer.removeAllListeners('workspace:fileDeleted');
+  },
   
-  // Update event listeners
+  // General event listener (update-related channels removed)
   on: (channel, callback) => {
-    // Add terminal:output so renderer can receive PTY output
-    const validChannels = ['update-available', 'update-progress', 'update-downloaded', 'update-not-available', 'update-error', 'workspace:changed', 'custom-update-progress', 'custom-update-started', 'custom-update-result', 'fallback-started', 'fallback-result', 'fallback-available', 'fallback-progress', 'latex:installation-progress', 'latex:installation-complete', 'latex:installation-error', 'terminal:toggle', 'terminal:output'];
+    const validChannels = ['workspace:changed', 'workspace:fileDeleted', 'latex:installation-progress', 'latex:installation-complete', 'latex:installation-error', 'terminal:toggle', 'terminal:output'];
     if (validChannels.includes(channel)) {
       ipcRenderer.on(channel, (_event, data) => callback(data));
     }

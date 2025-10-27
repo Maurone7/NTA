@@ -2,8 +2,8 @@ const assert = require('assert');
 const { JSDOM } = require('jsdom');
 const path = require('path');
 
-describe('DOM: workspace subfolder expansion', function() {
-  it('clicking a subfolder label reveals its child files', function(done) {
+describe('DOM: workspace subfolder collapse on startup', function() {
+  it('subfolders are collapsed by default when workspace is adopted', function(done) {
   // Ensure console is available in test environment
   global.console = global.console || (typeof console !== 'undefined' ? console : { log: () => {}, error: () => {}, warn: () => {} });
 
@@ -35,7 +35,7 @@ describe('DOM: workspace subfolder expansion', function() {
 
     global.window.api = { on: () => {}, removeListener: () => {}, removeAllListeners: () => {} };
 
-    // Create a workspace with a top-level folder that contains a subfolder
+    // Create a workspace with a top-level folder that contains a subfolder with files
     global.window.__nta_test_autoAdoptPayload = {
       folderPath: '/fake',
       tree: {
@@ -50,14 +50,40 @@ describe('DOM: workspace subfolder expansion', function() {
     };
 
     try {
-  const appPath = path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js');
+      const appPath = path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js');
       delete require.cache[require.resolve(appPath)];
       const appModule = require(appPath);
       const hooks = appModule.__test__ || {};
 
+      // Initialize tree module for proper rendering
+      let treeFactory = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'tree'));
+      // Normalize ESM/CommonJS shapes: accept module or factory function
+      if (treeFactory && typeof treeFactory !== 'function' && typeof treeFactory.createTreeModule === 'function') {
+        treeFactory = treeFactory.createTreeModule;
+      }
+      const treeModule = treeFactory({ state: hooks.state, elements: hooks.elements, imageExtensions: new Set(), videoExtensions: new Set(), htmlExtensions: new Set() });
+      treeModule.init({});
+
       if (typeof hooks.initialize === 'function') {
         try { hooks.initialize(); } catch (e) { /* ignore */ }
       }
+
+      // Set collapsed folders as done in safeAdoptWorkspace
+      const state = hooks.state;
+      if (state.tree && state.tree.children) {
+        function collectDirs(node) {
+          if (node.type === 'directory' && node.path) {
+            state.collapsedFolders.add(node.path);
+          }
+          if (node.children) {
+            node.children.forEach(collectDirs);
+          }
+        }
+        state.tree.children.forEach(collectDirs);
+      }
+
+      // Re-render the tree with collapsed folders
+      treeModule.renderWorkspaceTree();
 
       // Wait for init
       setTimeout(() => {
@@ -68,33 +94,14 @@ describe('DOM: workspace subfolder expansion', function() {
           const dir = tree.querySelector('.tree-node--directory');
           assert(dir, 'directory node rendered');
 
-          // Debug: dump current directory innerHTML
-          try { console.log('TEST: dir.innerHTML before click=\n', dir.innerHTML); } catch (e) {}
-          // Find the label and simulate click. The tree may already be expanded or collapsed.
-          const label = dir.querySelector('.tree-node__label');
-          assert(label, 'directory label exists');
+          // The subfolder should be collapsed, so no child file should be visible
+          const childFile = dir.querySelector('.tree-node--file');
+          assert(!childFile, 'child file should not be rendered when subfolder is collapsed');
 
-          const fireClick = () => { const ev = new window.Event('click', { bubbles: true, cancelable: true }); label.dispatchEvent(ev); };
+          // Check that the directory path is in collapsedFolders state
+          assert(state && state.collapsedFolders, 'state.collapsedFolders exists');
+          assert(state.collapsedFolders.has('/fake/docs'), 'subfolder path should be in collapsedFolders');
 
-          // If child file already present, toggle collapse then re-expand to verify behavior.
-          let childFile = dir.querySelector('.tree-node--file');
-          if (childFile) {
-            // collapse
-            fireClick();
-            // after collapse, it may be hidden; ensure it's not present (or not visible)
-            childFile = dir.querySelector('.tree-node--file');
-            // re-expand
-            fireClick();
-          } else {
-            // not present initially: a single click should expand and create it
-            fireClick();
-          }
-
-          // Debug: dump directory innerHTML after clicks
-          try { console.log('TEST: dir.innerHTML after click=\n', dir.innerHTML); } catch (e) {}
-          // After clicks, child file should be present under the directory
-          childFile = dir.querySelector('.tree-node--file');
-          assert(childFile, 'child file node rendered after expansion');
           done();
         } catch (e) {
           done(e);

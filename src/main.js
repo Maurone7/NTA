@@ -184,10 +184,8 @@ async function maybeExitAfterAutoTrace() {
   } catch (e) { /* don't let test harness crash */ }
 }
 
-ipcMain.handle('app:checkForUpdates', async () => {
-  console.log('Checking for updates...');
-  return { status: 'no-updates' };
-});
+// Update handling removed: updater not present in this build. Kept main process
+// free of update-related handlers to avoid presenting update UI.
 
 ipcMain.handle('workspace:chooseFolder', async () => {
   const result = await dialog.showOpenDialog({
@@ -330,8 +328,23 @@ ipcMain.handle('workspace:createMarkdownFile', async (_event, data) => {
     return null;
   }
 });
-// Keep rename handler as a stub for now (or delegate similarly if desired)
-ipcMain.handle('workspace:renameMarkdownFile', noopAsync);
+
+// Handle file rename
+ipcMain.handle('workspace:renameMarkdownFile', async (_event, data) => {
+  try {
+    const workspaceFolder = data && data.workspaceFolder ? String(data.workspaceFolder) : null;
+    const oldPath = data && data.oldPath ? String(data.oldPath) : null;
+    const newFileName = data && data.newFileName ? String(data.newFileName) : null;
+    
+    if (!workspaceFolder || !oldPath || !newFileName) return null;
+    
+    const result = await folderManager.renameMarkdownFile(workspaceFolder, oldPath, newFileName);
+    return result;
+  } catch (e) {
+    console.error('Error renaming markdown file:', e);
+    return null;
+  }
+});
 // Read a PDF file and return a plain Buffer (serialized over IPC). Returns null on error.
 ipcMain.handle('workspace:readPdfBinary', async (_event, data) => {
   try {
@@ -364,7 +377,34 @@ ipcMain.handle('workspace:revealInFinder', async (_event, p) => {
   try { const { shell } = require('electron'); if (p) shell.showItemInFolder(String(p)); } catch (e) {}
   return null;
 });
-ipcMain.handle('workspace:deleteFile', noopAsync);
+ipcMain.handle('workspace:deleteFile', async (_event, absolutePath) => {
+  try {
+    if (!absolutePath) return { success: false, error: 'No path provided' };
+    const p = String(absolutePath);
+    // Basic safety: ensure target exists and is a file
+    const stat = await fs.promises.stat(p).catch(() => null);
+    if (!stat || !stat.isFile()) return { success: false, error: 'File not found' };
+
+    await fs.promises.unlink(p);
+
+    // Notify the renderer that a file was deleted so it can update the tree
+    try {
+      if (_event && _event.sender && typeof _event.sender.send === 'function') {
+        _event.sender.send('workspace:fileDeleted', p);
+      } else {
+        // Best-effort: notify all windows if sender not available
+        for (const w of BrowserWindow.getAllWindows()) {
+          try { w.webContents.send('workspace:fileDeleted', p); } catch (e) {}
+        }
+      }
+    } catch (e) { /* ignore notification errors */ }
+
+    // Return a simple success result; renderer will update its own state.
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
 ipcMain.handle('workspace:pasteFile', noopAsync);
 
 // Clipboard helper: provide a simple writeText handler for renderer convenience

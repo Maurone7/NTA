@@ -1,41 +1,12 @@
 // Tree module: encapsulates workspace tree rendering and helpers
-module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExtensions }) => {
+export const createTreeModule = ({ state, elements, imageExtensions, videoExtensions, htmlExtensions }) => {
   // External action callbacks supplied by the main app when initializing the
   // module. These allow the tree module to delegate operations like opening
   // notes, performing cut/copy/paste, and other app-level behaviors without
   // importing app internals directly.
   let actions = {};
 
-  // Initialize the module with callbacks. This will attach event listeners
-  // to the workspace tree and context menu. Callers should pass only the
-  // functions the module needs (they are optional and will be checked).
-  const init = (providedActions = {}) => {
-    actions = providedActions || {};
-
-    // Attach tree event listeners (click/contextmenu/drag). If the app has
-    // already wired these listeners we avoid double-attaching by checking
-    // for a marker attribute on the tree root.
-    try {
-      const root = elements.workspaceTree;
-      if (!root) return;
-      if (root._nta_tree_inited) return;
-      root._nta_tree_inited = true;
-
-      root.addEventListener('click', handleWorkspaceTreeClick);
-      root.addEventListener('contextmenu', handleWorkspaceTreeContextMenu);
-      root.addEventListener('dragstart', handleTreeNodeDragStart);
-      root.addEventListener('dragend', handleTreeNodeDragEnd);
-
-      // Context menu wiring
-      if (elements.workspaceContextMenu) {
-        elements.workspaceContextMenu.addEventListener('click', handleContextMenuClick);
-        document.addEventListener('keydown', handleContextMenuKeyDown);
-        document.addEventListener('click', handleGlobalClick);
-      }
-    } catch (e) {
-      // Best-effort: don't throw when init fails in test environments
-    }
-  };
+  // ===================== HELPER FUNCTIONS (defined early) =====================
   const workspaceNodeContainsActive = (node) => {
     if (!node) return false;
     if (node.type === 'file') return node.noteId === state.activeNoteId;
@@ -60,9 +31,7 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
 
     if (node.type === 'directory') {
       element.classList.add('tree-node--directory');
-      // Default top-level directories (depth 0) to expanded on first render so
-      // tests and UX see children immediately. Deeper levels respect the stored state.
-      const collapsed = depth === 0 ? false : state.collapsedFolders.has(node.path);
+      const collapsed = state.collapsedFolders.has(node.path);
       const hasChildren = Array.isArray(node.children) && node.children.length;
       element.dataset.hasChildren = hasChildren ? 'true' : 'false';
       if (collapsed) {
@@ -141,7 +110,7 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
           if (node.path) {
             for (const [nid, n] of state.notes.entries()) {
               try {
-                if (n && (n.absolutePath === node.path || n.storedPath === node.path || n.absolutePath === node.path)) {
+                if (n && (n.absolutePath === node.path || n.storedPath === node.path)) {
                   element.dataset.noteId = nid;
                   element.draggable = true;
                   if (nid === state.activeNoteId) {
@@ -151,10 +120,10 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
                   node.supported = true;
                   break;
                 }
-              } catch (e) { /* per-note ignore */ }
+              } catch (e) {}
             }
           }
-        } catch (e) { /* ignore fallback errors */ }
+        } catch (e) {}
 
         if (!node.supported) {
           element.classList.add('tree-node--unsupported');
@@ -172,9 +141,6 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
     const treeData = state.tree ?? null;
     const rootChildren = Array.isArray(treeData?.children) ? treeData.children : [];
 
-    console.log('renderWorkspaceTree: treeData =', treeData);
-    console.log('renderWorkspaceTree: rootChildren.length =', rootChildren.length);
-
     if (!treeData) {
       elements.workspaceTree.replaceChildren();
       elements.workspaceTree.hidden = true;
@@ -186,10 +152,10 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
     elements.workspaceEmpty.hidden = true;
     elements.workspaceEmpty.textContent = '';
 
-      if (!rootChildren.length) {
-        const emptyMessage = document.createElement('div');
-        emptyMessage.className = 'tree-empty';
-        emptyMessage.textContent = 'No files found in this folder.';
+    if (!rootChildren.length) {
+      const emptyMessage = document.createElement('div');
+      emptyMessage.className = 'tree-empty';
+      emptyMessage.textContent = 'No files found in this folder.';
       elements.workspaceTree.replaceChildren(emptyMessage);
       elements.workspaceTree.hidden = false;
       return;
@@ -201,7 +167,6 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
     });
 
     elements.workspaceTree.replaceChildren(fragment);
-    // Normalize active selection: ensure only the active note node is highlighted
     try {
       const activeId = state.activeNoteId;
       const previouslyActive = elements.workspaceTree.querySelectorAll('.tree-node--active');
@@ -232,11 +197,7 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
     elements.workspaceEmpty.hidden = true;
   };
 
-  // ----------------------- Event handlers & context menu ------------------
-  // These are intentionally colocated with the tree rendering logic so
-  // that all workspace-tree concern live in one module. They call back to
-  // the host application via the `actions` object when performing app-level
-  // operations (open, cut/copy/paste, rename, reveal, delete, status).
+  // ===================== EVENT HANDLERS (defined before init) =====================
 
   const handleTreeNodeDragStart = (event) => {
     const nodeElement = event.target.closest('.tree-node');
@@ -264,7 +225,9 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
   };
 
   const openContextMenu = (noteId, x, y) => {
-    if (!elements.workspaceContextMenu) return;
+    if (!elements.workspaceContextMenu) {
+      return;
+    }
     state.contextMenu.open = true;
     state.contextMenu.targetNoteId = noteId;
     state.contextMenu.x = x;
@@ -273,11 +236,12 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
     const menu = elements.workspaceContextMenu;
     const note = noteId ? state.notes.get(noteId) : null;
 
-    // Enable/disable menu items using action callbacks when available
     const setDisabled = (selector, disabled) => {
       try {
         const btn = menu.querySelector(selector);
-        if (btn) btn.disabled = !!disabled;
+        if (btn) {
+          btn.disabled = !!disabled;
+        }
       } catch (e) {}
     };
 
@@ -303,11 +267,142 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
     menu.setAttribute('aria-hidden', 'true');
   };
 
+  const startInlineRename = (noteId) => {
+    const treeNode = elements.workspaceTree?.querySelector(`[data-note-id="${noteId}"]`);
+    if (!treeNode) return;
+
+    // Find the name span in the tree node
+    const nameSpan = treeNode.querySelector('.tree-node__name');
+    if (!nameSpan) return;
+
+    const currentName = nameSpan.textContent;
+    
+    // Create inline rename input
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.className = 'tree-node__rename-input';
+    renameInput.value = currentName;
+    renameInput.setAttribute('data-note-id', noteId);
+    renameInput.setAttribute('data-original-name', currentName);
+    
+    // Replace the name span with the input
+    nameSpan.replaceWith(renameInput);
+    
+    // Focus and select all text
+    renameInput.focus();
+    renameInput.select();
+    
+    // Handle key events
+    const handleKeyDown = (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        completeInlineRename(noteId, renameInput.value);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        cancelInlineRename(noteId, currentName);
+      }
+    };
+    
+    const handleBlur = () => {
+      completeInlineRename(noteId, renameInput.value);
+    };
+    
+    renameInput.addEventListener('keydown', handleKeyDown);
+    renameInput.addEventListener('blur', handleBlur);
+  };
+
+  const completeInlineRename = async (noteId, newName) => {
+    const treeNode = elements.workspaceTree?.querySelector(`[data-note-id="${noteId}"]`);
+    if (!treeNode) return;
+
+    const renameInput = treeNode.querySelector('.tree-node__rename-input');
+    if (!renameInput) return;
+
+    const originalName = renameInput.getAttribute('data-original-name');
+    
+    // If name didn't change, just restore and return
+    if (newName === originalName || !newName.trim()) {
+      cancelInlineRename(noteId, originalName);
+      return;
+    }
+
+    // Restore the name span temporarily (will be updated if rename succeeds)
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'tree-node__name';
+    nameSpan.textContent = newName;
+    renameInput.replaceWith(nameSpan);
+    
+    // Submit the actual rename via app.js
+    if (typeof actions.performRename === 'function') {
+      const success = await actions.performRename(noteId, newName);
+      // If rename failed, restore original name
+      if (!success) {
+        const failedNameSpan = treeNode.querySelector('.tree-node__name');
+        if (failedNameSpan) {
+          const restoredSpan = document.createElement('span');
+          restoredSpan.className = 'tree-node__name';
+          restoredSpan.textContent = originalName;
+          failedNameSpan.replaceWith(restoredSpan);
+        }
+      }
+    } else if (typeof window !== 'undefined' && typeof window.performRename === 'function') {
+      const success = await window.performRename(noteId, newName);
+      if (!success) {
+        const failedNameSpan = treeNode.querySelector('.tree-node__name');
+        if (failedNameSpan) {
+          const restoredSpan = document.createElement('span');
+          restoredSpan.className = 'tree-node__name';
+          restoredSpan.textContent = originalName;
+          failedNameSpan.replaceWith(restoredSpan);
+        }
+      }
+    }
+  };
+
+  const cancelInlineRename = (noteId, originalName) => {
+    const treeNode = elements.workspaceTree?.querySelector(`[data-note-id="${noteId}"]`);
+    if (!treeNode) return;
+
+    const renameInput = treeNode.querySelector('.tree-node__rename-input');
+    if (!renameInput) return;
+
+    // Restore the original name span
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'tree-node__name';
+    nameSpan.textContent = originalName;
+    
+    renameInput.replaceWith(nameSpan);
+  };
+
   const handleContextMenuAction = async (action) => {
-    const noteId = state.contextMenu.targetNoteId;
+    let noteId = state.contextMenu.targetNoteId;
     if (!noteId) return;
-    const note = state.notes.get(noteId);
-    if (!note) return;
+
+    let note = state.notes.get(noteId);
+    if (!note) {
+      try {
+        const nodeEl = elements.workspaceTree && elements.workspaceTree.querySelector
+          ? elements.workspaceTree.querySelector(`[data-note-id="${noteId}"]`)
+          : null;
+        const path = nodeEl && nodeEl.dataset ? nodeEl.dataset.path : null;
+        if (path) {
+          for (const [nid, n] of state.notes.entries()) {
+            try {
+              if (!n) continue;
+              if (n.absolutePath === path || n.storedPath === path) {
+                note = n;
+                noteId = nid;
+                break;
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (!note) {
+      return;
+    }
     closeContextMenu();
     try {
       switch (action) {
@@ -321,12 +416,8 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
           if (actions.canPasteNote && actions.canPasteNote()) actions.pasteNote && await actions.pasteNote();
           break;
         case 'rename':
-          if (actions.canRenameNote && actions.canRenameNote(note)) {
-            if (typeof window !== 'undefined' && typeof window.startRenameFile === 'function') {
-              window.startRenameFile(noteId);
-            } else {
-              actions.startRenameFile && actions.startRenameFile(noteId);
-            }
+          if ((typeof actions.canRenameNote === 'function' ? actions.canRenameNote(note) : true)) {
+            startInlineRename(noteId);
           }
           break;
         case 'reveal':
@@ -360,7 +451,8 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
       }
       const noteId = treeNode.dataset.noteId;
       openContextMenu(noteId, x, y);
-    } catch (e) {}
+    } catch (e) {
+    }
   };
 
   const handleContextMenuClick = (event) => {
@@ -368,7 +460,9 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
     if (!button) return;
     event.preventDefault();
     const action = button.dataset.action;
-    if (action) handleContextMenuAction(action);
+    if (action) {
+      handleContextMenuAction(action);
+    }
   };
 
   const handleContextMenuKeyDown = (event) => {
@@ -402,10 +496,70 @@ module.exports = ({ state, elements, imageExtensions, videoExtensions, htmlExten
     if (state.contextMenu.open && !event.target.closest('#workspace-context-menu')) closeContextMenu();
   };
 
+  // ===================== INITIALIZATION FUNCTION =====================
+
+  const init = (providedActions = {}) => {
+    actions = providedActions || {};
+
+    try {
+      const root = elements.workspaceTree;
+      if (!root) {
+        return;
+      }
+      if (root._nta_tree_inited) {
+        return;
+      }
+      root._nta_tree_inited = true;
+
+      root.addEventListener('contextmenu', handleWorkspaceTreeContextMenu);
+      root.addEventListener('dragstart', handleTreeNodeDragStart);
+      root.addEventListener('dragend', handleTreeNodeDragEnd);
+
+      try {
+        if (typeof document !== 'undefined' && !document._nta_tree_contextmenu_delegated) {
+          document._nta_tree_contextmenu_delegated = true;
+          document.addEventListener('contextmenu', (evt) => {
+            try {
+              const treeRoot = elements.workspaceTree;
+              if (!treeRoot) return;
+              const node = evt.target && evt.target.closest ? evt.target.closest('.tree-node') : null;
+              if (node && treeRoot.contains(node)) {
+                handleWorkspaceTreeContextMenu(evt);
+              }
+            } catch (e) {}
+          });
+        }
+      } catch (e) {}
+
+      if (elements.workspaceContextMenu) {
+        elements.workspaceContextMenu.addEventListener('click', handleContextMenuClick);
+        document.addEventListener('keydown', handleContextMenuKeyDown);
+        document.addEventListener('click', handleGlobalClick);
+      }
+    } catch (e) {
+    }
+  };
+
+  // ===================== MODULE EXPORTS =====================
 
   return {
+    init,
+    openContextMenu,
+    closeContextMenu,
     workspaceNodeContainsActive,
     createWorkspaceTreeNode,
     renderWorkspaceTree
   };
 };
+
+// CommonJS compatibility for tests that require the module via `require()`.
+// Return a factory function so tests that do `const treeFactory = require('./tree');`
+// receive a callable factory.
+try {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = function(opts) { return createTreeModule(opts); };
+    module.exports.createTreeModule = createTreeModule;
+  }
+} catch (e) {
+  // ignore in environments without module support
+}

@@ -623,7 +623,8 @@ const renameMarkdownFile = async (workspaceFolderPath, oldAbsolutePath, requeste
   }
 
   const directory = path.dirname(oldAbsolutePath);
-  const baseName = ensureMarkdownFileName(requestedName || 'Untitled.md');
+  // Don't force markdown extension - allow renaming to any filename (preserves PDF, image, etc. extensions)
+  const baseName = path.basename(requestedName || 'Untitled.md').trim() || 'Untitled.md';
   const targetPath = path.join(directory, baseName);
   const samePath = path.resolve(targetPath) === path.resolve(oldAbsolutePath);
 

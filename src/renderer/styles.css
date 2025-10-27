@@ -114,7 +114,8 @@ html, body {
 
 :root {
   color-scheme: light dark;
-  --title-bar-height: 0px; /* Default to 0 for non-mac platforms */
+  /* Title bar removed; keep variable for compatibility but default to 0 */
+  --title-bar-height: 0px;
   --bg: #f7f8fa;
   --bg-elevated: #ffffff;
   --bg-sidebar: #eef1f6;
@@ -169,61 +170,7 @@ body[data-high-contrast="true"] {
   top: 6px;
 }
 
-/* Custom Title Bar */
-.title-bar {
-  display: none; /* Hidden by default, shown only on macOS */
-  height: var(--title-bar-height);
-  background: var(--bg-elevated);
-  /* remove visual separator between title bar and workspace toolbar */
-  border-bottom: none;
-  -webkit-app-region: drag;
-  position: relative;
-  z-index: 1000;
-}
-
-.title-bar__content {
-  display: flex;
-  align-items: center; /* Vertical centering regardless of title-bar height */
-  justify-content: center;
-  height: 100%;
-  width: 100%;
-  padding: 0 70px; /* Minimal space for traffic light buttons */
-  box-sizing: border-box;
-}
-
-.title-bar__title {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--fg-soft);
-  text-align: center;
-  line-height: 1; /* Let flex centering handle vertical alignment */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: calc(var(--title-bar-height) * 1); /* Ensure title occupies the full bar height for perfect centering */
-}
-
-/* Show title bar only on macOS */
-body.platform-darwin .title-bar {
-  display: flex; /* Override the default none to show on macOS */
-  align-items: center; /* Center traffic lights vertically */
-}
-
-/* On macOS set the title bar height so layout can account for it */
-body.platform-darwin {
-  --title-bar-height: 22px;
-}
-
-/* Title bar theme adjustments */
-body[data-theme="dark"] .title-bar {
-  background: var(--bg-elevated);
-  border-bottom-color: var(--border);
-}
-
-body[data-theme="light"] .title-bar {
-  background: var(--bg-elevated);
-  border-bottom-color: var(--border);
-}
+/* Title bar removed — related styles cleaned up. The app uses the workspace toolbar for in-app titles now. */
 
 /* Platform-specific adjustments */
 body.platform-win32 {
@@ -425,7 +372,8 @@ body.platform-linux {
 
 /* Adjust app layout for tab bar */
 .app-shell {
-  height: calc(100vh - var(--title-bar-height));
+  /* Title bar is removed; app should occupy full viewport height */
+  height: 100vh;
   position: relative; /* anchor absolute children like the sidebar resize handle */
 }
 
@@ -486,161 +434,7 @@ body[data-high-contrast="true"] {
   --danger: #ff0000;
 }
 
-/* Update Notification */
-
-/* Ensure the notification does not overlap the macOS custom title bar or traffic lights.
-   Use the --title-bar-height variable so the notification sits just under the title bar
-   on macOS. Also keep its z-index lower than the title bar (which uses 1000) so the
-   traffic lights remain on top. */
-.update-notification {
-  position: relative;
-  z-index: 1200; /* raised so notification appears above settings modal */
-  margin-top: 0;
-}
-
-body.platform-darwin .update-notification {
-  /* push the notification below the title bar on macOS; keep it fixed so it
-     can't be overlaid by the custom title bar traffic lights or other
-     positioned elements. Center it horizontally and limit width for
-     readability. */
-  position: fixed;
-  top: var(--title-bar-height);
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 40px);
-  max-width: 900px;
-  z-index: 1200;
-}
-
-.update-notification__submessage {
-  font-size: 12px;
-  color: var(--fg-soft);
-  margin-top: 4px;
-}
-
-.settings-submessage {
-  font-size: 12px;
-  color: var(--fg-soft);
-}
-
-.settings-item > div > div > .settings-submessage {
-  margin-left: 0; /* align under the button in the new column layout */
-  max-width: 420px;
-  word-break: break-word;
-}
-
-/* Layout for update check row: reserve vertical space for submessage so buttons don't move */
-.update-check-row {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.check-button-column {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  /* Reserve height so the Open Release Page button doesn't shift when submessage appears */
-  min-height: 44px; /* approximate height of button + small message */
-  min-width: 140px;
-}
-
-.check-button-column .settings-submessage {
-  min-height: 18px; /* reserve a line for the message */
-  opacity: 1;
-  transition: opacity 160ms ease-in-out;
-}
-
-/* Visual polish for update buttons */
-.update-check-row .settings-button {
-  border-radius: 8px;
-  font-weight: 600;
-  box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 4px 12px rgba(18,24,38,0.04);
-}
-
-.update-check-row .settings-button.icon-left {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;
-}
-
-.update-check-row .settings-button .btn-icon {
-  font-size: 14px;
-  opacity: 0.95;
-}
-
-.update-check-row .settings-button.primary {
-  background: linear-gradient(180deg, var(--accent), var(--accent-dim));
-}
-
-.update-check-row .settings-button.secondary {
-  background: var(--bg-muted);
-  color: var(--fg);
-}
-
-.settings-submessage {
-  color: var(--fg-soft);
-}
-
-/* Make the two columns share available width so their buttons match size */
-.update-check-row > .check-button-column,
-.update-check-row > div {
-  flex: 1 1 0;
-}
-
-.update-check-row .settings-button {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* Ensure both update buttons have identical height and centered content */
-.update-check-row .settings-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 12px; /* keep consistent padding */
-  min-height: 38px; /* enforce consistent height */
-}
-
-
-.update-notification__message {
-  font-size: 14px;
-  color: var(--fg-soft);
-  margin-bottom: 12px;
-}
-
-.update-notification__progress {
-  margin-top: 8px;
-}
-
-.update-notification__progress-bar {
-  width: 100%;
-  height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 4px;
-}
-
-.update-notification__progress-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 2px;
-  transition: width 0.3s ease;
-  width: 0%;
-}
-
-.update-notification__progress-text {
-  font-size: 12px;
-  color: var(--fg-soft);
-}
-
-.update-notification__actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
+/* Update notification styles removed (updater UI stripped) */
 
 /* Math WYSIWYG panel */
 .math-wysiwyg-panel {
@@ -1631,6 +1425,23 @@ button[data-tooltip]:hover::after {
   text-overflow: ellipsis;
 }
 
+.tree-node__rename-input {
+  font-size: 13px;
+  padding: 2px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: inherit;
+  min-width: 100px;
+  max-width: 200px;
+}
+
+.tree-node__rename-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 .tree-node--directory .tree-node__label {
   font-weight: 500;
 }
@@ -1845,7 +1656,10 @@ button[data-tooltip]:hover::after {
 }
 
 .workspace__filename-wrapper {
-  display: none;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
 }
 
 .workspace__filename {
@@ -1854,6 +1668,7 @@ button[data-tooltip]:hover::after {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .workspace__filename--editable {
