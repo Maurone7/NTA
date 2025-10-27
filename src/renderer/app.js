@@ -18940,9 +18940,14 @@ const renderWikiEmbed = (token, targetInfo, context) => {
 
   if (note.type === 'pdf') {
     const header = buildHeader(noteId, 'PDF document');
-    return `<section class="wikilink-embed wikilink-embed--error" data-note-id="${noteId}" data-wiki-target="${targetAttr}" data-embed-depth="${depth}">
+    const currentTheme = resolveCurrentThemePreference ? resolveCurrentThemePreference() : 'light';
+    const pdfPath = escapeHtml(note.absolutePath ?? note.storedPath ?? '');
+    const pdfViewerUrl = './pdfjs/pdf-viewer.html?file=' + encodeURIComponent(pdfPath) + '&theme=' + encodeURIComponent(currentTheme);
+    return `<section class="wikilink-embed wikilink-embed--pdf" data-note-id="${noteId}" data-wiki-target="${targetAttr}" data-embed-depth="${depth}">
       ${header}
-      <div class="wikilink-embed__body"><p class="wikilink-embed__message">Embedded preview for PDFs isn't supported yet. Click the link above to open it in the viewer.</p></div>
+      <div class="wikilink-embed__body">
+        <iframe class="pdf-embed-iframe" src="${pdfViewerUrl}" loading="lazy" style="width:100%; height:600px; border:1px solid #ddd; border-radius:4px; background:#f5f5f5;">Your browser does not support iframes.</iframe>
+      </div>
     </section>`;
   }
 
@@ -19137,7 +19142,41 @@ const createRendererOverrides = () => {
     // Check if this is an HTML file
     const isHtml = htmlExtensions.has(getFileExtension(href));
     
-    if (isVideo) {
+    // Check if this is a PDF file
+    const isPdf = getFileExtension(href).toLowerCase() === 'pdf';
+    
+    if (isPdf) {
+      // Render as embedded PDF iframe using PDF.js viewer
+      const iframeId = `pdf-embed-${Math.random().toString(36).substr(2, 9)}`;
+      const currentTheme = resolveCurrentThemePreference ? resolveCurrentThemePreference() : 'light';
+      const pdfViewerUrl = './pdfjs/pdf-viewer.html?file=' + encodeURIComponent(rawSrc) + '&theme=' + encodeURIComponent(currentTheme);
+      const attributes = [
+        `id="${iframeId}"`,
+        `src="${pdfViewerUrl}"`,
+        'class="pdf-embed-iframe"',
+        'loading="lazy"'
+      ];
+      
+      if (noteId) {
+        attributes.push(`data-note-id="${noteId}"`);
+      }
+      
+      if (title) {
+        attributes.push(`title="${escapeHtml(title)}"`);
+      }
+      
+      // Add width/height if specified
+      const dimensionMatch = (title || altText).match(/(\d+)x(\d+)/);
+      if (dimensionMatch) {
+        attributes.push(`width="${dimensionMatch[1]}"`);
+        attributes.push(`height="${dimensionMatch[2]}"`);
+      } else {
+        // Default responsive PDF styling
+        attributes.push('style="width: 100%; height: 600px; border: 1px solid #ccc; border-radius: 4px;"');
+      }
+      
+      return `<iframe ${attributes.join(' ')}>Your browser does not support PDFs. <a href="${rawSrc}">Download PDF</a></iframe>`;
+    } else if (isVideo) {
       // Render as video element instead of image
       const attributes = [`data-raw-src="${rawSrc}"`, 'controls', 'preload="metadata"'];
       
@@ -19321,6 +19360,7 @@ const configureMarked = () => {
       mangle: false,
       headerIds: false,
       breaks: true,
+      html: true,
       extensions,
       renderer,
       walkTokens: collectSourceMapToken
