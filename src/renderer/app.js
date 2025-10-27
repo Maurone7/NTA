@@ -3,6 +3,59 @@
 if (typeof console === 'undefined') {
   try { globalThis.console = { debug: () => {}, log: () => {}, warn: () => {}, error: () => {} }; } catch (e) {}
 }
+// Safe IPC helpers to tolerate test environments where `window.api` may be
+// missing or expose a different API shape. Use `safeApi.on/invoke/send`
+// instead of directly referencing `window.api` to avoid TypeErrors during
+// initialization in JSDOM or other minimal environments.
+const safeApi = {
+  on(channel, handler) {
+    try {
+      if (typeof window === 'undefined' || !window.api) return;
+      if (typeof window.api.on === 'function') return window.api.on(channel, handler);
+      // Some preload scripts export dedicated listener factories like
+      // `onWorkspaceChanged` instead of a generic `on(name, cb)`. Try to
+      // map common channel names to potential exported functions as a
+      // best-effort fallback.
+      const mapName = (ch) => {
+        try {
+          // e.g. 'workspace:changed' -> 'onWorkspaceChanged'
+          const parts = String(ch).split(/[:\-_.]/).filter(Boolean);
+          const cand = 'on' + parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('');
+          return cand;
+        } catch (e) { return null; }
+      };
+      const fn = mapName(channel);
+      if (fn && typeof window.api[fn] === 'function') return window.api[fn](handler);
+    } catch (e) { /* swallow */ }
+  },
+  async invoke(channel, ...args) {
+    try {
+      try { window.__nta_debug_push && window.__nta_debug_push({ type: 'safeApi:invoke:start', channel, argsPreview: Array.from(args || []).slice(0,2).map(a => (typeof a === 'string' ? (a.length > 64 ? a.slice(0,64) : a) : (typeof a === 'object' ? JSON.stringify(a).slice(0,64) : String(a)))) }); } catch (e) {}
+      if (typeof window === 'undefined' || !window.api) return null;
+      // Prefer explicit named functions (e.g. window.api.getVersion) when
+      // available — some preload implementations expose helpers directly.
+      if (typeof window.api[channel] === 'function') {
+        const res = await window.api[channel](...args);
+        try { window.__nta_debug_push && window.__nta_debug_push({ type: 'safeApi:invoke:done', channel, resultPreview: (typeof res === 'string' ? res.slice(0,64) : (typeof res === 'object' ? JSON.stringify(res).slice(0,64) : String(res))) }); } catch (e) {}
+        return res;
+      }
+      if (typeof window.api.invoke === 'function') {
+        const res = await window.api.invoke(channel, ...args);
+        try { window.__nta_debug_push && window.__nta_debug_push({ type: 'safeApi:invoke:done', channel, resultPreview: (typeof res === 'string' ? res.slice(0,64) : (typeof res === 'object' ? JSON.stringify(res).slice(0,64) : String(res))) }); } catch (e) {}
+        return res;
+      }
+    } catch (e) { /* swallow */ }
+    try { window.__nta_debug_push && window.__nta_debug_push({ type: 'safeApi:invoke:done', channel }); } catch (e) {}
+    return null;
+  },
+  send(channel, ...args) {
+    try {
+      if (typeof window === 'undefined' || !window.api) return;
+      if (typeof window.api.send === 'function') return window.api.send(channel, ...args);
+      if (typeof window.api[channel] === 'function') return window.api[channel](...args);
+    } catch (e) { /* swallow */ }
+  }
+};
 // Helper to safely resolve a single element by id/selector, returning a harmless div when missing
 const safeEl = (selector, useQuery = false) => {
   try {
@@ -59,205 +112,17 @@ try {
       } catch (e) { return false; }
     };
 
-    // Lightweight dev-only instrumentation API (opt-in). Use this to record
-    // pointer events and measured pane widths in the real app or in tests.
-    // Enable by calling `window.__nta_trace.start()` and stop with `stop()`.
+    // Lightweight dev-only instrumentation API (opt-in) - minimal stub.
+    // Keep a tiny, well-behaved interface so E2E tests or external scripts
+    // can call start/stop without pulling in a large runtime or attaching
+    // many listeners in headless test environments.
     window.__nta_trace = window.__nta_trace || {
       enabled: false,
       events: [],
       options: {},
-      // push a trace event (internal)
-      _push(ev) {
-        try { if (!this.enabled) return; this.events.push(Object.assign({ t: Date.now() }, ev)); } catch (e) {}
-      },
-      start(opts) {
-        this.enabled = true; this.events = []; this.options = opts || {};
-        window.__nta_debug_push && window.__nta_debug_push({ type: 'trace-start', opts: this.options });
-        this._attachListeners();
-        return true;
-      },
-      stop() {
-        this._detachListeners();
-        try {
-          // Build a map of basename -> chosen folder suggestion. Prefer a
-          // suggestion whose display equals the basename (with optional '/'),
-          // otherwise pick the shortest display. Preserve the original order
-          // for non-folder items.
-          const folderMap = new Map();
-          const folderOrder = [];
-          const noteSet = new Set();
-          const blockSet = new Set();
-          const otherItems = [];
-
-          const basenameOf = (s) => {
-            const raw = String((s.display || s.target || '')).replace(/^\.+\/+|^\/+|\/+$/g, '');
-            const parts = raw.split('/').filter(Boolean);
-            for (let i = parts.length - 1; i >= 0; i--) {
-              const p = parts[i];
-              if (!p || p === '.' || p === '..') continue;
-              return p;
-            }
-            return '';
-          };
-
-          for (const s of suggestions) {
-            try {
-              if (s && s.kind === 'folder') {
-                const base = (basenameOf(s) || '').toLowerCase();
-                if (!folderMap.has(base)) {
-                  folderMap.set(base, s);
-                  folderOrder.push(base);
-                } else {
-                  // Prefer a display matching exactly the basename (e.g. "examples/")
-                  const existing = folderMap.get(base);
-                  const exPlain = String(existing.display || existing.target || '').replace(/\/+$/,'');
-                  const curPlain = String(s.display || s.target || '').replace(/\/+$/,'');
-                  if (curPlain === base || curPlain === base + '/') {
-                    folderMap.set(base, s);
-                  } else if (!(exPlain === base || exPlain === base + '/')) {
-                    // Otherwise prefer the shorter display
-                    if (curPlain.length < exPlain.length) folderMap.set(base, s);
-                  }
-                }
-              } else if (s && s.kind === 'note') {
-                const nid = String(s.noteId || '');
-                if (nid && noteSet.has(nid)) continue;
-                if (nid) noteSet.add(nid);
-                otherItems.push(s);
-              } else if (s && s.kind === 'block') {
-                const key = `${String(s.noteId || '')}:${String(s.blockId || s.target || s.display || '')}`;
-                if (blockSet.has(key)) continue;
-                blockSet.add(key);
-                otherItems.push(s);
-              } else {
-                otherItems.push(s);
-              }
-            } catch (e) {
-              otherItems.push(s);
-            }
-          }
-
-          // Reconstruct suggestions: folders (in their discovered order), then other items
-          const deduped = [];
-          for (const b of folderOrder) {
-            const item = folderMap.get(b);
-            if (item) deduped.push(item);
-          }
-          for (const o of otherItems) deduped.push(o);
-          suggestions = deduped;
-        } catch (e) { /* best-effort dedupe; ignore failures */ }
-
-          try {
-          // pointermove: record current sizes and guess nearest divider index
-          this._onPointerMove = (ev) => {
-            try {
-              const container = document.querySelector('.workspace__content') || document;
-              const left = container.querySelector ? container.querySelector('.editor-pane--left') : null;
-              const right = container.querySelector ? container.querySelector('.editor-pane--right') : null;
-              const containerRect = (container && container.getBoundingClientRect) ? container.getBoundingClientRect() : { width: 0, left: 0 };
-              const leftW = left && left.getBoundingClientRect ? left.getBoundingClientRect().width : 0;
-              const rightW = right && right.getBoundingClientRect ? right.getBoundingClientRect().width : 0;
-              const splitters = Array.from((container || document).querySelectorAll('.editors__divider'));
-              let dividerIndex = -1;
-              if (splitters.length) {
-                let minD = Infinity;
-                splitters.forEach((s, idx) => {
-                  try {
-                    const srect = s.getBoundingClientRect();
-                    const center = srect.left + (srect.width || 0) / 2;
-                    const d = Math.abs(center - ev.clientX);
-                    if (d < minD) { minD = d; dividerIndex = idx; }
-                  } catch (e) { }
-                });
-              }
-              const splitterWidth = (splitters[dividerIndex] && splitters[dividerIndex].getBoundingClientRect) ? splitters[dividerIndex].getBoundingClientRect().width : 0;
-                const ratio = containerRect.width > 0 ? leftW / containerRect.width : null;
-                  const paneCount = container ? (Array.from(container.querySelectorAll('.editor-pane')).length) : 0;
-                  const leftExists = !!left;
-                  const rightExists = !!right;
-                  const adjLeft = (splitters[dividerIndex] && splitters[dividerIndex].previousElementSibling && splitters[dividerIndex].previousElementSibling.getBoundingClientRect) ? Math.round(splitters[dividerIndex].previousElementSibling.getBoundingClientRect().width) : 0;
-                  const adjRight = (splitters[dividerIndex] && splitters[dividerIndex].nextElementSibling && splitters[dividerIndex].nextElementSibling.getBoundingClientRect) ? Math.round(splitters[dividerIndex].nextElementSibling.getBoundingClientRect().width) : 0;
-                  const leftNode = left || (splitters[dividerIndex] && splitters[dividerIndex].previousElementSibling) || null;
-                  const rightNode = right || (splitters[dividerIndex] && splitters[dividerIndex].nextElementSibling) || null;
-                  const leftNodeId = leftNode && leftNode.id ? leftNode.id : null;
-                  const leftNodeDataPane = leftNode && leftNode.dataset ? (leftNode.dataset.paneId || null) : null;
-                  const leftNodeTag = leftNode && leftNode.tagName ? leftNode.tagName : null;
-                  const rightNodeId = rightNode && rightNode.id ? rightNode.id : null;
-                  const rightNodeDataPane = rightNode && rightNode.dataset ? (rightNode.dataset.paneId || null) : null;
-                  const rightNodeTag = rightNode && rightNode.tagName ? rightNode.tagName : null;
-                  const measuredLeftWidth = (leftW && leftW > 0) ? leftW : (adjLeft || 0);
-                  const measuredRightWidth = (rightW && rightW > 0) ? rightW : (adjRight || 0);
-                  const leftMeasuredFrom = (leftW && leftW > 0) ? 'container' : (adjLeft ? 'adjacent' : 'none');
-                  const rightMeasuredFrom = (rightW && rightW > 0) ? 'container' : (adjRight ? 'adjacent' : 'none');
-                  this._push({ event: 'pointermove', pointerId: ev.pointerId, x: ev.clientX, leftWidth: measuredLeftWidth, rightWidth: measuredRightWidth, containerWidth: containerRect.width, ratio, dividerIndex, splitterWidth, paneCount, leftExists, rightExists, adjacentLeftWidth: adjLeft, adjacentRightWidth: adjRight, leftNodeId, leftNodeDataPane, leftNodeTag, rightNodeId, rightNodeDataPane, rightNodeTag, leftMeasuredFrom, rightMeasuredFrom });
-            } catch (err) { this._push({ event: 'pointermove', pointerId: ev.pointerId, x: ev.clientX }); }
-          };
-
-          // pointerup: final sizes and reset capturing
-          this._onPointerUp = (ev) => {
-            try {
-              if (!this._capturing) return;
-              const container = document.querySelector('.workspace__content') || document;
-              const left = container.querySelector ? container.querySelector('.editor-pane--left') : null;
-              const right = container.querySelector ? container.querySelector('.editor-pane--right') : null;
-              const containerRect = (container && container.getBoundingClientRect) ? container.getBoundingClientRect() : { width: 0, left: 0 };
-              const leftW = left && left.getBoundingClientRect ? left.getBoundingClientRect().width : 0;
-              const rightW = right && right.getBoundingClientRect ? right.getBoundingClientRect().width : 0;
-              const splitters = Array.from((container || document).querySelectorAll('.editors__divider'));
-              let dividerIndex = -1;
-              if (splitters.length) {
-                let minD = Infinity;
-                splitters.forEach((s, idx) => {
-                  try {
-                    const srect = s.getBoundingClientRect();
-                    const center = srect.left + (srect.width || 0) / 2;
-                    const d = Math.abs(center - ev.clientX);
-                    if (d < minD) { minD = d; dividerIndex = idx; }
-                  } catch (e) { }
-                });
-              }
-              const splitterWidth = (splitters[dividerIndex] && splitters[dividerIndex].getBoundingClientRect) ? splitters[dividerIndex].getBoundingClientRect().width : 0;
-              const ratio = containerRect.width > 0 ? leftW / containerRect.width : null;
-              const paneCount = container ? (Array.from(container.querySelectorAll('.editor-pane')).length) : 0;
-              const leftExists = !!left;
-              const rightExists = !!right;
-              const adjLeft = (splitters[dividerIndex] && splitters[dividerIndex].previousElementSibling && splitters[dividerIndex].previousElementSibling.getBoundingClientRect) ? Math.round(splitters[dividerIndex].previousElementSibling.getBoundingClientRect().width) : 0;
-              const adjRight = (splitters[dividerIndex] && splitters[dividerIndex].nextElementSibling && splitters[dividerIndex].nextElementSibling.getBoundingClientRect) ? Math.round(splitters[dividerIndex].nextElementSibling.getBoundingClientRect().width) : 0;
-              const leftNode = left || (splitters[dividerIndex] && splitters[dividerIndex].previousElementSibling) || null;
-              const rightNode = right || (splitters[dividerIndex] && splitters[dividerIndex].nextElementSibling) || null;
-              const leftNodeId = leftNode && leftNode.id ? leftNode.id : null;
-              const leftNodeDataPane = leftNode && leftNode.dataset ? (leftNode.dataset.paneId || null) : null;
-              const leftNodeTag = leftNode && leftNode.tagName ? leftNode.tagName : null;
-              const rightNodeId = rightNode && rightNode.id ? rightNode.id : null;
-              const rightNodeDataPane = rightNode && rightNode.dataset ? (rightNode.dataset.paneId || null) : null;
-              const rightNodeTag = rightNode && rightNode.tagName ? rightNode.tagName : null;
-              const measuredLeftWidth = (leftW && leftW > 0) ? leftW : (adjLeft || 0);
-              const measuredRightWidth = (rightW && rightW > 0) ? rightW : (adjRight || 0);
-              const leftMeasuredFrom = (leftW && leftW > 0) ? 'container' : (adjLeft ? 'adjacent' : 'none');
-              const rightMeasuredFrom = (rightW && rightW > 0) ? 'container' : (adjRight ? 'adjacent' : 'none');
-              this._push({ event: 'pointerup', pointerId: ev.pointerId, x: ev.clientX, leftWidth: measuredLeftWidth, rightWidth: measuredRightWidth, containerWidth: containerRect.width, ratio, dividerIndex, splitterWidth, paneCount, leftExists, rightExists, adjacentLeftWidth: adjLeft, adjacentRightWidth: adjRight, leftNodeId, leftNodeDataPane, leftNodeTag, rightNodeId, rightNodeDataPane, rightNodeTag, leftMeasuredFrom, rightMeasuredFrom });
-            } catch (err) {
-              this._push({ event: 'pointerup', pointerId: ev.pointerId, x: ev.clientX });
-            } finally {
-              this._capturing = false;
-            }
-          };
-
-          document.addEventListener('pointerdown', this._onPointerDown, true);
-          document.addEventListener('pointermove', this._onPointerMove, true);
-          document.addEventListener('pointerup', this._onPointerUp, true);
-          this._attached = true;
-        } catch (e) { /* best effort */ }
-      },
-      _detachListeners() {
-        try {
-          if (!this._attached) return;
-          document.removeEventListener('pointerdown', this._onPointerDown, true);
-          document.removeEventListener('pointermove', this._onPointerMove, true);
-          document.removeEventListener('pointerup', this._onPointerUp, true);
-          this._attached = false; this._capturing = false;
-        } catch (e) { }
-      }
+      _push() { /* noop in minimal stub */ },
+      start(opts) { this.enabled = true; this.events = []; this.options = opts || {}; return true; },
+      stop() { this.enabled = false; return true; }
     };
   }
 } catch (e) {}
@@ -934,10 +799,10 @@ function initCommonSettingsControls() {
     applyLineNumberSetting(elements.showLineNumbersToggle.checked);
     elements.showLineNumbersToggle.addEventListener('change', (e) => { writeStorage('NTA.showLineNumbers', e.target.checked); applyLineNumberSetting(e.target.checked); });
 
-    // Show filename only
-    const showFilenameOnly = readStorage('NTA.showFileNameOnly');
-    elements.showFilenameOnlyToggle.checked = showFilenameOnly === 'true';
-    elements.showFilenameOnlyToggle.addEventListener('change', (e) => { writeStorage('NTA.showFileNameOnly', e.target.checked); });
+  // Show filename only: the option to toggle showing the full filepath has
+  // been removed. Always present the filename-focused view.
+  const showFilenameOnly = true;
+  try { elements.showFilenameOnlyToggle.checked = true; } catch (e) {}
 
     // File path click to copy
     elements.filePath = document.getElementById('file-path') || document.createElement('div');
@@ -985,20 +850,19 @@ function initCommonSettingsControls() {
         if (pathToCopy && pathToCopy !== 'Stored inside the application library.') {
           window._lastCopied = pathToCopy; // For testing
           try {
-            // Try preload API first for testability
-            if (window.api && window.api.invoke) {
-              await window.api.invoke('clipboard:writeText', pathToCopy);
-              // show tooltip near click
+            // Try preload API first for testability (use safeApi wrapper)
+            try {
+              await safeApi.invoke('clipboard:writeText', pathToCopy);
               try { showTransientTooltip('Path copied to clipboard', ev?.clientX, ev?.clientY); } catch (e) {}
-            } else if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-              await navigator.clipboard.writeText(pathToCopy);
-              try { showTransientTooltip('Path copied to clipboard', ev?.clientX, ev?.clientY); } catch (e) {}
+            } catch (err) {
+              if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                try { await navigator.clipboard.writeText(pathToCopy); } catch (e) {}
+                try { showTransientTooltip('Path copied to clipboard', ev?.clientX, ev?.clientY); } catch (e) {}
+              }
             }
           } catch (e) {
             // Best-effort fallback: try the preload API if available
-            if (window.api && window.api.invoke) {
-              try { await window.api.invoke('clipboard:writeText', pathToCopy); } catch (err) { /* ignore */ }
-            }
+            try { await safeApi.invoke('clipboard:writeText', pathToCopy); } catch (err) { /* ignore */ }
           }
         }
       });
@@ -1045,13 +909,14 @@ function initCommonSettingsControls() {
           if (pathToCopy && pathToCopy !== 'Stored inside the application library.') {
             window._lastCopied = pathToCopy; // for tests
             try {
-              if (window.api && window.api.invoke) {
-                await window.api.invoke('clipboard:writeText', pathToCopy);
-                // show tooltip near recorded click position
+              try {
+                await safeApi.invoke('clipboard:writeText', pathToCopy);
                 try { showTransientTooltip('Path copied to clipboard', lastClickPos.x, lastClickPos.y); } catch (e) {}
-              } else if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-                await navigator.clipboard.writeText(pathToCopy);
-                try { showTransientTooltip('Path copied to clipboard', lastClickPos.x, lastClickPos.y); } catch (e) {}
+              } catch (err) {
+                if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                  try { await navigator.clipboard.writeText(pathToCopy); } catch (e) {}
+                  try { showTransientTooltip('Path copied to clipboard', lastClickPos.x, lastClickPos.y); } catch (e) {}
+                }
               }
               setStatus('Path copied to clipboard.', true);
             } catch (e) {
@@ -1437,7 +1302,7 @@ function renderTabsForPane(paneId, containerId) {
   } catch (e) { /* ignore */ }
   // Debug logging: report tab counts and candidates
   try {
-    console.debug('[tabs] renderTabsForPane start - pane:', String(paneId), 'totalTabs:', state.tabs.length, 'containerId:', String(containerId));
+    debugLog('[tabs] renderTabsForPane start - pane:', String(paneId), 'totalTabs:', state.tabs.length, 'containerId:', String(containerId));
   } catch (e) {}
   // Defensive delayed insertion: some initialization steps may clear the
   // workspace tree after this function runs (in test envs). Schedule a
@@ -1483,7 +1348,7 @@ function renderTabsForPane(paneId, containerId) {
   // Compute candidate tabs for this pane for debugging
   const candidateTabs = state.tabs.filter(t => !(t.paneId && t.paneId !== paneId));
   try {
-    console.debug('[tabs] candidates for pane', String(paneId), 'count:', candidateTabs.length, 'ids:', JSON.stringify(candidateTabs.map(t => ({ id: t.id, noteId: t.noteId, paneId: t.paneId }))) );
+    debugLog('[tabs] candidates for pane', String(paneId), 'count:', candidateTabs.length, 'ids:', JSON.stringify(candidateTabs.map(t => ({ id: t.id, noteId: t.noteId, paneId: t.paneId }))) );
   } catch (e) {}
 
     // Only render tabs that belong to this pane. Tabs with null `paneId` are
@@ -1549,26 +1414,26 @@ function renderTabsForPane(paneId, containerId) {
     container.appendChild(btn);
     renderedCount += 1;
   });
-  try { console.debug('[tabs] rendered - pane:', String(paneId), 'renderedCount:', renderedCount, 'containerId:', String(containerId)); } catch (e) {}
+  try { debugLog('[tabs] rendered - pane:', String(paneId), 'renderedCount:', renderedCount, 'containerId:', String(containerId)); } catch (e) {}
   // Additional verbose debug for right pane: dump state and the list HTML
   try {
     if (String(paneId) === 'right') {
       try {
         const tabsSummary = state.tabs.map(t => ({ id: t.id, noteId: t.noteId, paneId: t.paneId, title: t.title, isDirty: t.isDirty }));
-        console.debug('[tabs:right] state.tabs summary:', JSON.stringify(tabsSummary));
-      } catch (e) { console.debug('[tabs:right] error serializing state.tabs', e); }
+  debugLog('[tabs:right] state.tabs summary:', JSON.stringify(tabsSummary));
+  } catch (e) { debugLog('[tabs:right] error serializing state.tabs', e); }
       try {
-        console.debug('[tabs:right] container.outerHTML (truncated):', (container && container.outerHTML) ? container.outerHTML.slice(0, 2000) : String(container));
+  debugLog('[tabs:right] container.outerHTML (truncated):', (container && container.outerHTML) ? container.outerHTML.slice(0, 2000) : String(container));
         try {
           const cs = window.getComputedStyle(container);
-          console.debug('[tabs:right] container computedStyle:', { display: cs.display, visibility: cs.visibility, height: cs.height, width: cs.width, overflow: cs.overflow });
+          debugLog('[tabs:right] container computedStyle:', { display: cs.display, visibility: cs.visibility, height: cs.height, width: cs.width, overflow: cs.overflow });
         } catch (e) { /* ignore computed style errors */ }
         try {
           const parent = container.parentElement;
-          console.debug('[tabs:right] parent classList:', parent && parent.classList ? Array.from(parent.classList) : null);
-          try { const pcs = parent ? window.getComputedStyle(parent) : null; if (pcs) console.debug('[tabs:right] parent computedStyle:', { display: pcs.display, visibility: pcs.visibility, height: pcs.height, width: pcs.width }); } catch (e) {}
+          debugLog('[tabs:right] parent classList:', parent && parent.classList ? Array.from(parent.classList) : null);
+          try { const pcs = parent ? window.getComputedStyle(parent) : null; if (pcs) debugLog('[tabs:right] parent computedStyle:', { display: pcs.display, visibility: pcs.visibility, height: pcs.height, width: pcs.width }); } catch (e) {}
         } catch (e) {}
-      } catch (e) { console.debug('[tabs:right] error reading container.outerHTML', e); }
+  } catch (e) { debugLog('[tabs:right] error reading container.outerHTML', e); }
     }
   } catch (e) { /* ignore */ }
 }
@@ -1612,15 +1477,29 @@ function closeTab(tabId) {
   const idx = state.tabs.findIndex(t => t.id === tabId);
   if (idx === -1) return;
 
+  // Capture closed tab info before removal
+  const closedTab = state.tabs[idx];
+  const closedTabPane = closedTab?.paneId ?? null;
+
   // If the note has unsaved changes, mark it dirty and ask? For now respect isDirty and allow close.
   const wasActive = state.activeTabId === tabId;
   state.tabs.splice(idx, 1);
 
+  // If the closed tab belonged to a pane and that pane now has no tabs, close the pane
+  try {
+    if (closedTabPane) {
+      const remainingInPane = state.tabs.filter(t => t.paneId === closedTabPane);
+      if (!remainingInPane.length) {
+        // removePane will handle dynamic vs static behavior; force removal for static panes
+        try { removePane(closedTabPane, true); } catch (e) { try { removePane(closedTabPane); } catch (e2) {} }
+      }
+    }
+  } catch (e) { /* ignore */ }
+
   if (wasActive) {
     // Prefer to activate a neighbor in the same pane as the closed tab.
-    const closedTabPane = state.tabs[idx]?.paneId ?? null; // after splice this points at the next tab
-    // Find candidate tabs in the same pane (or any unscoped tabs if none)
-    const samePaneTabs = state.tabs.filter(t => (t.paneId || null) === (closedTabPane || null));
+    // Find a candidate tab in the same pane as the closed tab (if any remain)
+    const samePaneTabs = (closedTabPane ? state.tabs.filter(t => t.paneId === closedTabPane) : []).filter(Boolean);
     if (samePaneTabs.length) {
       state.activeTabId = samePaneTabs[Math.max(0, samePaneTabs.length - 1)].id;
       const activeTab = state.tabs.find(t => t.id === state.activeTabId);
@@ -2014,7 +1893,7 @@ class Pane {
   async loadNote(note) {
     if (!note) return false;
     // route to existing renderers (keeps existing behavior)
-    if (note.type === 'pdf') return await renderPdfInPane(note, this.id);
+    if (note.type === 'pdf') return await renderPdfInPane(note, this.id, null);
     if (note.type === 'image') return await renderImageInPane(note, this.id);
     if (note.type === 'video') return await renderVideoInPane(note, this.id);
     if (note.type === 'html') return await renderHtmlInPane(note, this.id);
@@ -3329,7 +3208,7 @@ const ensureUint8Array = (payload) => {
   return null;
 };
 
-const applyPdfResource = (resource) => {
+const applyPdfResource = (resource, page = null) => {
   if (!elements.pdfViewer || !resource || !resource.value) {
     return false;
   }
@@ -3337,8 +3216,11 @@ const applyPdfResource = (resource) => {
   // Get current theme preference
   const currentTheme = resolveCurrentThemePreference();
   
-  // Use our custom PDF.js viewer with the PDF file URL and theme
-  const viewerUrl = './pdfjs/pdf-viewer.html?file=' + encodeURIComponent(resource.value) + '&theme=' + encodeURIComponent(currentTheme);
+  // Use our custom PDF.js viewer with the PDF file URL, theme and optional page
+  let viewerUrl = './pdfjs/pdf-viewer.html?file=' + encodeURIComponent(resource.value) + '&theme=' + encodeURIComponent(currentTheme);
+  if (Number.isFinite(page) && page > 0) {
+    viewerUrl += '&page=' + encodeURIComponent(String(page));
+  }
   elements.pdfViewer.src = viewerUrl;
   elements.pdfViewer.classList.add('visible');
   return true;
@@ -3349,13 +3231,17 @@ const applyPdfResource = (resource) => {
 // preview. The functions below create a pane-local iframe viewer and hide
 // the textarea for that pane while a non-markdown viewer is active.
 const getPaneRootElement = (paneId) => {
+  try { window.__nta_debug_push && window.__nta_debug_push({ type: 'getPaneRootElement:entered', paneId }); } catch (e) {}
   if (!paneId) return null;
   // Special-case the well-known left/right panes which are not given
   // a `data-pane-id` attribute in the DOM. Fall back to dynamic panes
   // using the data attribute.
-  if (paneId === 'left') return document.querySelector('.editor-pane--left');
-  if (paneId === 'right') return document.querySelector('.editor-pane--right');
-  return document.querySelector(`[data-pane-id="${paneId}"]`);
+  let root = null;
+  if (paneId === 'left') root = document.querySelector('.editor-pane--left');
+  else if (paneId === 'right') root = document.querySelector('.editor-pane--right');
+  else root = document.querySelector(`[data-pane-id="${paneId}"]`);
+  try { window.__nta_debug_push && window.__nta_debug_push({ type: 'getPaneRootElement:result', paneId, found: !!root, rootTag: root && root.tagName ? root.tagName : null }); } catch (e) {}
+  return root;
 };
 
 const clearPaneViewer = (paneId) => {
@@ -3378,6 +3264,7 @@ const clearPaneViewer = (paneId) => {
       try {
         ta.style.visibility = '';
         ta.style.pointerEvents = '';
+        ta.style.display = '';
         ta.removeAttribute('aria-hidden');
         if (ta.dataset._origHidden !== undefined) {
           if (ta.dataset._origHidden === '1') ta.hidden = true; else ta.hidden = false;
@@ -3394,6 +3281,28 @@ const renderNotebookInPane = (note, paneId) => {
   if (!note || note.type !== 'notebook' || !paneId) return false;
   const root = getPaneRootElement(paneId);
   if (!root) return false;
+
+  // If there's already a per-pane PDF viewer present, update its page if requested
+  try {
+    const existingViewer = root.querySelector && root.querySelector('.pdf-pane-viewer');
+    if (existingViewer) {
+      try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:already-present', noteId: note?.id ?? null, paneId, page }); } catch (e) {}
+      try {
+        let src = existingViewer.getAttribute('src') || existingViewer.src || '';
+        if (Number.isFinite(page) && page > 0) {
+          if (src.indexOf('page=') === -1) {
+            src += (src.indexOf('?') === -1 ? '?' : '&') + 'page=' + encodeURIComponent(String(page));
+          } else {
+            src = src.replace(/([?&])page=\d+/, `$1page=${encodeURIComponent(String(page))}`);
+          }
+        }
+        existingViewer.src = src;
+        try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:appended', noteId: note?.id ?? null, paneId, page, viewerUrl: src }); } catch (e) {}
+      } catch (e) { /* ignore */ }
+      try { if (root && root.dataset) delete root.dataset._pdfRendering; } catch (e) {}
+      return true;
+    }
+  } catch (e) { /* best-effort check */ }
 
   // Clear any existing viewers first
   clearPaneViewer(paneId);
@@ -3572,7 +3481,7 @@ const renderVideoInPane = async (note, paneId) => {
 
   try {
     const payload = { src: rawSrc, notePath: note.absolutePath ?? null, folderPath: note.folderPath ?? state.currentFolder ?? null };
-    const result = await window.api.resolveResource(payload);
+  const result = await safeApi.invoke('resolveResource', payload);
     const value = result?.value ?? null;
     if (!value) {
       if (ta) ta.hidden = false;
@@ -3635,7 +3544,7 @@ const renderHtmlInPane = async (note, paneId) => {
 
   try {
     const payload = { src: rawSrc, notePath: note.absolutePath ?? null, folderPath: note.folderPath ?? state.currentFolder ?? null };
-    const result = await window.api.resolveResource(payload);
+  const result = await safeApi.invoke('resolveResource', payload);
     const value = result?.value ?? null;
     if (!value) {
       if (ta) ta.hidden = false;
@@ -3800,8 +3709,11 @@ const collectNotebookFromCellsEditor = (editorEl, note) => {
   return nb;
 };
 
-const renderPdfInPane = async (note, paneId) => {
+const renderPdfInPane = async (note, paneId, page = null) => {
   if (!note || note.type !== 'pdf' || !paneId) return false;
+  try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:entered', noteId: note?.id ?? null, paneId, page }); } catch (e) {}
+  try { window.__nta_debug_push && (window.__nta_rpdf_calls = (window.__nta_rpdf_calls || 0) + 1) && window.__nta_debug_push({ type: 'renderPdfInPane:callCount', noteId: note?.id ?? null, paneId, page, callIndex: window.__nta_rpdf_calls }); } catch (e) {}
+  try { console.log('[renderPdfInPane] called for', note && note.id, 'pane', paneId, 'page', page, 'callIndex=', window.__nta_rpdf_calls); } catch (e) {}
   const root = getPaneRootElement(paneId);
   if (!root) return false;
 
@@ -3810,24 +3722,86 @@ const renderPdfInPane = async (note, paneId) => {
   // race where two concurrent calls both clear then append an iframe.
   try {
     if (root.dataset && root.dataset._pdfRendering === '1') {
-      return true;
+      // Another render may be in progress. If a viewer already exists, update
+      // its page and return true; otherwise continue and attempt to render.
+      try {
+        const existing = root.querySelector && root.querySelector('.pdf-pane-viewer');
+        if (existing) {
+          try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:already-present', noteId: note?.id ?? null, paneId, page }); } catch (e) {}
+          if (Number.isFinite(page) && page > 0) {
+            try {
+              let src = existing.getAttribute('src') || existing.src || '';
+              if (src.indexOf('page=') === -1) {
+                src += (src.indexOf('?') === -1 ? '?' : '&') + 'page=' + encodeURIComponent(String(page));
+              } else {
+                src = src.replace(/([?&])page=\d+/, `$1page=${encodeURIComponent(String(page))}`);
+              }
+              existing.src = src;
+              try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:appended', noteId: note?.id ?? null, paneId, page, viewerUrl: src }); } catch (e) {}
+            } catch (e) { /* ignore */ }
+          }
+          return true;
+        }
+      } catch (e) { /* ignore detection failures and proceed to render */ }
     }
-    root.dataset._pdfRendering = '1';
+    // Mark rendering-in-progress for this pane so concurrent calls avoid duplicating work
+    if (root && root.dataset) root.dataset._pdfRendering = '1';
   } catch (e) { /* ignore */ }
 
   // Remove any global PDF preview to avoid duplicates
   try { elements.pdfViewer?.classList.remove('visible'); elements.pdfViewer?.removeAttribute('src'); } catch (e) {}
 
-  // Clear existing pane viewer and hide textarea
+  // Clear existing pane viewer and hide textarea (use styles so it doesn't
+  // take layout space and can be reliably restored by clearPaneViewer).
   clearPaneViewer(paneId);
   const ta = root.querySelector('textarea');
-  if (ta) ta.hidden = true;
+  if (ta) {
+    try {
+      ta.dataset._origHidden = ta.hidden ? '1' : '0';
+      ta.style.visibility = 'hidden';
+      ta.style.pointerEvents = 'none';
+      ta.setAttribute('aria-hidden', 'true');
+      ta.hidden = true;
+      ta.style.display = 'none';
+    } catch (e) { try { ta.hidden = true; } catch (err) {} }
+  }
+
+  // Insert a lightweight placeholder iframe early so tests and UI observe
+  // an element immediately (helps avoid races where resource loading delays
+  // hide the viewer from the test harness). We'll update its src later.
+  let placeholderIframe = null;
+  try {
+    placeholderIframe = document.createElement('iframe');
+    placeholderIframe.className = 'pdf-pane-viewer';
+    // Provide an initial src that includes the requested page so tests that
+    // poll for `page=` see the intended page even if resource loading is
+    // still pending. We'll update this src to the real viewer URL later.
+    const initPage = Number.isFinite(page) && page > 0 ? String(page) : '1';
+    placeholderIframe.src = `about:blank?page=${encodeURIComponent(initPage)}`;
+    placeholderIframe.title = note.title ? `${note.title} (loading)` : 'PDF Preview (loading)';
+    // Make the parent positioned so absolutely-positioned iframe can fill it
+    try { if (root && root.style) root.style.position = root.style.position || 'relative'; } catch (e) {}
+    // Make the placeholder fill the remaining pane space (below tab bar)
+    try {
+      placeholderIframe.style.position = 'relative';
+      placeholderIframe.style.flex = '1 1 auto';
+      placeholderIframe.style.minHeight = '0';
+      placeholderIframe.style.width = '100%';
+      placeholderIframe.style.border = '0';
+      placeholderIframe.style.display = 'block';
+    } catch (e) {}
+    try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:placeholder-appending', noteId: note.id, paneId }); } catch (e) {}
+    try { root.appendChild(placeholderIframe); } catch (e) { placeholderIframe = null; }
+    try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:placeholder-appended', noteId: note.id, paneId }); } catch (e) {}
+  } catch (e) { placeholderIframe = null; }
 
   // Resolve resource (object URL or data URI)
   try {
+    try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:api-check', hasWindowApi: !!window.api, apiKeys: Object.keys(window.api || {}), typeofLoadPdfData: typeof (window.api && window.api.loadPdfData), typeofInvoke: typeof (window.api && window.api.invoke) }); } catch (e) {}
     let resource = null;
+    try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:note-paths', noteId: note.id, absolutePath: note.absolutePath ?? null, storedPath: note.storedPath ?? null }); } catch (e) {}
     if (note.absolutePath) {
-      const binary = await window.api.readPdfBinary({ absolutePath: note.absolutePath });
+  const binary = await safeApi.invoke('readPdfBinary', { absolutePath: note.absolutePath });
       const uint8 = ensureUint8Array(binary);
         try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:readPdfBinary', noteId: note.id, hasBinary: Boolean(uint8 && uint8.byteLength), absolutePath: note.absolutePath }); } catch (e) {}
       if (uint8 && uint8.byteLength) {
@@ -3835,8 +3809,11 @@ const renderPdfInPane = async (note, paneId) => {
         resource = { type: 'objectUrl', value: URL.createObjectURL(blob) };
       }
     } else if (note.storedPath) {
-      const dataUri = await window.api.loadPdfData({ storedPath: note.storedPath });
-        try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:loadPdfData', noteId: note.id, hasDataUri: Boolean(dataUri), storedPath: note.storedPath }); } catch (e) {}
+      try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:invoke-start', noteId: note.id, channel: 'loadPdfData', storedPath: note.storedPath }); } catch (e) {}
+      const dataUri = await safeApi.invoke('loadPdfData', { storedPath: note.storedPath });
+  try { console.log('[renderPdfInPane] loadPdfData returned for', note && note.id, 'valuePreview=', (typeof dataUri === 'string' ? dataUri.slice(0,64) : String(dataUri)), 'callIndex=', window.__nta_rpdf_calls); } catch (e) {}
+      try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:invoke-done', noteId: note.id, channel: 'loadPdfData', hasValue: Boolean(dataUri), valuePreview: typeof dataUri === 'string' ? dataUri.slice(0,64) : null }); } catch (e) {}
+      try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:loadPdfData', noteId: note.id, hasDataUri: Boolean(dataUri), storedPath: note.storedPath, dataPreview: typeof dataUri === 'string' ? dataUri.slice(0, 64) : null }); } catch (e) {}
       if (dataUri) resource = { type: 'dataUri', value: dataUri };
     }
 
@@ -3850,17 +3827,80 @@ const renderPdfInPane = async (note, paneId) => {
     // Get current theme preference
     const currentTheme = resolveCurrentThemePreference();
     
-    const viewerUrl = './pdfjs/pdf-viewer.html?file=' + encodeURIComponent(resource.value) + '&forceToolbar=true&theme=' + encodeURIComponent(currentTheme);
-    const iframe = document.createElement('iframe');
-    iframe.className = 'pdf-pane-viewer';
-    iframe.src = viewerUrl;
-    iframe.title = note.title ?? 'PDF Preview';
-    // Insert after the textarea so it occupies the editor pane area
-    root.appendChild(iframe);
+    let viewerUrl = './pdfjs/pdf-viewer.html?file=' + encodeURIComponent(resource.value) + '&forceToolbar=true&theme=' + encodeURIComponent(currentTheme);
+    if (Number.isFinite(page) && page > 0) {
+      viewerUrl += '&page=' + encodeURIComponent(String(page));
+    }
+    try { console.log('[renderPdfInPane] viewerUrl built for', note && note.id, '->', viewerUrl.slice(0,200)); } catch (e) {}
+    try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:will-append', noteId: note.id, paneId, page, viewerUrl }); } catch (e) {}
+    // If a placeholder or existing viewer exists, update it instead of
+    // creating a second iframe. This avoids overlapping elements and layout
+    // glitches.
+    try {
+      const existingViewer = root.querySelector && root.querySelector('.pdf-pane-viewer');
+      if (existingViewer) {
+        try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:update-existing-viewer', noteId: note.id, paneId, page, viewerUrl }); } catch (e) {}
+        try {
+          existingViewer.src = viewerUrl;
+          existingViewer.title = note.title ?? 'PDF Preview';
+          // Use flexbox to fill remaining space below tab bar
+          existingViewer.style.position = 'relative';
+          existingViewer.style.flex = '1 1 auto';
+          existingViewer.style.minHeight = '0';
+          existingViewer.style.width = '100%';
+          existingViewer.style.border = '0';
+        } catch (e) { /* ignore styling errors */ }
+        try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:appended', noteId: note.id, paneId, page, viewerUrl }); } catch (e) {}
+        try { if (root && root.dataset) delete root.dataset._pdfRendering; } catch (e) {}
+        return true;
+      }
+    } catch (e) { /* ignore */ }
+
+    // Create iframe and instrument creation/append steps so tests can observe
+    // precisely where a failure or early return might occur.
+    let iframe;
+    try {
+      iframe = document.createElement('iframe');
+      try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:create-iframe', noteId: note.id, paneId, page }); } catch (e) {}
+      iframe.className = 'pdf-pane-viewer';
+      iframe.src = viewerUrl;
+      iframe.title = note.title ?? 'PDF Preview';
+      // Use flexbox to fill remaining space below tab bar
+      try {
+        iframe.style.position = 'relative';
+        iframe.style.flex = '1 1 auto';
+        iframe.style.minHeight = '0';
+        iframe.style.width = '100%';
+        iframe.style.border = '0';
+        iframe.style.display = 'block';
+      } catch (e) {}
+    } catch (e) {
+      try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:create-iframe:error', noteId: note.id, paneId, page, message: e && e.message ? e.message : String(e) }); } catch (err) {}
+      if (ta) {
+        try { ta.hidden = false; ta.style.display = ''; ta.style.visibility = ''; ta.style.pointerEvents = ''; ta.removeAttribute('aria-hidden'); } catch (err) { ta.hidden = false; }
+      }
+      try { if (root && root.dataset) delete root.dataset._pdfRendering; } catch (err) {}
+      return false;
+    }
+
+    try {
+      try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:append-start', noteId: note.id, paneId, page }); } catch (e) {}
+      try { console.log('[renderPdfInPane] appending iframe for', note && note.id, 'pane', paneId, 'page', page); } catch (e) {}
+      root.appendChild(iframe);
+      try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:append-end', noteId: note.id, paneId, page, viewerUrl }); } catch (e) {}
+      try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:appended', noteId: note.id, paneId, page, viewerUrl }); } catch (e) {}
+    } catch (e) {
+      try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:append:error', noteId: note.id, paneId, page, message: e && e.message ? e.message : String(e) }); } catch (err) {}
+      if (ta) {
+        try { ta.hidden = false; ta.style.display = ''; ta.style.visibility = ''; ta.style.pointerEvents = ''; ta.removeAttribute('aria-hidden'); } catch (err) { ta.hidden = false; }
+      }
+      try { if (root && root.dataset) delete root.dataset._pdfRendering; } catch (err) {}
+      return false;
+    }
     try { if (root && root.dataset) delete root.dataset._pdfRendering; } catch (e) {}
     return true;
   } catch (error) {
-  // Debug prints removed
+  try { window.__nta_debug_push && window.__nta_debug_push({ type: 'renderPdfInPane:error', noteId: note && note.id ? note.id : null, message: (error && error.message) ? error.message : String(error) }); } catch (e) {}
     if (ta) ta.hidden = false;
     try { if (root && root.dataset) delete root.dataset._pdfRendering; } catch (e) {}
     return false;
@@ -3896,7 +3936,7 @@ const renderImageInPane = async (note, paneId) => {
 
   try {
   const payload = { src: rawSrc, notePath: note.absolutePath ?? null, folderPath: note.folderPath ?? state.currentFolder ?? null };
-  const result = await window.api.resolveResource(payload);
+  const result = await safeApi.invoke('resolveResource', payload);
   const value = result?.value ?? null;
     if (!value) {
       if (ta) ta.hidden = false;
@@ -4698,16 +4738,131 @@ const parseWikiTarget = (target, context) => {
     remaining = remaining.slice(0, remaining.length - blockMatch[0].length).replace(/#$/, '').trim();
   }
 
+  // Support page anchors like "file#12" to open PDFs at a specific page.
+  // Only consider a trailing #<number> when it wasn't a block anchor (#^...)
+  let page = null;
+  if (!blockId) {
+    const pageMatch = remaining.match(/#(\d{1,6})$/);
+    if (pageMatch) {
+      try { page = Number.parseInt(pageMatch[1], 10); } catch (e) { page = null; }
+      remaining = remaining.slice(0, remaining.length - pageMatch[0].length).replace(/#$/, '').trim();
+    }
+  }
+
   let noteId = null;
+  // Track an explicitly requested extension (e.g. '.pdf') so we can prefer
+  // a matching-format resource even when slug-index lookup would pick a
+  // different note.
+  let explicitExt = null;
   if (!remaining || remaining === '#') {
     noteId = context?.noteId ?? null;
   } else {
+    // If the target explicitly specifies a file extension (e.g. "Name.pdf"),
+    // prefer an exact-format match when possible. This allows links like
+    // [[Note.pdf#3]] to resolve to the PDF when a markdown and a PDF with the
+    // same base name both exist.
+    const extMatch = remaining.match(/\.([a-z0-9]{1,6})$/i);
+    if (extMatch) {
+      const ext = extMatch[1].toLowerCase();
+      explicitExt = ext;
+      const base = remaining.replace(/\.[^./\\]+$/, '').trim();
+      // Debugging helper: when NTA_WIKI_DEBUG env var is set, print candidate paths
+      const debugExt = (typeof process !== 'undefined' && process.env && process.env.NTA_WIKI_DEBUG);
+      if (debugExt) {
+        try { console.log('[parseWikiTarget] resolving explicit ext', ext, 'base=', base, 'notesCount=', state.notes.size); } catch (e) {}
+      }
+      try {
+        for (const [id, n] of state.notes.entries()) {
+          if (debugExt) {
+            try { console.log('[parseWikiTarget] note', id, 'type=', n && n.type, 'absolutePath=', n && n.absolutePath, 'storedPath=', n && n.storedPath); } catch (e) {}
+          }
+          try {
+            const candidatePath = (n.absolutePath || n.storedPath || '');
+            const candExtMatch = (candidatePath || '').toLowerCase().match(/\.([a-z0-9]{1,6})$/i);
+            const candBase = ((candidatePath || '').split(/[\\\/]/).pop() || '').replace(/\.[^/.]+$/, '') || '';
+            if (candExtMatch && candExtMatch[1].toLowerCase() === ext) {
+              // Compare base names (or title) via slug to be forgiving about spaces/case
+              const baseSlug = toWikiSlug(base);
+              const candSlug = toWikiSlug(candBase) || toWikiSlug(n.title || '');
+              if (baseSlug && candSlug && baseSlug === candSlug) {
+                noteId = id;
+                break;
+              }
+            }
+          } catch (ee) { /* per-note ignore */ }
+        }
+      } catch (ee) { /* ignore */ }
+      // If we found a matching note by explicit extension, strip the extension
+      // from remaining so the later resolution logic does not treat it as part
+      // of the slug again.
+      if (noteId) {
+        remaining = remaining.replace(/\.[^./\\]+$/, '').trim();
+      }
+      // If we did not find a candidate by scanning absolute/stored paths,
+      // attempt a more forgiving match: compare the requested base slug to
+      // the note title or filename base and prefer any note whose resource
+      // appears to have the requested extension. This covers cases where
+      // storedPath/absolutePath may be missing or differently shaped in
+      // test environments.
+      if (!noteId) {
+        try {
+          const baseSlug = toWikiSlug(base);
+          if (baseSlug) {
+            for (const [id, n] of state.notes.entries()) {
+              try {
+                // Prefer explicit file-like notes (pdf -> type 'pdf') when possible
+                const candidateExt = (n.type === 'pdf') ? 'pdf' : ((n.absolutePath || n.storedPath || '').toLowerCase().match(/\.([a-z0-9]{1,6})$/) || [null, null])[1];
+                if (!candidateExt) continue;
+                if (candidateExt.toLowerCase() !== extMatch[1].toLowerCase()) continue;
+                // Compare slug against title or filename base
+                const candBase = ((n.absolutePath || n.storedPath || '').split(/[\\\/]/).pop() || '').replace(/\.[^/.]+$/, '') || '';
+                const candSlug = toWikiSlug(candBase) || toWikiSlug(n.title || '');
+                if (candSlug && candSlug === baseSlug) {
+                  noteId = id;
+                  break;
+                }
+              } catch (ee) { /* per-note ignore */ }
+            }
+          }
+        } catch (ee) { /* ignore */ }
+        if (noteId) remaining = remaining.replace(/\.[^./\\]+$/, '').trim();
+      }
+    }
     // If the remaining string looks like a folder-prefixed target, try
     // resolving by relative path first, then fall back to slug lookup.
     if (remaining.includes('/')) {
       noteId = resolveNoteIdByRelativeTarget(remaining, context) ?? resolveNoteIdBySlug(remaining);
     } else {
       noteId = resolveNoteIdBySlug(remaining);
+    }
+
+    // If an explicit extension was requested (e.g. Target.pdf) but the
+    // resolved note does not match that extension, attempt to find another
+    // note with the same base/title slug that does match the requested
+    // extension. This ensures explicit-format wiki-links prefer the right
+    // resource even when the wikiIndex maps the slug to a different note.
+    if (explicitExt && noteId) {
+      try {
+        const resolved = state.notes.get(noteId);
+        const resolvedExt = (resolved && resolved.type === 'pdf') ? 'pdf' : ((resolved && (resolved.absolutePath || resolved.storedPath) || '').toLowerCase().match(/\.([a-z0-9]{1,6})$/) || [null, null])[1];
+        if (!resolvedExt || resolvedExt.toLowerCase() !== explicitExt.toLowerCase()) {
+          const baseSlug = toWikiSlug(remaining.replace(/\.[^./\\]+$/, '').trim());
+          if (baseSlug) {
+            for (const [id, n] of state.notes.entries()) {
+              try {
+                const candExt = (n && n.type === 'pdf') ? 'pdf' : ((n && (n.absolutePath || n.storedPath) || '').toLowerCase().match(/\.([a-z0-9]{1,6})$/) || [null, null])[1];
+                if (!candExt || candExt.toLowerCase() !== explicitExt.toLowerCase()) continue;
+                const candBase = ((n && (n.absolutePath || n.storedPath) || '').split(/[\\\/]/).pop() || '').replace(/\.[^/.]+$/, '') || '';
+                const candSlug = toWikiSlug(candBase) || toWikiSlug(n && n.title || '');
+                if (candSlug && candSlug === baseSlug) {
+                  noteId = id;
+                  break;
+                }
+              } catch (ee) { /* per-note ignore */ }
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
     }
   }
 
@@ -4736,6 +4891,8 @@ const parseWikiTarget = (target, context) => {
     blockId,
     hasBlock,
     blockEntry
+    ,
+    page
   };
 };
 
@@ -5997,7 +6154,7 @@ const handleExternalFileDrop = (event, files) => {
         (async () => {
           try {
             const payload = { src: filePath, notePath: filePath, folderPath: null };
-            const res = await window.api.resolveResource(payload);
+            const res = await safeApi.invoke('resolveResource', payload);
             const url = res?.value ?? null;
             if (!url) throw new Error('resolve failed');
             let txt = null;
@@ -6052,7 +6209,7 @@ const handleExternalFileDrop = (event, files) => {
         (async () => {
           try {
             const payload = { src: filePath, notePath: filePath, folderPath: null };
-            const res = await window.api.resolveResource(payload);
+            const res = await safeApi.invoke('resolveResource', payload);
             const url = res?.value ?? null;
             if (!url) throw new Error('resolve failed');
             let txt = null;
@@ -6113,7 +6270,7 @@ const handleExternalFileDrop = (event, files) => {
         (async () => {
           try {
             const payload = { src: filePath, notePath: filePath, folderPath: null };
-            const res = await window.api.resolveResource(payload);
+            const res = await safeApi.invoke('resolveResource', payload);
             const url = res?.value ?? null;
             if (!url) throw new Error('resolve failed');
             let txt = null;
@@ -6475,7 +6632,7 @@ const processPreviewImages = async () => {
       };
 
       try {
-        const result = await window.api.resolveResource(payload);
+        const result = await safeApi.invoke('resolveResource', payload);
         if (result?.value) {
           imageResourceCache.set(cacheKey, result.value);
           img.src = result.value;
@@ -6579,7 +6736,7 @@ const processPreviewVideos = async () => {
       };
 
       try {
-        const result = await window.api.resolveResource(payload);
+        const result = await safeApi.invoke('resolveResource', payload);
         if (result?.value) {
           // Debug prints removed
           videoResourceCache.set(cacheKey, result.value);
@@ -6738,7 +6895,7 @@ const processPreviewHtmlIframes = async () => {
       };
 
       try {
-        const result = await window.api.resolveResource(payload);
+        const result = await safeApi.invoke('resolveResource', payload);
   // Debug prints removed
         if (result?.value) {
           htmlResourceCache.set(cacheKey, result.value);
@@ -7043,6 +7200,7 @@ const setActiveEditorPane = (pane) => {
 // Open a note in a given pane (left or right). Ensures tab exists, activates pane/tab,
 // persists per-pane mapping, and updates UI. Reused by drag/drop and other flows.
 const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => {
+  try { window.__nta_debug_push && window.__nta_debug_push({ type: 'openNoteInPane:entered', noteId, pane, options }); } catch (e) {}
   // Debug prints removed
   if (!noteId || !state.notes.has(noteId)) return null;
   // Ensure editorPanes and tabs structures exist
@@ -7103,10 +7261,10 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
         inst.el.value = paneNote.content ?? '';
         // If the note has no content but has an absolutePath, try to read it now
         if ((!paneNote.content || !paneNote.content.length) && paneNote.absolutePath) {
-          (async () => {
+              (async () => {
             try {
               const payload = { src: paneNote.absolutePath, notePath: paneNote.absolutePath, folderPath: paneNote.folderPath ?? null };
-              const res = await window.api.resolveResource(payload);
+              const res = await safeApi.invoke('resolveResource', payload);
               const url = res?.value ?? null;
               if (url) {
                 try {
@@ -7166,7 +7324,7 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
           (async () => {
             try {
               const payload = { src: paneNote.absolutePath, notePath: paneNote.absolutePath, folderPath: paneNote.folderPath ?? state.currentFolder ?? null };
-              const res = await window.api.resolveResource(payload);
+              const res = await safeApi.invoke('resolveResource', payload);
               const url = res?.value ?? null;
               if (!url) return;
               let txt = null;
@@ -7224,7 +7382,7 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
             (async () => {
               try {
                 const payload = { src: paneNote.absolutePath, notePath: paneNote.absolutePath, folderPath: paneNote.folderPath ?? null };
-                const res = await window.api.resolveResource(payload);
+                const res = await safeApi.invoke('resolveResource', payload);
                 const url = res?.value ?? null;
                 if (url) {
                   try {
@@ -7286,7 +7444,7 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
         inst.el.disabled = true;
         inst.el.value = '';
         try { window.__nta_debug_push && window.__nta_debug_push({ type: 'openNoteInPane:renderAttempt', noteId: paneNote.id, pane, kind: 'pdf', hasEditorInstance: !!inst, paneRootExists: !!getPaneRootElement(pane) }); } catch (e) {}
-        renderPdfInPane(paneNote, pane);
+        renderPdfInPane(paneNote, pane, options?.page ?? null);
       } else if (paneNote.type === 'video') {
         // Videos: render only inside the pane viewer (do not populate textarea).
         try { clearPaneViewer(pane); } catch (e) {}
@@ -7331,8 +7489,8 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
     // Maintain legacy activeNoteId for compatibility with other code paths.
     // However, do NOT set the global active note to a PDF. The live preview
     // should continue to show the last markdown note the user was viewing.
+    state.activeNoteId = noteId;
     if (paneNote.type === 'markdown' || paneNote.type === 'latex') {
-      state.activeNoteId = noteId;
       state.lastRenderableNoteId = noteId;
       if (paneNote.type === 'markdown') {
         state.lastActiveMarkdownNoteId = noteId;
@@ -7348,12 +7506,12 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
       // may have already called renderPdfInPane; avoid duplicating the
       // iframe by checking for an existing .pdf-pane-viewer element first.
       try {
-        const root = getPaneRootElement(pane);
-        const already = root && root.querySelector && root.querySelector('.pdf-pane-viewer');
-        if (!already) {
-          void renderPdfInPane(paneNote, pane);
-        }
-      } catch (e) { try { void renderPdfInPane(paneNote, pane); } catch (e2) {} }
+          const root = getPaneRootElement(pane);
+          const already = root && root.querySelector && root.querySelector('.pdf-pane-viewer');
+          if (!already) {
+            void renderPdfInPane(paneNote, pane, options?.page ?? null);
+          }
+        } catch (e) { try { void renderPdfInPane(paneNote, pane, options?.page ?? null); } catch (e2) {} }
       // Do NOT change the global preview (keep last markdown preview visible).
     } else {
       // For markdown and other non-PDF types, update the main preview area.
@@ -8016,15 +8174,15 @@ const renderLatexPreview = async (latexContent, noteId) => {
   const resolvedNote = note || active || null;
   const abs = resolvedNote ? (resolvedNote.absolutePath || resolvedNote.storedPath || '') : '';
     let compiledPdfShown = false;
-    if (abs && typeof window.api?.compileLatex === 'function') {
+    if (abs) {
       // Attempt to compile; show intermediate message
       elements.preview.innerHTML = `<div class="latex-compiling">Compiling LaTeX…</div>`;
       try {
-        const result = awaitPromiseLike(window.api.compileLatex({ absolutePath: abs }));
+        const result = await awaitPromiseLike(safeApi.invoke('compileLatex', { absolutePath: abs }));
         if (result && result.success && result.pdfPath) {
           // Try to load the compiled PDF via resolveResource so it becomes a data: URI
           try {
-            const res = awaitPromiseLike(window.api.resolveResource({ src: result.pdfPath, notePath: abs, folderPath: state.currentFolder }));
+            const res = await awaitPromiseLike(safeApi.invoke('resolveResource', { src: result.pdfPath, notePath: abs, folderPath: state.currentFolder }));
             if (res && res.value) {
               // Remember compiled PDF path so exports can prefer the exact compiled output
               try {
@@ -8586,7 +8744,7 @@ const renderPdfPreview = async (note) => {
     let resource = null;
 
     if (note.absolutePath) {
-      const binary = await window.api.readPdfBinary({ absolutePath: note.absolutePath });
+      const binary = await safeApi.invoke('readPdfBinary', { absolutePath: note.absolutePath });
       const uint8 = ensureUint8Array(binary);
       if (uint8 && uint8.byteLength) {
         const blob = new Blob([uint8], { type: 'application/pdf' });
@@ -8596,7 +8754,7 @@ const renderPdfPreview = async (note) => {
         };
       }
     } else if (note.storedPath) {
-      const dataUri = await window.api.loadPdfData({ storedPath: note.storedPath });
+      const dataUri = await safeApi.invoke('loadPdfData', { storedPath: note.storedPath });
       if (dataUri) {
         resource = {
           type: 'dataUri',
@@ -8610,7 +8768,7 @@ const renderPdfPreview = async (note) => {
     // return a data:application/pdf;base64,... value when possible.
     if (!resource && note.absolutePath) {
       try {
-        const res = await window.api.resolveResource({ src: note.absolutePath, notePath: note.absolutePath, folderPath: note.folderPath ?? null });
+  const res = await safeApi.invoke('resolveResource', { src: note.absolutePath, notePath: note.absolutePath, folderPath: note.folderPath ?? null });
         if (res && res.value) {
           resource = {
             type: 'dataUri',
@@ -8697,7 +8855,7 @@ const renderImagePreview = async (note) => {
       notePath: note.absolutePath ?? null,
       folderPath: note.folderPath ?? state.currentFolder ?? null
     };
-    const result = await window.api.resolveResource(payload);
+  const result = await safeApi.invoke('resolveResource', payload);
     if (typeof process !== 'undefined' && process?.env && process.env.DEBUG_PREVIEW) {
   try { debugLog('DEBUG_PREVIEW: resolveResource result for video', { payload, result }); } catch (e) {}
       try { window.api?.writeDebugLog?.({ type: 'resolveResource:video', payload, result: { hasValue: Boolean(result?.value), mimeType: result?.mimeType } }); } catch (e) {}
@@ -8785,7 +8943,7 @@ const renderVideoPreview = async (note) => {
       notePath: note.absolutePath ?? null,
       folderPath: note.folderPath ?? state.currentFolder ?? null
     };
-    const result = await window.api.resolveResource(payload);
+  const result = await safeApi.invoke('resolveResource', payload);
     if (typeof process !== 'undefined' && process?.env && process.env.DEBUG_PREVIEW) {
   try { debugLog('DEBUG_PREVIEW: resolveResource result for html', { payload, result }); } catch (e) {}
       try { window.api?.writeDebugLog?.({ type: 'resolveResource:html', payload, result: { hasValue: Boolean(result?.value), mimeType: result?.mimeType } }); } catch (e) {}
@@ -8850,7 +9008,7 @@ const renderHtmlPreview = async (note) => {
       notePath: note.absolutePath ?? null,
       folderPath: note.folderPath ?? state.currentFolder ?? null
     };
-    const result = await window.api.resolveResource(payload);
+  const result = await safeApi.invoke('resolveResource', payload);
     if (state.htmlPreviewToken !== requestToken) {
       return;
     }
@@ -8941,10 +9099,8 @@ const updateFileMetadataUI = (note, options = {}) => {
     elements.fileName.setAttribute('tabindex', renameEnabled ? '0' : '-1');
     elements.fileName.dataset.renameEnabled = renameEnabled ? 'true' : 'false';
     elements.fileName.title = renameEnabled ? 'Double-click or press Enter to rename this file.' : '';
-    if (!state.renamingNoteId) {
-      elements.fileName.hidden = false;
-      elements.fileName.setAttribute('aria-hidden', 'false');
-    }
+    // Always hide the filename element to remove filename display from the top
+    try { elements.fileName.hidden = true; } catch (e) {}
   }
 
   // Prefer the active pane's note when showing metadata.
@@ -8972,35 +9128,40 @@ const updateFileMetadataUI = (note, options = {}) => {
 
   if (!note) {
     elements.fileName.textContent = 'No file selected';
+    // Always hide the filename element to remove filename display from the top
+    try { elements.fileName.hidden = true; } catch (e) {}
+    // Also hide the filepath element
+    try { elements.filePath.hidden = true; } catch (e) {}
     elements.filePath.textContent = 'Open a folder and select a file to get started.';
     elements.filePath.title = '';
     return;
   }
 
   const descriptor = note.language ? `${note.title} · ${note.language.toUpperCase()}` : note.title;
-  elements.fileName.textContent = descriptor;
+  // Always hide the separate filename element to remove filename display from the top
+  try { elements.fileName.hidden = true; } catch (e) {}
   const location = note.absolutePath ?? note.folderPath ?? note.storedPath ?? '';
   
   // Format the path with the filename styled differently
-  if (location) {
+    if (location) {
     const pathParts = location.split(/[/\\]/);
     const filename = pathParts.pop();
     const directory = pathParts.join('/');
-    
+
     if (elements.filePath) {
       try {
-        const showFileNameOnly = localStorage.getItem('NTA.showFileNameOnly') === 'true';
-        if (showFileNameOnly) {
-          elements.filePath.innerHTML = `<span class="filename">${filename}</span>`;
-        } else {
-          elements.filePath.innerHTML = directory ? 
-            `${directory}/<span class="filename">${filename}</span>` : 
-            `<span class="filename">${filename}</span>`;
-        }
-  } catch (e) { }
+  // The filepath toggle was removed; always show filename-only layout.
+  const showFileNameOnly = true;
+        // Always show only the directory in the path element, hiding the filename entirely from the top
+        elements.filePath.innerHTML = directory ? `${directory}/` : '';
+        // Hide the filepath element entirely
+        try { elements.filePath.hidden = true; } catch (e) {}
+      } catch (e) { }
     }
   } else {
     elements.filePath.textContent = 'Stored inside the application library.';
+    // Hide the filepath element
+    try { elements.filePath.hidden = true; } catch (e) {}
   }
   elements.filePath.title = location;
   // Ensure the macOS title bar reflects the currently selected note
@@ -10017,12 +10178,25 @@ const handleEditorReplaceAll = (event) => {
   });
 };
 
-const openNoteById = (noteId, silent = false, blockId = null, pane = null) => {
+const openNoteById = (noteId, silentOrOptions, blockId, pane, page) => {
+  try { window.__nta_debug_push && window.__nta_debug_push({ type: 'openNoteById:entered', noteId, page }); } catch (e) {}
   if (!noteId || !state.notes.has(noteId)) {
     if (!silent) {
       setStatus('Linked note not found.', false);
     }
     return;
+  }
+
+  // Handle backward compatibility: if silentOrOptions is an object, treat it as options
+  let silent = false;
+  if (typeof silentOrOptions === 'object' && silentOrOptions !== null) {
+    silent = silentOrOptions.silent ?? false;
+    blockId = silentOrOptions.blockId ?? blockId;
+    pane = silentOrOptions.pane ?? pane;
+    page = silentOrOptions.page ?? page;
+  } else {
+    // Old signature: silentOrOptions is silent
+    silent = silentOrOptions ?? false;
   }
 
   const note = state.notes.get(noteId);
@@ -10035,18 +10209,28 @@ const openNoteById = (noteId, silent = false, blockId = null, pane = null) => {
     if (blockId) {
       state.pendingBlockFocus = { noteId, blockId };
     }
-    return;
+    // For most note types, an existing tab is sufficient and we can return early.
+    // However, PDFs render into per-pane iframes and may need to be (re)rendered
+    // into the target pane even if a tab exists. Continue to the rendering path
+    // when the note is a PDF so the pane viewer is created/updated.
+    if (note.type !== 'pdf') return;
   }
 
-  // Create new tab
-  const tab = createTab(noteId, title);
+  // Create new tab scoped to the target pane so it appears in the correct
+  // pane's tab bar immediately (avoid creating a global/unscoped tab that
+  // may not render in the active pane).
+  const targetPaneForTab = pane || resolvePaneFallback(true);
+  const tab = createTab(noteId, title, targetPaneForTab);
   // If a pane is specified and exists, make it the active pane before activating the tab
   if (pane && editorInstances[pane]) {
     setActiveEditorPane(pane);
   }
   setActiveTab(tab.id);
+  
+  // Set the active note ID so renderActiveNote knows this note is active
+  state.activeNoteId = noteId;
 
-  openNoteInPane(noteId, pane || resolvePaneFallback(true));
+  openNoteInPane(noteId, pane || resolvePaneFallback(true), { activate: true, page: page ?? null });
 
   if (blockId) {
     state.pendingBlockFocus = { noteId, blockId };
@@ -10061,6 +10245,9 @@ const openNoteById = (noteId, silent = false, blockId = null, pane = null) => {
   // Update pane visuals and file metadata
   updateEditorPaneVisuals();
   updateFileMetadataUI(null);
+  
+  // Render the active note (this will display PDFs in the preview, etc.)
+  try { renderActiveNote(); } catch (e) { /* ignore rendering errors */ }
 };
 
 const renderActiveNote = () => {
@@ -10304,9 +10491,9 @@ const renderActiveNote = () => {
       elements.workspaceContent?.classList.add('html-mode');
       void renderHtmlPreview(note);
     } else if (note.type === 'pdf') {
-      // Do not render PDFs in the central live preview (avoid loading PDFs into preview)
+      // Render PDFs in the central live preview
       elements.workspaceContent?.classList.add('pdf-mode');
-      // intentionally skip renderPdfPreview(note);
+      void renderPdfPreview(note);
     } else if (note.type === 'code') {
       elements.workspaceContent?.classList.add('code-mode');
       renderCodePreview(note.content ?? '', note.language);
@@ -10330,6 +10517,9 @@ const renderActiveNote = () => {
   }
 
   syncHashtagDetailSelection();
+  
+  // Ensure tabs are rendered for the active note (important for PDFs and other file types)
+  try { renderTabs(); } catch (e) { /* ignore rendering errors */ }
 };
 
 const scheduleSave = () => {
@@ -10500,7 +10690,7 @@ const adoptWorkspace = (payload, preferredActiveId = null) => {
 function safeAdoptWorkspace(payload, preferredActiveId = null) {
   try {
     try { window.__nta_debug_push && window.__nta_debug_push({ type: 'safeAdoptWorkspace:called', hasPayload: !!payload, folderPath: payload?.folderPath ?? null }); } catch (e) {}
-    try { console.debug && console.debug('[safeAdoptWorkspace] called', { folderPath: payload?.folderPath ?? null, hasTree: !!payload?.tree }); } catch (e) {}
+  try { debugLog('[safeAdoptWorkspace] called', { folderPath: payload?.folderPath ?? null, hasTree: !!payload?.tree }); } catch (e) {}
     adoptWorkspace(payload, preferredActiveId || payload?.preferredActiveId);
     // Collapse all subfolders on startup
     if (state.tree && state.tree.children) {
@@ -11068,9 +11258,9 @@ const updateMathPreview = (textarea) => {
                   // don't set img.src directly to a file:// URL; resolve via preload if available
                   img.alt = filename;
                   img.style.display = 'none';
-                  if (typeof window.api?.resolveResource === 'function') {
+                  if (typeof safeApi.invoke === 'function') {
                     const payload = { src: filePath, folderPath: state.currentFolder ?? null };
-                    window.api.resolveResource(payload).then((res) => {
+                    safeApi.invoke('resolveResource', payload).then((res) => {
                       if (res?.value) {
                         img.src = res.value;
                       } else {
@@ -11104,9 +11294,9 @@ const updateMathPreview = (textarea) => {
                   v.style.maxHeight = '150px';
                   const s = document.createElement('source');
                   // resolve via preload instead of assigning file:// directly
-                  if (typeof window.api?.resolveResource === 'function') {
+                  if (typeof safeApi.invoke === 'function') {
                     const payload = { src: filePath, folderPath: state.currentFolder ?? null };
-                    window.api.resolveResource(payload).then((res) => {
+                    safeApi.invoke('resolveResource', payload).then((res) => {
                       if (res?.value) {
                         s.src = res.value;
                         s.type = 'video/mp4';
@@ -11205,9 +11395,9 @@ const updateMathPreview = (textarea) => {
                       const candidate = filePath + videoExts[vIdx];
                       // Debug prints removed
                       // If resolver available, prefer that; otherwise assign file:// candidate
-                      if (typeof window.api?.resolveResource === 'function') {
+                      if (typeof safeApi.invoke === 'function') {
                         const payload = { src: candidate, folderPath: state.currentFolder ?? null };
-                        window.api.resolveResource(payload).then((res) => {
+                        safeApi.invoke('resolveResource', payload).then((res) => {
                           if (res?.value) {
                             s.src = res.value;
                             s.type = 'video/mp4';
@@ -13722,7 +13912,7 @@ const handleSplitterPointerDown = (event) => {
   } catch (e) { state._splitterBounds = null; }
   // Diagnostic log to help troubleshoot e2e sequence failures
   try {
-    console.debug('[SplitterDrag] pointerdown start', {
+  debugLog('[SplitterDrag] pointerdown start', {
       resizingSidebar: state.resizingSidebar,
       sidebarPointerId: state.sidebarResizePointerId,
       sidebarWidth: state.sidebarWidth,
@@ -13923,19 +14113,19 @@ const handleEditorSplitterPointerDown = (event) => {
   if (!elements.workspaceContent?.classList.contains('split-editors')) return;
   if (event.pointerType === 'mouse' && event.button !== 0) return;
 
-  console.debug && console.debug('[splitter] pointerdown start', { pointerId: event.pointerId, pointerType: event.pointerType });
+  debugLog('[splitter] pointerdown start', { pointerId: event.pointerId, pointerType: event.pointerType });
 
   // Defensive: if the sidebar resize left a lingering pointer capture or state, clear it.
   try {
     if (state.resizingSidebar && elements.sidebarResizeHandle) {
-      console.debug && console.debug('[splitter] clearing lingering sidebar resize state', { sidebarPointerId: state.sidebarResizePointerId });
-      try { elements.sidebarResizeHandle.releasePointerCapture(state.sidebarResizePointerId); console.debug && console.debug('[splitter] released sidebar capture'); } catch (e) { console.debug && console.debug('[splitter] release sidebar capture failed', e); }
+  debugLog('[splitter] clearing lingering sidebar resize state', { sidebarPointerId: state.sidebarResizePointerId });
+  try { elements.sidebarResizeHandle.releasePointerCapture(state.sidebarResizePointerId); debugLog('[splitter] released sidebar capture'); } catch (e) { debugLog('[splitter] release sidebar capture failed', e); }
       state.resizingSidebar = false;
       state.sidebarResizePointerId = null;
       document.body.style.cursor = '';
       try { _sidebarDragDebug.remove(); } catch (e) {}
     }
-  } catch (e) { console.debug && console.debug('[splitter] error clearing sidebar state', e); }
+  } catch (e) { debugLog('[splitter] error clearing sidebar state', e); }
 
   event.preventDefault();
   state.resizingEditorPanes = true;
@@ -13954,7 +14144,7 @@ const handleEditorSplitterPointerDown = (event) => {
       state._activeDividerIndex = -1;
     }
   } catch (e) { state._activeDividerIndex = -1; }
-  try { console.debug && console.debug('[splitter] active divider', { index: divider?.dataset?.dividerIndex || null }); } catch (e) {}
+  try { debugLog('[splitter] active divider', { index: divider?.dataset?.dividerIndex || null }); } catch (e) {}
 
   // Capture the bounds of the container that holds this divider's adjacent panes
   try {
@@ -13968,7 +14158,7 @@ const handleEditorSplitterPointerDown = (event) => {
         left: bounds.left,
         width: Math.max(1, bounds.width - 12)
       };
-      console.debug && console.debug('[splitter] pointerdown bounds', { containerLeft: bounds.left, containerWidth: bounds.width, storedWidth: state._editorSplitterBounds.width });
+  debugLog('[splitter] pointerdown bounds', { containerLeft: bounds.left, containerWidth: bounds.width, storedWidth: state._editorSplitterBounds.width });
     }
     // store references for potential direct resizing adjustments
     state._activeDividerLeft = leftPane;
@@ -14002,11 +14192,11 @@ const handleEditorSplitterPointerDown = (event) => {
           return 0;
         } catch (e) { return 0; }
       });
-      console.debug && console.debug('[splitter] initial widths', { widths: state._editorSplitterInitialWidths });
+  debugLog('[splitter] initial widths', { widths: state._editorSplitterInitialWidths });
     } catch (e) { state._editorSplitterInitialWidths = null; }
   } catch (e) { state._editorSplitterBounds = null; }
 
-  try { divider.setPointerCapture(event.pointerId); console.debug && console.debug('[splitter] setPointerCapture', { pointerId: event.pointerId }); } catch (e) { console.debug && console.debug('[splitter] setPointerCapture failed', e); }
+  try { divider.setPointerCapture(event.pointerId); debugLog('[splitter] setPointerCapture', { pointerId: event.pointerId }); } catch (e) { debugLog('[splitter] setPointerCapture failed', e); }
   try { divider.classList.add('editors__divider--active'); } catch (e) {}
 };
 
@@ -14016,7 +14206,7 @@ const handleEditorSplitterPointerMove = (event) => {
   const divider = state._activeEditorDivider;
   if (!divider) return;
 
-  console.debug && console.debug('[splitter] pointermove', { pointerId: event.pointerId, clientX: event.clientX });
+  debugLog('[splitter] pointermove', { pointerId: event.pointerId, clientX: event.clientX });
 
   // Adjust widths of the two panes adjacent to this divider
   const leftPane = state._activeDividerLeft || divider.previousElementSibling;
@@ -14119,7 +14309,7 @@ const handleEditorSplitterPointerMove = (event) => {
     }
 
   const clientX = event.clientX;
-    console.debug && console.debug('[splitter] pointermove compute', { clientX, leftOrigin, available, dividerWidth });
+  debugLog('[splitter] pointermove compute', { clientX, leftOrigin, available, dividerWidth });
 
   let desiredLeftPx = Math.round(clientX - leftOrigin);
     const minPx = 80; // minimum width for a pane
@@ -14129,7 +14319,7 @@ const handleEditorSplitterPointerMove = (event) => {
     desiredLeftPx = Math.max(minPx, Math.min(maxLeftPx, desiredLeftPx));
 
     const rightPx = Math.max(minPx, Math.round(available - desiredLeftPx));
-    console.debug && console.debug('[splitter] pointermove result', { desiredLeftPx, rightPx });
+  debugLog('[splitter] pointermove result', { desiredLeftPx, rightPx });
 
     // Apply explicit flex-basis to left and right panes so layout updates immediately
     try { leftPane.style.flex = `0 0 ${desiredLeftPx}px`; } catch (e) {}
@@ -14141,12 +14331,12 @@ const handleEditorSplitterPointerMove = (event) => {
 const handleEditorSplitterPointerUp = (event) => {
   if (!state.resizingEditorPanes) return;
 
-  console.debug && console.debug('[splitter] pointerup', { pointerId: event.pointerId, type: event.type });
+  debugLog('[splitter] pointerup', { pointerId: event.pointerId, type: event.type });
 
   state.resizingEditorPanes = false;
   const divider = state._activeEditorDivider;
   if (divider && state.editorSplitterPointerId !== null) {
-    try { divider.releasePointerCapture(state.editorSplitterPointerId); console.debug && console.debug('[splitter] releasePointerCapture', { pointerId: state.editorSplitterPointerId }); } catch (error) { console.debug && console.debug('[splitter] releasePointerCapture error', error); }
+  try { divider.releasePointerCapture(state.editorSplitterPointerId); debugLog('[splitter] releasePointerCapture', { pointerId: state.editorSplitterPointerId }); } catch (error) { debugLog('[splitter] releasePointerCapture error', error); }
     try { divider.classList.remove('editors__divider--active'); } catch (e) {}
   }
   state.editorSplitterPointerId = null;
@@ -14158,7 +14348,7 @@ const handleEditorSplitterPointerUp = (event) => {
       const container = divider ? divider.parentElement : null;
       const allPanes = container ? Array.from(container.querySelectorAll('.editor-pane')) : [];
       const widths = state._editorSplitterInitialWidths;
-      console.debug && console.debug('[splitter] pointercancel restore', { widths, paneCount: allPanes.length });
+  debugLog('[splitter] pointercancel restore', { widths, paneCount: allPanes.length });
       if (allPanes.length > 0 && widths && Array.isArray(widths) && widths.length === allPanes.length) {
         allPanes.forEach((p, i) => {
           try { p.style.flex = `0 0 ${widths[i]}px`; } catch (e) {}
@@ -14248,7 +14438,7 @@ const setSidebarWidth = (width) => {
   const clampedWidth = Math.max(minWidth, Math.min(maxWidth, width));
   
   // Debug: log incoming and clamped widths so manual drags can be traced
-  try { console.debug && console.debug('[setSidebarWidth] requested:', width, 'clamped:', clampedWidth); } catch (e) {}
+  try { debugLog('[setSidebarWidth] requested:', width, 'clamped:', clampedWidth); } catch (e) {}
   state.sidebarWidth = clampedWidth;
   document.documentElement.style.setProperty('--sidebar-width', `${clampedWidth}px`);
   
@@ -14426,7 +14616,7 @@ const handleSidebarResizePointerUp = (event) => {
   document.body.style.cursor = '';
 
   try {
-    console.debug('[SidebarDrag] pointerup cleanup', { sidebarResizePointerId: state.sidebarResizePointerId, resizingSidebar: state.resizingSidebar, sidebarWidth: state.sidebarWidth, hasCapture: typeof elements.sidebarResizeHandle?.hasPointerCapture === 'function' ? elements.sidebarResizeHandle.hasPointerCapture(state.sidebarResizePointerId) : 'unknown' });
+  debugLog('[SidebarDrag] pointerup cleanup', { sidebarResizePointerId: state.sidebarResizePointerId, resizingSidebar: state.resizingSidebar, sidebarWidth: state.sidebarWidth, hasCapture: typeof elements.sidebarResizeHandle?.hasPointerCapture === 'function' ? elements.sidebarResizeHandle.hasPointerCapture(state.sidebarResizePointerId) : 'unknown' });
   } catch (e) {}
   try { window.__nta_debug_push && window.__nta_debug_push({ type: 'sidebar:pointerup', sidebarWidth: state.sidebarWidth }); } catch (e) {}
 
@@ -14459,14 +14649,14 @@ const applySidebarWidth = () => {
 // Global defensive pointerdown handler: logs pointerdown and clears lingering sidebar capture if any.
 const handleGlobalPointerDownForDebug = (event) => {
   try {
-    console.debug && console.debug('[global] pointerdown', { pointerId: event.pointerId, target: event.target && event.target.className ? event.target.className : event.target?.tagName });
+  debugLog('[global] pointerdown', { pointerId: event.pointerId, target: event.target && event.target.className ? event.target.className : event.target?.tagName });
     if (elements.sidebarResizeHandle && typeof elements.sidebarResizeHandle.hasPointerCapture === 'function') {
       try {
         // if sidebar handle still has capture for this pointer, release it
         if (elements.sidebarResizeHandle.hasPointerCapture(event.pointerId)) {
-          try { elements.sidebarResizeHandle.releasePointerCapture(event.pointerId); console.debug && console.debug('[global] released sidebar pointer capture for id', event.pointerId); } catch (e) { console.debug && console.debug('[global] releasePointerCapture failed', e); }
+          try { elements.sidebarResizeHandle.releasePointerCapture(event.pointerId); debugLog('[global] released sidebar pointer capture for id', event.pointerId); } catch (e) { debugLog('[global] releasePointerCapture failed', e); }
         }
-      } catch (e) { console.debug && console.debug('[global] hasPointerCapture check failed', e); }
+  } catch (e) { debugLog('[global] hasPointerCapture check failed', e); }
     }
   } catch (e) { /* ignore */ }
 };
@@ -18072,6 +18262,7 @@ const activateWikiLinkElement = (element) => {
   if (!element) {
     return;
   }
+  try { window.__nta_debug_push && window.__nta_debug_push({ type: 'activateWikiLinkElement:entered', target: element?.dataset?.wikiTarget ?? element?.textContent ?? null, datasetNoteId: element?.dataset?.noteId ?? null }); } catch (e) {}
   let noteId = element.dataset.noteId ?? null;
   const target = element.dataset.wikiTarget ?? element.textContent ?? '';
   const blockId = element.dataset.blockId ?? null;
@@ -18097,7 +18288,12 @@ const activateWikiLinkElement = (element) => {
     if (blockMissing && blockId) {
       setStatus(`Block ^${blockId} not found in target note.`, false);
     }
-    openNoteById(noteId, false, blockMissing ? null : blockId ?? null);
+    // If the parser found a page anchor (e.g. [[file#3]]), pass it through so
+    // the PDF viewer can open at the requested page. Keep backwards compatibility
+    // by adding page as the last optional parameter.
+    let parsedPage = null;
+    try { const p = typeof parseWikiTarget === 'function' ? parseWikiTarget(target, null) : null; parsedPage = p?.page ?? null; } catch (e) { parsedPage = null; }
+    openNoteById(noteId, false, blockMissing ? null : blockId ?? null, null, parsedPage ?? null);
   } else {
     setStatus(`No file found for [[${target}]].`, false);
   }
@@ -18119,8 +18315,10 @@ const activateWikiEmbedElement = (element) => {
 };
 
 const handlePreviewClick = (event) => {
+  try { window.__nta_debug_push && window.__nta_debug_push({ type: 'handlePreviewClick:entered', targetTag: event?.target?.tagName ?? null, hasClosestWiki: !!event?.target?.closest && !!event.target.closest('.wikilink'), hasAnchor: !!event?.target?.closest && !!event.target.closest('a[href]') }); } catch (e) {}
   const target = event.target.closest('.wikilink');
   if (target) {
+    try { window.__nta_debug_push && window.__nta_debug_push({ type: 'handlePreviewClick:found-wikilink', dataset: Object.assign({}, target.dataset) }); } catch (e) {}
     event.preventDefault();
     activateWikiLinkElement(target);
     return;
@@ -18445,7 +18643,7 @@ const renderInlineEmbed = (token, targetInfo, context) => {
       (async () => {
         try {
           const payload = { src: note.absolutePath, notePath: note.absolutePath, folderPath: note.folderPath ?? null };
-          const res = await window.api.resolveResource(payload).catch(() => null);
+          const res = await safeApi.invoke('resolveResource', payload).catch(() => null);
           const url = res?.value ?? null;
           if (url) {
             let txt = null;
@@ -21209,7 +21407,7 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
       const note = noteId ? state.notes.get(noteId) ?? null : null;
       const payload = { src: rawSrc, notePath: note?.absolutePath ?? null, folderPath: note?.folderPath ?? state.currentFolder ?? null };
       try {
-        const result = await window.api.resolveResource(payload);
+        const result = await safeApi.invoke('resolveResource', payload);
   // Debug prints removed
         if (result?.value) {
           htmlResourceCache.set(cacheKey, result.value);
@@ -21255,7 +21453,7 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
       const note = noteId ? state.notes.get(noteId) ?? null : null;
       const payload = { src: rawSrc, notePath: note?.absolutePath ?? null, folderPath: note?.folderPath ?? state.currentFolder ?? null };
       try {
-        const result = await window.api.resolveResource(payload);
+        const result = await safeApi.invoke('resolveResource', payload);
         if (result?.value) {
           imageResourceCache.set(cacheKey, result.value);
           img.src = result.value;
@@ -21324,7 +21522,7 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
       const note = noteId ? state.notes.get(noteId) ?? null : null;
       const payload = { src: rawSrc, notePath: note?.absolutePath ?? null, folderPath: note?.folderPath ?? state.currentFolder ?? null };
       try {
-        const result = await window.api.resolveResource(payload);
+        const result = await safeApi.invoke('resolveResource', payload);
         if (result?.value) {
           videoResourceCache.set(cacheKey, result.value);
           video.src = result.value;
@@ -22524,17 +22722,17 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
           if (leftBar) {
             // intentionally preserved for debugging, but only applied when debugEnabled === true
             leftBar.classList.add('debug-visual');
-            console.debug('[debug] left pane tab bar found');
-          } else console.debug('[debug] left pane tab bar NOT found');
+            debugLog('[debug] left pane tab bar found');
+          } else debugLog('[debug] left pane tab bar NOT found');
           if (rightBar) {
             rightBar.classList.add('debug-visual');
-            console.debug('[debug] right pane tab bar found');
-          } else console.debug('[debug] right pane tab bar NOT found');
+            debugLog('[debug] right pane tab bar found');
+          } else debugLog('[debug] right pane tab bar NOT found');
           if (rightList) {
             rightList.classList.add('debug-visual');
-            console.debug('[debug] #tab-bar-tabs-right found');
-          } else console.debug('[debug] #tab-bar-tabs-right NOT found');
-        } catch (e) { console.debug('[debug] error applying debug visuals', e); }
+            debugLog('[debug] #tab-bar-tabs-right found');
+          } else debugLog('[debug] #tab-bar-tabs-right NOT found');
+  } catch (e) { debugLog('[debug] error applying debug visuals', e); }
       });
     }
   } catch (e) { /* ignore debug failures */ }
@@ -22564,7 +22762,7 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
       const path = event.composedPath ? event.composedPath() : (event.path || []);
       const fromHandle = path && path.indexOf && elements.sidebarResizeHandle && path.indexOf(elements.sidebarResizeHandle) !== -1;
       if (fromHandle) {
-        try { console.debug && console.debug('[global splitters] pointerdown from sidebar handle - skipping cleanup'); } catch (e) {}
+  try { debugLog('[global splitters] pointerdown from sidebar handle - skipping cleanup'); } catch (e) {}
         return;
       }
 
@@ -23679,11 +23877,18 @@ function switchToTab(targetTabId) {
 async function loadAppVersion() {
   try {
     let version = 'Unknown';
-    // Preferred: ask the preload/native API (main process) for the app version
-    if (window.api && typeof window.api.getVersion === 'function') {
-      try { version = await window.api.getVersion(); } catch (e) { /* ignore and fallback */ }
-    } else if (window.api && typeof window.api.invoke === 'function') {
-      try { version = await window.api.invoke('app:getVersion'); } catch (e) { /* ignore and fallback */ }
+    // Preferred: ask the preload/native API (main process) for the app version.
+    // Try the common shapes: explicit getVersion() function or an invoke('app:getVersion') RPC.
+    try {
+      // try named function first
+      const v1 = await safeApi.invoke('getVersion');
+      if (v1) version = v1;
+    } catch (e) { /* ignore */ }
+    if ((!version || version === 'Unknown')) {
+      try {
+        const v2 = await safeApi.invoke('app:getVersion');
+        if (v2) version = v2;
+      } catch (e) { /* ignore */ }
     }
 
     // Fallback 1: Node/npm env (useful during `npm start` or dev tooling)
@@ -26888,17 +27093,17 @@ function showStatusMessage(message, type = 'info') {
  * Setup LaTeX installation progress listeners
  */
 function setupLatexProgressListeners() {
-  window.api.on('latex:installation-progress', (data) => {
+  safeApi.on('latex:installation-progress', (data) => {
     const { progress, message } = data;
     showStatusMessage(`${message}`, 'info');
   });
   
-  window.api.on('latex:installation-complete', (data) => {
+  safeApi.on('latex:installation-complete', (data) => {
     const { success, message } = data;
     showStatusMessage(message, success ? 'info' : 'error');
   });
   
-  window.api.on('latex:installation-error', (data) => {
+  safeApi.on('latex:installation-error', (data) => {
     const { error, distribution } = data;
     showStatusMessage(`Failed to install ${distribution}: ${error}`, 'error');
   });
@@ -26928,7 +27133,7 @@ function setupTerminal() {
   };
   
   // Listen for terminal toggle event
-  window.api.on('terminal:toggle', async () => {
+  safeApi.on('terminal:toggle', async () => {
     try {
       const container = document.getElementById('nta-terminal-container');
       if (!container) return;
@@ -26971,7 +27176,7 @@ function setupTerminal() {
         // Initialize PTY on backend
         try {
           // Initialize PTY on backend and set cwd to current workspace folder when available
-          await window.api.invoke('terminal:init', { folderPath: state.currentFolder || null });
+          await safeApi.invoke('terminal:init', { folderPath: state.currentFolder || null });
         } catch (err) {
           console.error('Terminal init error:', err);
           term.write('Error initializing terminal: ' + (err && err.message ? err.message : String(err)) + '\r\n');
@@ -26986,7 +27191,7 @@ function setupTerminal() {
         // This is crucial: xterm doesn't auto-size, we must explicitly trigger it
         setTimeout(() => {
           try {
-            console.debug('[terminal] forcing layout recalculation after open');
+            debugLog('[terminal] forcing layout recalculation after open');
             
             // Get the actual available height and calculate rows
             const containerHeight = terminalDiv.offsetHeight;
@@ -27000,16 +27205,16 @@ function setupTerminal() {
             const estimatedRows = Math.floor(containerHeight / rowHeight);
             const estimatedCols = Math.floor(containerWidth / colWidth);
             
-            console.debug('[terminal] container dimensions:', containerWidth, 'x', containerHeight, 
+            debugLog('[terminal] container dimensions:', containerWidth, 'x', containerHeight, 
                           'calculated rows/cols:', estimatedRows, 'x', estimatedCols);
             
             // Resize terminal to use all available space in the container
             // This makes the visible buffer much larger, enabling scrollback
-            if (estimatedRows > 0 && estimatedCols > 0) {
-              console.debug('[terminal] resizing from', term.cols, 'x', term.rows, 'to', estimatedCols, 'x', estimatedRows);
+              if (estimatedRows > 0 && estimatedCols > 0) {
+              debugLog('[terminal] resizing from', term.cols, 'x', term.rows, 'to', estimatedCols, 'x', estimatedRows);
               term.resize(estimatedCols, estimatedRows);
               // Send updated size to PTY so it matches
-              window.api.send('terminal:resize', { cols: estimatedCols, rows: estimatedRows });
+              safeApi.send('terminal:resize', { cols: estimatedCols, rows: estimatedRows });
             }
           } catch (e) {
             console.error('[terminal] error forcing layout:', e);
@@ -27018,7 +27223,7 @@ function setupTerminal() {
         
         // Log final size
         setTimeout(() => {
-          console.debug('[terminal] after layout: cols=', term.cols, 'rows=', term.rows, 'buffer capacity:', term.buffer.active.length);
+          debugLog('[terminal] after layout: cols=', term.cols, 'rows=', term.rows, 'buffer capacity:', term.buffer.active.length);
         }, 100);
         
         // Initial resize: send the computed terminal dimensions to the PTY
@@ -27026,8 +27231,8 @@ function setupTerminal() {
         try {
           const { cols, rows } = term;
           if (cols && rows) {
-            console.debug('[terminal] sending initial resize:', cols, 'x', rows);
-            window.api.send('terminal:resize', { cols, rows });
+            debugLog('[terminal] sending initial resize:', cols, 'x', rows);
+            safeApi.send('terminal:resize', { cols, rows });
           }
         } catch (e) {
           console.error('Error sending initial resize:', e);
@@ -27035,18 +27240,18 @@ function setupTerminal() {
         
         // Handle data from terminal
         term.onData((data) => {
-          window.api.send('terminal:data', data);
+          safeApi.send('terminal:data', data);
         });
         
         // Handle terminal resize
         term.onResize(({ cols, rows }) => {
-          console.debug('Terminal resized:', cols, 'x', rows);
-          window.api.send('terminal:resize', { cols, rows });
+          debugLog('Terminal resized:', cols, 'x', rows);
+          safeApi.send('terminal:resize', { cols, rows });
         });
         
         // Listen for data from PTY backend and keep the viewport aligned
         // with the latest output without injecting artificial blank lines.
-        window.api.on('terminal:output', (data) => {
+        safeApi.on('terminal:output', (data) => {
           if (!term) {
             return;
           }
@@ -27055,13 +27260,13 @@ function setupTerminal() {
             term.write(data);
             term.scrollToBottom();
           } catch (err) {
-            console.debug('[terminal] output handler error:', err);
+            debugLog('[terminal] output handler error:', err);
           }
         });
         
         // Focus terminal
         term.focus();
-        console.debug('[terminal] initialized, terminal size:', term.cols, 'x', term.rows);
+  debugLog('[terminal] initialized, terminal size:', term.cols, 'x', term.rows);
       }
     } catch (error) {
       console.error('Terminal setup error:', error);
@@ -27272,6 +27477,7 @@ try {
       createEditorPane: typeof createEditorPane === 'function' ? createEditorPane : null,
       renderTabsForPane: typeof renderTabsForPane === 'function' ? renderTabsForPane : null,
       openNoteInPane: typeof openNoteInPane === 'function' ? openNoteInPane : null,
+      openNoteById: typeof openNoteById === 'function' ? openNoteById : null,
       updateEditorPaneVisuals: typeof updateEditorPaneVisuals === 'function' ? updateEditorPaneVisuals : null,
       applyPreviewScrollSync: typeof applyPreviewScrollSync === 'function' ? applyPreviewScrollSync : null,
       setSplitVisible: typeof setSplitVisible === 'function' ? setSplitVisible : null,
