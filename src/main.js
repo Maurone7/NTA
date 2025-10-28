@@ -312,8 +312,29 @@ ipcMain.handle('workspace:resolveResource', async (_event, payload) => {
 const noopAsync = async () => null;
 ipcMain.handle('workspace:readBibliography', noopAsync);
 ipcMain.handle('workspace:chooseBibFile', noopAsync);
-ipcMain.handle('workspace:saveExternalMarkdown', noopAsync);
 ipcMain.handle('workspace:saveNotebook', noopAsync);
+
+// Handle saving external markdown files (invoked during autosave)
+ipcMain.handle('workspace:saveExternalMarkdown', async (_event, data) => {
+  try {
+    const filePath = data && data.filePath ? String(data.filePath) : null;
+    const content = data && data.content ? String(data.content) : '';
+    
+    console.log('[IPC] saveExternalMarkdown called:', filePath, 'content length:', content?.length);
+    
+    if (!filePath) {
+      console.error('[IPC] No file path provided');
+      return { success: false, error: 'No file path provided' };
+    }
+    
+    await folderManager.saveMarkdownFile(filePath, content);
+    console.log('[IPC] File saved successfully:', filePath);
+    return { success: true };
+  } catch (error) {
+    console.error('[IPC] Error saving markdown file:', error);
+    return { success: false, error: String(error) };
+  }
+});
 // Implement createMarkdownFile by delegating to store/folderManager
 ipcMain.handle('workspace:createMarkdownFile', async (_event, data) => {
   try {

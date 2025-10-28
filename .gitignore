@@ -36,6 +36,11 @@ Icon
 *_test_temp.*
 test_output/
 
+# Backup files
+*.bak
+*.backup
+*~
+
 # Cache
 .cache
 .parcel-cache

@@ -7,7 +7,7 @@
   <title></title>
     <!-- Content Security Policy: relaxed in dev to allow file:// for local preview assets (images, media, frames).
       In production you should remove file: and serve resources via a secure preload/handler. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; media-src 'self' data: blob: file:; connect-src 'self' http: https:; object-src 'none'; frame-src 'self' data: blob: file:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; media-src 'self' data: blob: file:; connect-src 'self' data: http: https:; object-src 'none'; frame-src 'self' data: blob: file:;">
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="../../node_modules/katex/dist/katex.min.css" />
   </head>
@@ -357,7 +357,7 @@
             </figure>
             <div id="html-viewer" class="html-viewer" aria-label="HTML preview">
               <!-- HTML viewer iframe with sandbox allowing scripts and same-origin for proper functionality. -->
-              <iframe id="html-viewer-frame" title="HTML Viewer" sandbox="allow-scripts allow-forms allow-popups allow-same-origin"></iframe>
+              <iframe id="html-viewer-frame" title="HTML Viewer" sandbox="allow-scripts allow-forms allow-popups"></iframe>
               <div id="html-viewer-error" class="html-viewer__fallback" hidden>
                 Unable to load this HTML file.
               </div>
