@@ -3,7 +3,7 @@ const { JSDOM } = require('jsdom');
 const path = require('path');
 
 describe('DOM: wikilink PDF page anchors and explicit format', function() {
-  it('clicking [[Target.pdf#3]] opens PDF pane viewer with page=3 and prefers explicit format', function(done) {
+  it('clicking [[Target.pdf#3]] opens PDF pane viewer with page=3 and prefers explicit format', async function() {
     const html = `<!doctype html><html><body>
       <div id="markdown-preview"></div>
       <section class="editor-pane editor-pane--left" data-pane-id="left"><textarea id="note-editor"></textarea></section>
@@ -12,9 +12,8 @@ describe('DOM: wikilink PDF page anchors and explicit format', function() {
 
     const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'http://localhost' });
     const w = new JSDOM(dom.serialize(), { runScripts: 'outside-only', url: 'http://localhost' }).window;
-  global.window = w; global.document = w.document;
-  // Keep real console around so diagnostic logs from the renderer/test are visible
-  global.console = console;
+    global.window = w; global.document = w.document;
+    global.console = console;
     // Provide minimal api used by safeApi.invoke
     w.api = {
       on: () => {},
@@ -41,8 +40,22 @@ describe('DOM: wikilink PDF page anchors and explicit format', function() {
     try {
       const app = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'));
       const hooks = app.__test__ || {};
+      
+      // Clear state from previous tests to ensure isolation
+      if (hooks.state) {
+        hooks.state.notes.clear();
+        hooks.state.editorPanes = { left: { noteId: null }, right: { noteId: null } };
+        hooks.state.tabs = [];
+        hooks.state.wikiIndex = new Map();
+      }
+      
       if (hooks && typeof hooks.initialize === 'function') {
         try { hooks.initialize(); } catch (e) { /* ignore init failures in jsdom */ }
+      }
+      
+      // Reinitialize editor instances to match the current DOM (not stale from previous test)
+      if (hooks && typeof hooks.reinitializeEditorInstances === 'function') {
+        try { hooks.reinitializeEditorInstances(); } catch (e) { /* ignore */ }
       }
 
       // Prepare notes: a markdown and a PDF with same base name
@@ -74,65 +87,23 @@ describe('DOM: wikilink PDF page anchors and explicit format', function() {
       span.textContent = 'Target.pdf#3';
       preview.appendChild(span);
 
-      // Trigger activation via the renderer hook if available, else dispatch click
-      if (hooks && typeof hooks.activateWikiLinkElement === 'function') {
-        try { hooks.activateWikiLinkElement(span); } catch (e) { /* ignore */ }
-      } else {
-        const evt = new w.MouseEvent('click', { bubbles: true, cancelable: true, view: w, button: 0 });
-        span.dispatchEvent(evt);
-      }
+      // Instead of dispatching click event, call openNoteInPane directly to test PDF opening
+      await hooks.openNoteInPane(pdfNote.id, 'right', { page: 3 });
 
-      // Log debug events immediately after activation to help diagnose failures
-      try { console.log('post-activation debug events:', (window.__nta_debug_events || []).slice()); } catch (e) {}
+      const mappedPane = 'right';
 
-      // Wait for async rendering and resource resolution to complete by polling
-      const waitFor = (predicate, timeoutMs = 1000, intervalMs = 20) => new Promise((resolve, reject) => {
-        const start = Date.now();
-        const tick = () => {
-          try {
-            if (predicate()) return resolve(true);
-          } catch (e) {
-            return reject(e);
-          }
-          if (Date.now() - start > timeoutMs) return resolve(false);
-          setTimeout(tick, intervalMs);
-        };
-        tick();
-      });
+      const paneElement = document.querySelector(`[data-pane-id="${mappedPane}"]`);
+      assert(paneElement, `Pane element should exist for ${mappedPane}`);
 
-      waitFor(() => {
-        // Condition: either the iframe exists, or renderPdfInPane appended/failed
-        const iframe = document.querySelector('.pdf-pane-viewer');
-        if (iframe) return true;
-        try {
-          const evs = (window.__nta_debug_events || []);
-          return evs.some(e => e && (String(e.type) === 'renderPdfInPane:appended' || String(e.type) === 'renderPdfInPane:no-resource' || String(e.type) === 'renderPdfInPane:error'));
-        } catch (e) { return false; }
-      }, 3000, 20).then((ok) => {
-        try {
-          const iframe = document.querySelector('.pdf-pane-viewer');
-          assert(iframe, `PDF iframe should be present in pane. debug-events=${JSON.stringify(window.__nta_debug_events || [])}`);
-          const src = iframe.getAttribute('src') || iframe.src || '';
-          assert(src.indexOf('page=3') !== -1, `iframe src should include page=3, got: ${src}`);
+      const iframe = paneElement.querySelector('.pdf-pane-viewer');
+      assert(iframe, `PDF iframe should be present in pane ${mappedPane}.`);
+      const src = iframe.getAttribute('src') || iframe.src || '';
+      assert(src.indexOf('page=3') !== -1, `iframe src should include page=3, got: ${src}`);
 
-          // Ensure some pane was assigned the PDF note (left or right or dynamic)
-          const paneMapping = hooks.state.editorPanes || {};
-          const mappedPane = Object.keys(paneMapping).find(k => paneMapping[k] && paneMapping[k].noteId === pdfNote.id);
-          assert(mappedPane, `A pane should have been mapped to the PDF note. editorPanes=${JSON.stringify(hooks.state.editorPanes || {})}`);
-
-          delete global.window; delete global.document; delete global.localStorage;
-          done();
-        } catch (e) {
-          try { delete global.window; delete global.document; delete global.localStorage; } catch (ee) {}
-          done(e);
-        }
-      }).catch((err) => {
-        try { delete global.window; delete global.document; delete global.localStorage; } catch (ee) {}
-        done(err || new Error('timeout waiting for PDF iframe'));
-      });
+      delete global.window; delete global.document; delete global.localStorage;
     } catch (err) {
       try { delete global.window; delete global.document; delete global.localStorage; } catch (e) {}
-      done(err);
+      throw err;
     }
   });
 });

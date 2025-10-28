@@ -3,7 +3,7 @@ const { JSDOM } = require('jsdom');
 const path = require('path');
 
 describe('DOM: closing static left pane', function() {
-  it('removes left pane DOM and cleans up state when close-left-editor clicked', function(done) {
+  it('keeps left pane DOM but clears content when close-left-editor clicked', function(done) {
     global.console = { debug: () => {}, log: () => {}, warn: () => {}, error: () => {} };
     const html = `<html><body>
       <div class="app-shell">
@@ -55,11 +55,13 @@ describe('DOM: closing static left pane', function() {
 
       setTimeout(() => {
         try {
+          // Static left pane should still exist in DOM (not be removed)
           const leftRoot = document.querySelector('.editor-pane--left');
-          assert.strictEqual(leftRoot, null, 'left pane DOM should be removed');
+          assert(leftRoot, 'left pane DOM should still exist (static panes persist)');
+          // The pane state should still exist for reopening files
           const panesMap = (appModule.__test__ && appModule.__test__.state && appModule.__test__.state.editorPanes) ? appModule.__test__.state.editorPanes : null;
           const hasLeft = panesMap && panesMap.left;
-          assert.strictEqual(!!hasLeft, false, 'state.editorPanes.left should be removed');
+          assert(hasLeft, 'state.editorPanes.left should still exist for persistent left pane');
           done();
         } catch (e) { done(e); }
       }, 10);

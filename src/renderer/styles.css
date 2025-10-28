@@ -248,6 +248,8 @@ body.platform-linux {
   gap: 8px;
   background: transparent;
   border-bottom: 1px solid var(--border);
+  z-index: 20;
+  position: relative;
 }
 .pane-tab-bar.debug-visual {
   /* Temporary debug visuals: colored background and dashed outline */

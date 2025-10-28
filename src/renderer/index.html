@@ -92,18 +92,6 @@
             <div class="workspace__filepath" id="file-path">Open a folder and select a file to get started.</div>
           </div>
           <div class="workspace__actions">
-            <!-- Add pane / split toggle button -->
-            <!-- <button
-              id="toggle-split-button"
-              type="button"
-              class="ghost icon-button"
-              title="Add pane / Toggle split (⌥⌘P)"
-              aria-label="Add pane / Toggle split"
-              aria-pressed="false"
-            >
-              <span class="icon" aria-hidden="true">+</span>
-            </button> -->
-            <!-- Dual editor removed -->
             <button
               id="toggle-math-wysiwyg-button"
               type="button"
@@ -204,7 +192,6 @@
             <div class="editor-pane__badge" data-pane="left"></div>
             <div class="pane-tab-bar">
               <div class="tab-bar__tabs" id="tab-bar-tabs-left" role="tablist"></div>
-              <button class="tab-bar__new-tab" id="new-tab-button-left" title="New Tab" aria-label="New Tab">+</button>
             </div>
             <div
               id="editor-search-highlights"
@@ -318,10 +305,6 @@
             <div class="editor-pane__badge" data-pane="right"></div>
             <div class="pane-tab-bar">
               <div class="tab-bar__tabs" id="tab-bar-tabs-right" role="tablist"></div>
-              <button class="tab-bar__new-tab" id="new-tab-button-right" title="New Tab" aria-label="New Tab">+</button>
-            </div>
-            <div class="editor-pane__actions">
-              <button id="close-right-editor" class="icon-button small" type="button" title="Close right editor" aria-label="Close right editor">✕</button>
             </div>
             <div
               id="editor-search-highlights-right"
@@ -937,6 +920,8 @@
                     <option value="bottom">Bottom</option>
                     <option value="top">Top</option>
                     <option value="hidden">Hidden</option>
+                    <option value="right">Right</option>
+                    <option value="left">Left</option>
                   </select>
                 </div>
                 

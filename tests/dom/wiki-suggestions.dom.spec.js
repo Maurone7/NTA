@@ -200,7 +200,7 @@ describe('DOM: wiki suggestions', function() {
     }
   });
 
-  it('shows folder suggestions when typing [[ and scopes notes when typing folderPrefix/', function(done) {
+  it('shows folder suggestions when typing [[ and scopes notes when typing folderPrefix/', async function() {
     const window = makeWindow();
     global.window = window; global.document = window.document; global.localStorage = window.localStorage; global.MutationObserver = window.MutationObserver;
     const app = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'));
@@ -246,49 +246,38 @@ describe('DOM: wiki suggestions', function() {
       textarea.selectionStart = 2; textarea.selectionEnd = 2;
       app.__test__.updateWikiSuggestions(textarea);
 
-      setTimeout(() => {
-        try {
-          const suggestionsDiv = document.getElementById('wikilink-suggestions');
-          assert(!suggestionsDiv.hidden && suggestionsDiv.getAttribute('data-open') === 'true', 'Suggestions should be open');
-          const itemTitles = Array.from(suggestionsDiv.querySelectorAll('.wiki-suggest__title')).map(n => n.textContent);
-          // Folder suggestions render with a trailing slash in display
-          const hasSub = itemTitles.some(t => t === 'folder/');
-          assert(hasSub, 'Should include folder/ folder suggestion');
+      await new Promise(resolve => setTimeout(resolve, 350));
 
-          // Now simulate typing folder prefix to scope to the subfolder
-          textarea.value = '[[folder/';
-          textarea.selectionStart = textarea.value.length; textarea.selectionEnd = textarea.value.length;
-          app.__test__.updateWikiSuggestions(textarea);
+      const suggestionsDiv = document.getElementById('wikilink-suggestions');
+      assert(!suggestionsDiv.hidden && suggestionsDiv.getAttribute('data-open') === 'true', 'Suggestions should be open');
+      const itemTitles = Array.from(suggestionsDiv.querySelectorAll('.wiki-suggest__title')).map(n => n.textContent);
+      // Folder suggestions render with a trailing slash in display
+      const hasSub = itemTitles.some(t => t === 'folder/');
+      assert(hasSub, 'Should include folder/ folder suggestion');
 
-          setTimeout(() => {
-            try {
-              const scopedDiv = document.getElementById('wikilink-suggestions');
-              assert(!scopedDiv.hidden && scopedDiv.getAttribute('data-open') === 'true', 'Scoped suggestions should be open');
-              const scopedTitles = Array.from(scopedDiv.querySelectorAll('.wiki-suggest__title')).map(n => n.textContent);
-              // Should include the subfolder note and not include notes from root
-              assert(scopedTitles.includes('Sub Note'), 'Should include Sub Note from subfolder');
-              assert(!scopedTitles.includes('Root Note'), 'Should not include Root Note when scoped to subfolder');
-              // Most importantly: should NOT re-suggest the folder that's already selected
-              assert(!scopedTitles.includes('folder/'), 'Should not re-suggest the already selected folder');
+      // Now simulate typing folder prefix to scope to the subfolder
+      textarea.value = '[[folder/';
+      textarea.selectionStart = textarea.value.length; textarea.selectionEnd = textarea.value.length;
+      app.__test__.updateWikiSuggestions(textarea);
 
-              done();
-            } catch (e) {
-              done(e);
-            } finally {
-              try { window.close(); } catch (e) {}
-              delete global.window; delete global.document; delete global.localStorage;
-            }
-          }, 350);
+      await new Promise(resolve => setTimeout(resolve, 350));
 
-        } catch (e) {
-          done(e);
-        }
-      }, 350);
+      const scopedDiv = document.getElementById('wikilink-suggestions');
+      assert(!scopedDiv.hidden && scopedDiv.getAttribute('data-open') === 'true', 'Scoped suggestions should be open');
+      const scopedTitles = Array.from(scopedDiv.querySelectorAll('.wiki-suggest__title')).map(n => n.textContent);
+      // Should include the subfolder note and not include notes from root
+      assert(scopedTitles.includes('Sub Note'), 'Should include Sub Note from subfolder');
+      assert(!scopedTitles.includes('Root Note'), 'Should not include Root Note when scoped to subfolder');
+      // Most importantly: should NOT re-suggest the folder that's already selected
+      assert(!scopedTitles.includes('folder/'), 'Should not re-suggest the already selected folder');
+
+      try { window.close(); } catch (e) {}
+      delete global.window; delete global.document; delete global.localStorage;
 
     } catch (e) {
       try { window.close(); } catch (err) {}
       delete global.window; delete global.document; delete global.localStorage;
-      done(e);
+      throw e;
     }
   });
 

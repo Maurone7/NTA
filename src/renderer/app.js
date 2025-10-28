@@ -218,8 +218,6 @@ const elements = {
   newTabButton: document.getElementById('new-tab-button') || document.createElement('button'),
   paneTabLeft: document.getElementById('tab-bar-tabs-left') || document.createElement('div'),
   paneTabRight: document.getElementById('tab-bar-tabs-right') || document.createElement('div'),
-  newTabButtonLeft: document.getElementById('new-tab-button-left') || document.createElement('button'),
-  newTabButtonRight: document.getElementById('new-tab-button-right') || document.createElement('button'),
   // Citation modal elements
   citationModal: document.getElementById('citation-modal') || document.createElement('div'),
   citationSearchInput: document.getElementById('citation-search-input') || document.createElement('input'),
@@ -528,7 +526,9 @@ const storageKeys = {
   cmdEDirectExport: 'NTA.cmdEDirectExport',
   hashtagPanelMinimized: 'NTA.hashtagPanelMinimized',
   hashtagPanelHeight: 'NTA.hashtagPanelHeight',
-  hashtagPanelPrevHeight: 'NTA.hashtagPanelPrevHeight'
+  hashtagPanelPrevHeight: 'NTA.hashtagPanelPrevHeight',
+  tabs: 'NTA.tabs',
+  activeTabId: 'NTA.activeTabId'
 };
 
 // ...existing code...
@@ -1273,14 +1273,19 @@ const createTab = (noteId, title, paneId = null) => {
   const paneSegment = paneId ? String(paneId) : 'global';
   const id = `tab-${paneSegment}-${noteId}`;
   const existing = state.tabs.find((t) => t.id === id);
+  console.log('[TAB DEBUG] createTab', { id, paneId, noteId, existing: !!existing, totalTabs: state.tabs.length });
+  
   if (existing) {
     // If an existing tab exists but no pane is set and a pane was requested,
     // assign it so the tab becomes visible in that pane.
     if (paneId && !existing.paneId) existing.paneId = paneId;
+    console.log('[TAB DEBUG] Returning existing tab:', id);
     return existing;
   }
   const tab = { id, noteId, title: title || 'Untitled', isDirty: false, paneId: paneId };
   state.tabs.push(tab);
+  console.log('[TAB DEBUG] Created new tab:', id, 'total tabs now:', state.tabs.length);
+  persistTabs();
   safeCall(renderTabs);
   return tab;
 };
@@ -1289,7 +1294,11 @@ const createTab = (noteId, title, paneId = null) => {
 function renderTabsForPane(paneId, containerId) {
   if (!Array.isArray(state.tabs)) state.tabs = [];
   const container = document.getElementById(containerId);
-  if (!container) return;
+  if (!container) {
+    try { debugLog('[tabs] renderTabsForPane - container not found:', containerId); } catch (e) {}
+    return;
+  }
+  
   // Ensure the pane root is visible when rendering tabs (fixes hidden static/dynamic panes)
   try {
     const paneRoot = document.querySelector(`.editor-pane[data-pane-id="${paneId}"]`);
@@ -1300,6 +1309,7 @@ function renderTabsForPane(paneId, containerId) {
       paneRoot.classList.toggle('active', state.activeEditorPane === paneId);
     }
   } catch (e) { /* ignore */ }
+  
   // Debug logging: report tab counts and candidates
   try {
     debugLog('[tabs] renderTabsForPane start - pane:', String(paneId), 'totalTabs:', state.tabs.length, 'containerId:', String(containerId));
@@ -1521,6 +1531,45 @@ function closeTab(tabId) {
 
   renderTabs();
   updateEditorPaneVisuals();
+  persistTabs();
+}
+
+// Persist tabs to localStorage
+function persistTabs() {
+  try {
+    if (state.tabs && Array.isArray(state.tabs)) {
+      const tabsToSave = state.tabs.map(t => ({
+        id: t.id,
+        noteId: t.noteId,
+        title: t.title,
+        isDirty: t.isDirty,
+        paneId: t.paneId
+      }));
+      writeStorage(storageKeys.tabs, JSON.stringify(tabsToSave));
+      writeStorage(storageKeys.activeTabId, state.activeTabId || '');
+    }
+  } catch (e) {
+    // Ignore storage errors
+  }
+}
+
+// Restore tabs from localStorage
+function restoreTabs() {
+  try {
+    const tabsJson = readStorage(storageKeys.tabs);
+    const activeTabId = readStorage(storageKeys.activeTabId);
+    if (tabsJson) {
+      const tabs = JSON.parse(tabsJson);
+      if (Array.isArray(tabs)) {
+        state.tabs = tabs;
+        state.activeTabId = activeTabId || (tabs.length > 0 ? tabs[0].id : null);
+        return true;
+      }
+    }
+  } catch (e) {
+    // Ignore storage errors
+  }
+  return false;
 }
 
 // Convert a wiki link target (e.g. "My Page | alias") into a normalized slug
@@ -1758,7 +1807,7 @@ class Pane {
     }
 
     // Add close button for static panes
-    if (!this.actions && !this.dynamic) {
+    if (!this.actions && !this.dynamic && this.id !== 'left') {
       this.actions = document.createElement('div');
       this.actions.className = 'editor-pane__actions';
       const closeBtn = document.createElement('button');
@@ -1943,33 +1992,30 @@ try { renderTabs(); } catch (e) {}
 // Create left/right Pane instances only if the static DOM roots exist.
 // If a static root was removed (user closed left/right), do not recreate a
 // placeholder automatically.
-const leftRootEl = document.querySelector('.editor-pane--left');
-if (leftRootEl) {
-  panes.left = new Pane('left', { label: 'Left', dynamic: false, rootEl: leftRootEl });
-  editorInstances.left = panes.left.editor;
-} else {
-  panes.left = null;
-  editorInstances.left = null;
-}
-const rightRootEl = document.querySelector('.editor-pane--right');
-if (rightRootEl) {
-  panes.right = new Pane('right', { label: 'Right', dynamic: false, rootEl: rightRootEl });
-  editorInstances.right = panes.right.editor;
-} else {
-  panes.right = null;
-  editorInstances.right = null;
-}
+try {
+  const leftRootEl = document.querySelector('.editor-pane--left');
+  if (leftRootEl && !panes.left) {
+    panes.left = new Pane('left', { label: 'Left', dynamic: false, rootEl: leftRootEl });
+    editorInstances.left = panes.left.editor;
+  } else if (!leftRootEl) {
+    panes.left = null;
+    editorInstances.left = null;
+  }
+  const rightRootEl = document.querySelector('.editor-pane--right');
+  if (rightRootEl && !panes.right) {
+    panes.right = new Pane('right', { label: 'Right', dynamic: false, rootEl: rightRootEl });
+    editorInstances.right = panes.right.editor;
+  } else if (!rightRootEl) {
+    panes.right = null;
+    editorInstances.right = null;
+  }
+} catch (e) {}
 
 // Allow static left/right panes to be closed by the user via the close buttons
 try {
   const closeLeftBtn = document.getElementById('close-left-editor');
   if (closeLeftBtn) closeLeftBtn.addEventListener('click', (ev) => { ev.preventDefault(); removePane('left', true); });
 } catch (e) {}
-try {
-  const closeRightBtn = document.getElementById('close-right-editor');
-  if (closeRightBtn) closeRightBtn.addEventListener('click', (ev) => { ev.preventDefault(); removePane('right', true); });
-} catch (e) {}
-
 // Return any available editor instance. Prefer the currently active pane,
 // otherwise return the first defined editor instance.
 function getAnyEditorInstance() {
@@ -2050,14 +2096,27 @@ const removePane = (id, force = false) => {
     if (panes[id] && panes[id].dynamic && typeof panes[id].close === 'function') {
       panes[id].close();
     } else if (panes[id] && force) {
-      // Static pane: remove DOM root and cleanup maps
-      try { if (panes[id].root && panes[id].root.remove) panes[id].root.remove(); } catch (e) {}
-      try { delete panes[id]; } catch (e) {}
-      try { if (editorInstances && editorInstances[id]) delete editorInstances[id]; } catch (e) {}
-      try { if (state && state.editorPanes && state.editorPanes[id]) delete state.editorPanes[id]; } catch (e) {}
+      // Only remove DOM for dynamic panes
+      // For static panes (left/right), keep DOM and editor instance intact
+      if (panes[id].dynamic) {
+        try { if (panes[id].root && panes[id].root.remove) panes[id].root.remove(); } catch (e) {}
+        try { delete panes[id]; } catch (e) {}
+        try { if (editorInstances && editorInstances[id]) delete editorInstances[id]; } catch (e) {}
+      }
+      // For all panes, clear the editorPanes state entry (but NOT static pane instances)
+      try { if (state && state.editorPanes && state.editorPanes[id]) state.editorPanes[id].noteId = null; } catch (e) {}
     }
     try { localStorage.setItem(storageKeys.editorPanes, JSON.stringify(state.editorPanes)); } catch (e) {}
-    if (state && state.activeEditorPane === id) setActiveEditorPane(resolvePaneFallback(true));
+    // If active pane is being reset, prefer left for static panes, use fallback for dynamic panes
+    if (state && state.activeEditorPane === id) {
+      // For static panes, always reset to 'left' to keep consistent behavior
+      if (id === 'left' || id === 'right') {
+        setActiveEditorPane('left');
+      } else {
+        // For dynamic panes, use the fallback resolver
+        setActiveEditorPane(resolvePaneFallback(false) || 'left');
+      }
+    }
     try { updateEditorPaneVisuals(); } catch (e) {}
   } catch (e) { /* ignore */ }
 };
@@ -7261,18 +7320,37 @@ const setActiveEditorPane = (pane) => {
 
 // Open a note in a given pane (left or right). Ensures tab exists, activates pane/tab,
 // persists per-pane mapping, and updates UI. Reused by drag/drop and other flows.
-const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => {
+const openNoteInPane = async (noteId, pane = 'left', options = { activate: true }) => {
   try { window.__nta_debug_push && window.__nta_debug_push({ type: 'openNoteInPane:entered', noteId, pane, options }); } catch (e) {}
-  // Debug prints removed
   if (!noteId || !state.notes.has(noteId)) return null;
+  
+  // Default pane if not specified, but preserve non-left/right panes (dynamic panes)
+  if (!pane) pane = 'left';
+  
   // Ensure editorPanes and tabs structures exist
   state.editorPanes = state.editorPanes || { left: { noteId: null }, right: { noteId: null } };
   state.tabs = Array.isArray(state.tabs) ? state.tabs : (state.tabs ? Array.from(state.tabs) : []);
 
-  // If requested pane doesn't exist or has no editor instance, fallback to a resolved pane
-  if (!pane || !editorInstances[pane]) {
-    const fallback = resolvePaneFallback(true) || 'left';
+  // For static panes, the pane objects should already exist from initialization
+  // Just ensure editorInstances is populated
+  if ((pane === 'left' || pane === 'right') && !editorInstances[pane] && panes[pane]) {
+    // Recover the editor instance from the existing pane
+    editorInstances[pane] = panes[pane].editor;
+  }
+
+  // If pane doesn't exist and it's not a static pane, use a fallback
+  if (!editorInstances[pane] && pane !== 'left' && pane !== 'right') {
+    const fallback = resolvePaneFallback(false) || 'left';
     pane = fallback;
+  }
+
+  // Final fallback: ensure we use left if the requested pane is missing
+  if (!editorInstances[pane]) {
+    pane = 'left';
+    if (!editorInstances.left) {
+      console.error('[TAB] Critical: left pane missing, cannot open file');
+      return null;
+    }
   }
 
   try { window.__nta_debug_push && window.__nta_debug_push({ type: 'openNoteInPane:chosenPane', noteId, pane, hasEditorInstance: !!editorInstances[pane] }); } catch (e) {}
@@ -7282,7 +7360,7 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
     try { if (typeof setSplitVisible === 'function') setSplitVisible(true); } catch (e) {}
   }
 
-  // Persist pane mapping even if editor instance isn't present (tests expect assignment)
+  // Persist pane mapping
   state.editorPanes[pane] = state.editorPanes[pane] || { noteId: null };
   try { state.editorPanes[pane].noteId = noteId; } catch (e) { /* ignore */ }
 
@@ -7290,9 +7368,8 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
   const paneNote = note;
   document.title = note?.absolutePath || 'NoteTakingApp';
 
-  // Ensure a pane-scoped tab exists. Prefer an existing tab for this pane.
+  // Ensure a pane-scoped tab exists
   let existingTab = state.tabs.find(t => t.noteId === noteId && t.paneId === pane);
-  // If there's an unscoped tab (legacy), assign it to this pane
   if (!existingTab) existingTab = state.tabs.find(t => t.noteId === noteId && !t.paneId) || null;
   if (!existingTab) {
     existingTab = createTab(noteId, paneNote?.title || 'Untitled', pane);
@@ -7310,7 +7387,13 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
   // immediately so opening the same note in multiple panes works reliably.
   try {
     const inst = editorInstances[pane];
-  if (inst && inst.el) {
+    if (!inst) {
+      console.warn('[TAB] No editor instance found for pane', pane, 'available:', Object.keys(editorInstances).filter(k => !!editorInstances[k]));
+    } else if (!inst.el) {
+      console.warn('[TAB] Editor instance for pane', pane, 'has no element');
+    }
+    
+    if (inst && inst.el) {
       // If the new note is a markdown file, ensure any pane-local PDF viewer is removed
       // and the textarea is visible/populated. If it's a non-markdown file (PDF, image,
       // video, etc.) we do not populate the textarea and may render a specialized
@@ -7506,7 +7589,7 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
         inst.el.disabled = true;
         inst.el.value = '';
         try { window.__nta_debug_push && window.__nta_debug_push({ type: 'openNoteInPane:renderAttempt', noteId: paneNote.id, pane, kind: 'pdf', hasEditorInstance: !!inst, paneRootExists: !!getPaneRootElement(pane) }); } catch (e) {}
-        renderPdfInPane(paneNote, pane, options?.page ?? null);
+        await renderPdfInPane(paneNote, pane, options?.page ?? null);
       } else if (paneNote.type === 'video') {
         // Videos: render only inside the pane viewer (do not populate textarea).
         try { clearPaneViewer(pane); } catch (e) {}
@@ -7537,7 +7620,7 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
   if (paneNote.type === 'pdf' && (!editorInstances[pane] || !editorInstances[pane].el)) {
     try { window.__nta_debug_push && window.__nta_debug_push({ type: 'openNoteInPane:renderFallback', noteId: paneNote.id, pane, kind: 'pdf', editorPresent: !!editorInstances[pane] }); } catch (e) {}
     try { clearPaneViewer(pane); } catch (e) {}
-    renderPdfInPane(paneNote, pane);
+    await renderPdfInPane(paneNote, pane, options?.page ?? null);
   }
 
   // Render video viewer even if editor instance not set
@@ -7549,10 +7632,10 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
   // If caller wants the pane to become active, update active pane/tab and preview
   if (options && options.activate !== false) {
     // Maintain legacy activeNoteId for compatibility with other code paths.
-    // However, do NOT set the global active note to a PDF. The live preview
-    // should continue to show the last markdown note the user was viewing.
+    // However, do NOT set the global active note to a non-renderable file. The live preview
+    // should continue to show the last renderable note (markdown/latex/notebook) the user was viewing.
     state.activeNoteId = noteId;
-    if (paneNote.type === 'markdown' || paneNote.type === 'latex') {
+    if (paneNote.type === 'markdown' || paneNote.type === 'latex' || paneNote.type === 'notebook') {
       state.lastRenderableNoteId = noteId;
       if (paneNote.type === 'markdown') {
         state.lastActiveMarkdownNoteId = noteId;
@@ -10240,7 +10323,7 @@ const handleEditorReplaceAll = (event) => {
   });
 };
 
-const openNoteById = (noteId, silentOrOptions, blockId, pane, page) => {
+const openNoteById = async (noteId, silentOrOptions, blockId, pane, page) => {
   try { window.__nta_debug_push && window.__nta_debug_push({ type: 'openNoteById:entered', noteId, page }); } catch (e) {}
   if (!noteId || !state.notes.has(noteId)) {
     if (!silent) {
@@ -10292,7 +10375,7 @@ const openNoteById = (noteId, silentOrOptions, blockId, pane, page) => {
   // Set the active note ID so renderActiveNote knows this note is active
   state.activeNoteId = noteId;
 
-  openNoteInPane(noteId, pane || resolvePaneFallback(true), { activate: true, page: page ?? null });
+  await openNoteInPane(noteId, pane || resolvePaneFallback(true), { activate: true, page: page ?? null });
 
   if (blockId) {
     state.pendingBlockFocus = { noteId, blockId };
@@ -10509,6 +10592,42 @@ const renderActiveNote = () => {
       }
     }
   } else {
+    // For non-renderable files (pdf, image, video, code, html), check if we should
+    // show the last renderable note in the preview instead
+    const isRenderableType = note.type === 'markdown' || note.type === 'latex' || note.type === 'notebook';
+    
+    if (!isRenderableType && state.lastRenderableNoteId) {
+      // This is a non-renderable file type. Show the last active renderable note in the preview instead.
+      const lastRenderableNote = state.notes.get(state.lastRenderableNoteId);
+      if (lastRenderableNote) {
+        // Recursively call renderActiveNote with the last renderable note as the active one
+        const savedActiveNoteId = state.activeNoteId;
+        state.activeNoteId = state.lastRenderableNoteId;
+        renderActiveNote();
+        state.activeNoteId = savedActiveNoteId;
+        
+        // For non-editor panes, still disable the textarea for non-renderable file types
+        try {
+          for (const [k, inst] of Object.entries(editorInstances)) {
+            try {
+              const mappedNoteId = state.editorPanes?.[k]?.noteId;
+              const mappedNote = mappedNoteId ? state.notes.get(mappedNoteId) : null;
+              if (mappedNote && (mappedNote.type === 'pdf' || mappedNote.type === 'image' || mappedNote.type === 'video' || mappedNote.type === 'code')) {
+                if (inst && inst.el) {
+                  inst.el.disabled = true;
+                  inst.el.value = '';
+                }
+              }
+            } catch (e) { /* per-instance ignore */ }
+          }
+        } catch (e) { /* ignore full loop errors */ }
+        
+        syncHashtagDetailSelection();
+        try { renderTabs(); } catch (e) { /* ignore rendering errors */ }
+        return;
+      }
+    }
+    
     // For non-markdown notes we should NOT clear other panes' editor contents.
     // Each pane can hold a different file type. Only the pane that has this
     // note assigned (or the active pane) should be used to render the file.
@@ -10986,15 +11105,16 @@ const handleWorkspaceTreeClick = (event) => {
     }
 
     const noteId = nodeElement.dataset.noteId;
-  debugLog('Workspace tree click on file', { noteId, dataset: nodeElement.dataset });
+    console.log('[TAB DEBUG] Workspace tree click on file', { noteId, path, tabsCount: state.tabs.length, dataset: nodeElement.dataset });
 
     if (!noteId) {
-  debugLog('No noteId on clicked node');
+      console.log('[TAB DEBUG] No noteId on clicked node');
       return;
     }
 
     // If no editor windows are visible, automatically show one (make left pane visible)
     if (!hasActiveEditorWindows()) {
+      console.log('[TAB DEBUG] No active editor windows, ensuring pane visible');
       try {
         ensureEditorPaneVisible();
         updateEditorPaneVisuals();
@@ -11006,7 +11126,9 @@ const handleWorkspaceTreeClick = (event) => {
     // If the note exists in state, open it. Prefer openNoteInPane which will
     // populate the editor textarea immediately. Fall back to openNoteById for
     // compatibility.
-    const targetPane = state.activeEditorPane || resolvePaneFallback(true);
+    // Default to left pane if no active pane set, do NOT use resolvePaneFallback which can flip between left/right
+    const targetPane = state.activeEditorPane || 'left';
+    console.log('[TAB DEBUG] About to open note', { noteId, targetPane, hasNote: state.notes.has(noteId) });
     try { window.__nta_debug_push && window.__nta_debug_push({ type: 'workspace:click', noteId, targetPane, activeEditorPane: state.activeEditorPane, resolver: resolvePaneFallback(true), hasNote: state.notes.has(noteId) }); } catch (e) {}
     // Defensive fallback: ensure pane mapping is assigned even if openNoteInPane
     // fails silently in minimal test environments. This mirrors expected
@@ -11020,7 +11142,9 @@ const handleWorkspaceTreeClick = (event) => {
 
     if (state.notes.has(noteId)) {
       try {
+        console.log('[TAB DEBUG] Calling openNoteInPane');
         openNoteInPane(noteId, targetPane, { activate: true });
+        console.log('[TAB DEBUG] openNoteInPane succeeded, tabs now:', state.tabs.length);
         return;
       } catch (e) {
         console.error('openNoteInPane failed, falling back to openNoteById', e);
@@ -11029,7 +11153,9 @@ const handleWorkspaceTreeClick = (event) => {
 
     // Last-resort: try openNoteById (non-activating)
     try {
+      console.log('[TAB DEBUG] Calling openNoteById (fallback)');
       openNoteById(noteId, false);
+      console.log('[TAB DEBUG] openNoteById succeeded, tabs now:', state.tabs.length);
     } catch (e) {
       console.error('openNoteById failed for clicked workspace node', e);
     }
@@ -22788,28 +22914,6 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
     }
   } catch (e) { /* best-effort */ }
 
-  // Tab event listeners for pane-level new-tab buttons
-  const newLeft = document.getElementById('new-tab-button-left');
-  const newRight = document.getElementById('new-tab-button-right');
-  if (newLeft) {
-    newLeft.addEventListener('click', () => {
-      if (state.currentFolder) { void createFileInWorkspace(''); return; }
-  const note = createUntitledNote();
-  const tab = createTab(note.id, note.title || 'Untitled', 'left');
-      setActiveTab(tab.id);
-      openNoteInPane(note.id, 'left', { activate: true });
-    });
-  }
-  if (newRight) {
-    newRight.addEventListener('click', () => {
-      if (state.currentFolder) { void createFileInWorkspace(''); return; }
-  const note = createUntitledNote();
-  const tab = createTab(note.id, note.title || 'Untitled', 'right');
-      setActiveTab(tab.id);
-      openNoteInPane(note.id, 'right', { activate: true });
-    });
-  }
-
   // TEMP DEBUG: apply visuals after next paint so elements added later are found
   // Disabled by default in production. Set debugEnabled = true while developing
   // to temporarily highlight pane tab bars with debug visuals.
@@ -22990,6 +23094,11 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
   updateEditorSearchCount();
   renderEditorSearchHighlights();
   syncEditorSearchHighlightScroll();
+  
+  // Note: Tab restoration disabled - tabs should only be created when files are explicitly opened
+  // Restoring old tabs could cause stale tab references to persist
+  // try { restoreTabs(); } catch (e) { /* ignore */ }
+  
   // Ensure last workspace is restored when initialize() is invoked directly
   try { restoreLastWorkspace(); } catch (e) { /* ignore */ }
   // Final deterministic fallback for tests: if we have an adopted tree in
@@ -23935,6 +24044,30 @@ function applyStatusBarPosition(position) {
         break;
       case 'hidden':
         statusBar.style.display = 'none';
+        break;
+      case 'right':
+        workspace.style.flexDirection = 'row';
+        statusBar.style.display = 'flex';
+        // Rotate status bar text to vertical along the left edge
+        statusBar.style.writingMode = 'vertical-rl';
+        statusBar.style.textOrientation = 'upright';
+        statusBar.style.alignItems = 'center';
+        statusBar.style.justifyContent = 'center';
+        // Ensure spacing looks good when vertical
+        statusBar.style.padding = '4px';
+        statusBar.style.whiteSpace = 'nowrap';
+        break;
+      case 'left':
+        workspace.style.flexDirection = 'row-reverse';
+        statusBar.style.display = 'flex';
+        // Rotate status bar text to vertical along the left edge
+        statusBar.style.writingMode = 'vertical-rl';
+        statusBar.style.textOrientation = 'upright';
+        statusBar.style.alignItems = 'center';
+        statusBar.style.justifyContent = 'center';
+        // Reduce horizontal padding (top/bottom 4px, left/right 2px)
+        statusBar.style.padding = '4px 1px';
+        statusBar.style.whiteSpace = 'nowrap';
         break;
     }
   }
@@ -27580,6 +27713,7 @@ try {
       renderTabsForPane: typeof renderTabsForPane === 'function' ? renderTabsForPane : null,
       openNoteInPane: typeof openNoteInPane === 'function' ? openNoteInPane : null,
       openNoteById: typeof openNoteById === 'function' ? openNoteById : null,
+      closeTab: typeof closeTab === 'function' ? closeTab : null,
       updateEditorPaneVisuals: typeof updateEditorPaneVisuals === 'function' ? updateEditorPaneVisuals : null,
       applyPreviewScrollSync: typeof applyPreviewScrollSync === 'function' ? applyPreviewScrollSync : null,
       setSplitVisible: typeof setSplitVisible === 'function' ? setSplitVisible : null,
@@ -27601,6 +27735,7 @@ try {
       handleEditorSplitterPointerDown: typeof handleEditorSplitterPointerDown === 'function' ? handleEditorSplitterPointerDown : null,
       handleEditorSplitterPointerMove: typeof handleEditorSplitterPointerMove === 'function' ? handleEditorSplitterPointerMove : null,
       handleContextMenuAction: typeof handleContextMenuAction === 'function' ? handleContextMenuAction : null,
+      activateWikiLinkElement: typeof activateWikiLinkElement === 'function' ? activateWikiLinkElement : null,
       // Expose Pane class and panes map for testing pane lifecycle
       Pane: typeof Pane === 'function' ? Pane : null,
       panes,

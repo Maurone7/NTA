@@ -15,13 +15,6 @@ module.exports = ({ state, elements, createTab, renderTabs, getActiveEditorInsta
         });
       }
 
-      // Left new tab alternative (left side button)
-      if (elements.newTabButtonLeft) {
-        elements.newTabButtonLeft.addEventListener('click', (e) => {
-          try { createTab(`file-${Date.now()}`, 'Untitled', null); renderTabs(); } catch (err) {}
-        });
-      }
-
       // Simple keyboard shortcut for focusing editor
       window.addEventListener('keydown', (ev) => {
         try {

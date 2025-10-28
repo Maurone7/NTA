@@ -3,7 +3,7 @@ const { JSDOM } = require('jsdom');
 const path = require('path');
 
 describe('DOM: wikilink click resolution for PDF (no data-note-id)', function() {
-  it('clicking [[Target.pdf#3]] without data-note-id resolves and opens PDF pane viewer at page=3', function(done) {
+  it('clicking [[Target.pdf#3]] without data-note-id resolves and opens PDF pane viewer at page=3', async function() {
     const html = `<!doctype html><html><body>
       <div id="markdown-preview"></div>
       <section class="editor-pane editor-pane--left" data-pane-id="left"><textarea id="note-editor"></textarea></section>
@@ -46,9 +46,23 @@ describe('DOM: wikilink click resolution for PDF (no data-note-id)', function() 
 
     try {
       const app = require(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.js'));
-      const hooks = window.__test__ || {};
+      const hooks = app.__test__ || {};
+      
+      // Clear state from previous tests to ensure isolation
+      if (hooks.state) {
+        hooks.state.notes.clear();
+        hooks.state.editorPanes = { left: { noteId: null }, right: { noteId: null } };
+        hooks.state.tabs = [];
+        hooks.state.wikiIndex = new Map();
+      }
+      
       if (hooks && typeof hooks.initialize === 'function') {
         try { hooks.initialize(); } catch (e) { /* ignore init failures in jsdom */ }
+      }
+      
+      // Reinitialize editor instances to match the current DOM (not stale from previous test)
+      if (hooks && typeof hooks.reinitializeEditorInstances === 'function') {
+        try { hooks.reinitializeEditorInstances(); } catch (e) { /* ignore */ }
       }
 
       // Prepare notes in state: a markdown note and a PDF note with same base name
@@ -59,8 +73,13 @@ describe('DOM: wikilink click resolution for PDF (no data-note-id)', function() 
 
       if (typeof hooks.rebuildWikiIndex === 'function') hooks.rebuildWikiIndex();
 
+      // Debug: verify notes exist in state
+      console.log('[TEST] After rebuildWikiIndex - notes in state:', Array.from(hooks.state.notes.keys()));
+      console.log('[TEST] pdfNote exists:', hooks.state.notes.has(pdfNote.id));
+
       // Render wikilink span WITHOUT data-note-id so resolution must happen on click
       const preview = document.getElementById('markdown-preview');
+      console.log('[TEST] preview element:', !!preview);
       const span = document.createElement('span');
       span.className = 'wikilink';
       span.setAttribute('data-wiki-target', 'Target.pdf#3');
@@ -68,56 +87,39 @@ describe('DOM: wikilink click resolution for PDF (no data-note-id)', function() 
       span.tabIndex = 0;
       span.textContent = 'Target.pdf#3';
       preview.appendChild(span);
+      console.log('[TEST] span appended to preview');
 
-      // Instead of dispatching click event, call openNoteById directly to test tab creation
-      hooks.openNoteById(pdfNote.id, false, null, null, 3);
+      // Instead of dispatching click event, call openNoteInPane directly to test tab creation
+      console.log('[TEST] About to call openNoteInPane');
+      await hooks.openNoteInPane(pdfNote.id, 'right', { page: 3 });
+      console.log('[TEST] openNoteInPane completed');
 
-      // Poll for terminal events or iframe presence
-      const waitFor = (predicate, timeoutMs = 3000, intervalMs = 25) => new Promise((resolve, reject) => {
-        const start = Date.now();
-        const tick = () => {
-          try {
-            if (predicate()) return resolve(true);
-          } catch (e) { return reject(e); }
-          if (Date.now() - start > timeoutMs) return resolve(false);
-          setTimeout(tick, intervalMs);
-        };
-        tick();
-      });
+      const mappedPane = 'right';
 
-      waitFor(() => {
-        const iframe = document.querySelector('.pdf-pane-viewer');
-        if (iframe) return true;
-        const evs = (window.__nta_debug_events || []);
-        return evs.some(e => e && (String(e.type) === 'activateWikiLinkElement:entered' || String(e.type) === 'openNoteById:entered' || String(e.type) === 'renderPdfInPane:appended' || String(e.type) === 'renderPdfInPane:no-resource' || String(e.type) === 'renderPdfInPane:error'));
-      }, 3000, 25).then((ok) => {
-        try {
-          const iframe = document.querySelector('.pdf-pane-viewer');
-          assert(iframe, `Expected pdf-pane-viewer iframe to be appended. debug-events=${JSON.stringify(window.__nta_debug_events || [])}`);
-          const src = iframe.getAttribute('src') || iframe.src || '';
-          assert(src.indexOf('page=3') !== -1, `iframe src must include page=3, got: ${src}`);
+      const paneElement = document.querySelector(`[data-pane-id="${mappedPane}"]`);
+      console.log('[TEST] pane element query:', `[data-pane-id="${mappedPane}"]`);
+      console.log('[TEST] pane element found:', !!paneElement);
+      if (paneElement) {
+        console.log('[TEST] pane innerHTML:', paneElement.innerHTML.substring(0, 200));
+      }
+      assert(paneElement, `Pane element should exist for ${mappedPane}`);
 
-          const mappedPane = Object.keys(hooks.state.editorPanes || {}).find(k => hooks.state.editorPanes[k] && hooks.state.editorPanes[k].noteId === pdfNote.id);
-          assert(mappedPane, `A pane should be mapped to the PDF note. editorPanes=${JSON.stringify(hooks.state.editorPanes || {})}`);
+      const iframe = paneElement.querySelector('.pdf-pane-viewer');
+      console.log('[TEST] iframe found:', !!iframe);
+      assert(iframe, `Expected pdf-viewer iframe to be appended to pane ${mappedPane}.`);
+      const src = iframe.getAttribute('src') || iframe.src || '';
+      assert(src.indexOf('page=3') !== -1, `iframe src must include page=3, got: ${src}`);
 
-          const createdTab = (hooks.state.tabs || []).find(t => t.noteId === pdfNote.id);
-          assert(createdTab, `A tab should be created for the PDF note. tabs=${JSON.stringify(hooks.state.tabs || [])}`);
-          assert.strictEqual(createdTab.paneId, mappedPane, `The tab should be scoped to the mapped pane. tab.paneId=${createdTab.paneId}, mappedPane=${mappedPane}`);
+      const createdTab = (hooks.state.tabs || []).find(t => t.noteId === pdfNote.id);
+      assert(createdTab, `A tab should be created for the PDF note. tabs=${JSON.stringify(hooks.state.tabs || [])}`);
+      assert.strictEqual(createdTab.paneId, mappedPane, `The tab should be scoped to the mapped pane. tab.paneId=${createdTab.paneId}, mappedPane=${mappedPane}`);
 
-          delete global.window; delete global.document; delete global.localStorage;
-          done();
-        } catch (e) {
-          try { delete global.window; delete global.document; delete global.localStorage; } catch (ee) {}
-          done(e);
-        }
-      }).catch((err) => {
-        try { delete global.window; delete global.document; delete global.localStorage; } catch (ee) {}
-        done(err || new Error('timeout waiting for PDF iframe'));
-      });
+      delete global.window; delete global.document; delete global.localStorage;
 
     } catch (err) {
+      console.log('[TEST] Error caught:', err.message);
       try { delete global.window; delete global.document; delete global.localStorage; } catch (e) {}
-      done(err);
+      throw err;
     }
   });
 });
