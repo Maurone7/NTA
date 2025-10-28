@@ -6,11 +6,18 @@ module.exports = ({ state, elements }) => {
       if (elements.togglePreviewButton) {
         elements.togglePreviewButton.addEventListener('click', () => {
           try {
-            state.previewCollapsed = !state.previewCollapsed;
-            elements.preview.style.display = state.previewCollapsed ? 'none' : '';
-            elements.pdfViewer.style.display = state.previewCollapsed ? 'none' : '';
-            // Persist setting if desired
-            try { localStorage.setItem('NTA.previewCollapsed', state.previewCollapsed ? 'true' : 'false'); } catch (e) {}
+            // Prefer the centralized applier when available so the UI updates
+            // (classes, ARIA and toggle placement) are performed consistently.
+            if (typeof window !== 'undefined' && typeof window.applyPreviewState === 'function') {
+              window.applyPreviewState(!state.previewCollapsed);
+              try { localStorage.setItem('NTA.previewCollapsed', (!state.previewCollapsed) ? 'true' : 'false'); } catch (e) {}
+            } else {
+              // Fallback: minimal behavior when the applier isn't exposed
+              state.previewCollapsed = !state.previewCollapsed;
+              elements.preview.style.display = state.previewCollapsed ? 'none' : '';
+              elements.pdfViewer.style.display = state.previewCollapsed ? 'none' : '';
+              try { localStorage.setItem('NTA.previewCollapsed', state.previewCollapsed ? 'true' : 'false'); } catch (e) {}
+            }
           } catch (e) {}
         });
       }

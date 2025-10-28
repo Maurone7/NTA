@@ -16,7 +16,7 @@ $$ EI\frac{d^2y}{dx^2}=F(x) $$
 
 Bending Matrix
 
-!![[FEM]]
+[[FEM.pdf]]
 
 ![[FEM#^element-stifness-matrix]]
 

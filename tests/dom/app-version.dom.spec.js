@@ -29,7 +29,13 @@ describe('Settings App Version (dom)', function() {
     global.localStorage = global.window.localStorage;
 
     // Provide preload API before loading the module
-    global.window.api = { getVersion: async () => '1.2.3', invoke: async () => null };
+    global.window.api = {
+      getVersion: async () => '1.2.3',
+      invoke: async () => null,
+      on: () => {},
+      removeListener: () => {},
+      addListener: () => {}
+    };
 
     // Require the renderer module (runs in Node context but will use the
     // provided global.window/document objects for DOM interactions)
@@ -71,7 +77,8 @@ describe('Settings App Version (dom)', function() {
   // Set npm_package_version on the Node process env so module sees it
   const oldPkgVer = process.env.npm_package_version;
   process.env.npm_package_version = '0.0.1';
-  const appModule = require('../../src/renderer/app.js');
+    global.window.api = { invoke: async () => null, on: () => {}, removeListener: () => {}, addListener: () => {} };
+    const appModule = require('../../src/renderer/app.js');
 
     setTimeout(() => {
       try {
@@ -112,7 +119,8 @@ describe('Settings App Version (dom)', function() {
   // Stub global fetch so module's typeof fetch check succeeds
   const oldFetch = global.fetch;
   global.fetch = async () => ({ status: 200, async json() { return { version: '2.3.4' }; } });
-  const appModule = require('../../src/renderer/app.js');
+    global.window.api = { invoke: async () => null, on: () => {}, removeListener: () => {}, addListener: () => {} };
+    const appModule = require('../../src/renderer/app.js');
 
     setTimeout(() => {
       try {

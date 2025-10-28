@@ -312,12 +312,24 @@
                     this.pdfDoc = await loadingTask.promise;
                     this.pageCountSpan.textContent = this.pdfDoc.numPages;
                     this.pageNumInput.max = this.pdfDoc.numPages;
-                    
+
                     // Clear loading message
                     this.viewer.innerHTML = '';
-                    
-                    // Render all pages
-                    this.renderAllPages();
+
+                    // If a specific page was requested via the URL (?page=N), render only
+                    // that page instead of pre-rendering the entire document. This keeps
+                    // previews and exported HTML focused on the single page target.
+                    const pageParam = Number.parseInt(new URLSearchParams(window.location.search).get('page'));
+                    const requestedPage = Number.isFinite(pageParam) && pageParam >= 1 && pageParam <= this.pdfDoc.numPages ? pageParam : null;
+                    if (requestedPage) {
+                        // Render only the requested page
+                        this.pageNum = requestedPage;
+                        await this.renderPage(this.pageNum);
+                        this.updateUI();
+                    } else {
+                        // Default: render all pages
+                        await this.renderAllPages();
+                    }
                     
                 } catch (error) {
                     console.error('Error loading PDF:', error);

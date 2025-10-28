@@ -7,6 +7,8 @@ $$ A−λI=0 $$
 ### Lagrange
 $$ \frac{d}{dt}\left(\frac{\partial{\mathcal{L}}}{\partial{\dot{x}}}\right)−\frac{\partial{\mathcal{L}}}{\partial{x}}=0 $$
 
+[[1Equations.pdf#2]]
+
 ### Structures
 
 #### Euler Bernoulli

@@ -61,7 +61,7 @@ describe('Unit: file metadata display', function() {
     }
   });
 
-  it('shows filename only when setting enabled', function() {
+  it('hides filepath element always', function() {
     const dom = new JSDOM(`<html><body>
       <div id="file-name"></div>
       <div id="file-path"></div>
@@ -100,18 +100,15 @@ describe('Unit: file metadata display', function() {
     if (hooks.initialize) hooks.initialize();
 
     try {
-      // Enable the show-file-name-only setting
-      localStorage.setItem('NTA.showFileNameOnly', 'true');
+      // The filepath is now always hidden
       const note = { id: 'y', type: 'markdown', title: 'T2', absolutePath: '/a/b/c/only.md' };
       hooks.state.notes.set(note.id, note);
       hooks.state.editorPanes = { left: { noteId: note.id } };
       hooks.state.activeEditorPane = 'left';
       hooks.updateFileMetadataUI(note);
       const filePath = document.getElementById('file-path');
-      assert(!filePath.innerHTML.includes('/a/b/'), 'Should not show directory when filename-only is enabled');
-      assert(filePath.innerHTML.includes('only.md'), 'Should show the filename');
+      assert(filePath.hidden, 'Filepath should be hidden');
     } finally {
-      try { localStorage.removeItem('NTA.showFileNameOnly'); } catch (e) {}
       // Close the JSDOM window and delay cleanup until any async DOM events finish.
       try { dom.window.close(); } catch (e) {}
       setImmediate(() => {

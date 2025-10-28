@@ -40,7 +40,7 @@ function makeWindow() {
 }
 
 describe('Unit: filepath settings and copy behavior', function() {
-  it('toggle show filename only via checkbox and persist setting', function() {
+  it('hides filepath element always', function() {
     const window = makeWindow();
     // Install globals before requiring the app so initialize() binds handlers
     global.window = window; global.document = window.document; global.localStorage = window.localStorage; global.MutationObserver = window.MutationObserver;
@@ -54,14 +54,6 @@ describe('Unit: filepath settings and copy behavior', function() {
   if (typeof hooks.initialize === 'function') hooks.initialize();
 
     try {
-      // Simulate enabling setting via checkbox
-      const checkbox = document.getElementById('show-filename-only');
-  checkbox.checked = true;
-  // Simulate the storage update
-  localStorage.setItem('NTA.showFileNameOnly', 'true');
-  // localStorage should have been set
-  assert.strictEqual(localStorage.getItem('NTA.showFileNameOnly'), 'true');
-
       // Simulate a note and update UI
       const note = { id: 'note1', type: 'markdown', title: 'Note 1', absolutePath: '/home/me/docs/note1.md' };
       hooks.state.notes.set(note.id, note);
@@ -69,8 +61,7 @@ describe('Unit: filepath settings and copy behavior', function() {
       hooks.state.activeEditorPane = 'left';
       hooks.updateFileMetadataUI(note);
       const filePathEl = document.getElementById('file-path');
-      assert.ok(!filePathEl.innerHTML.includes('/home/me/docs/'), 'Directory should be hidden when setting enabled');
-      assert.ok(filePathEl.innerHTML.includes('note1.md'), 'Filename should be shown');
+      assert.ok(filePathEl.hidden, 'Filepath should be hidden');
     } finally {
       try { window.close(); } catch (e) {}
       delete global.window; delete global.document; delete global.localStorage; delete global.MutationObserver;

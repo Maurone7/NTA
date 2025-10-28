@@ -63,6 +63,16 @@
         </div>
       </aside>
       <div class="sidebar-resize-handle" title="Drag to resize sidebar"></div>
+      <button
+        id="toggle-sidebar-button"
+        type="button"
+        class="ghost icon-button toggle-sidebar-button"
+        title="Hide sidebar (⌘B)"
+        aria-label="Hide sidebar"
+        aria-pressed="false"
+      >
+        <span class="icon" aria-hidden="true">◀</span>
+      </button>
       <main class="workspace" id="main-content">
         <div class="workspace__toolbar">
           <div class="workspace__filemeta">
@@ -82,18 +92,8 @@
             <div class="workspace__filepath" id="file-path">Open a folder and select a file to get started.</div>
           </div>
           <div class="workspace__actions">
-            <button
-              id="toggle-sidebar-button"
-              type="button"
-              class="ghost icon-button"
-              title="Hide sidebar (⌘B)"
-              aria-label="Hide sidebar"
-              aria-pressed="false"
-            >
-              <span class="icon" aria-hidden="true">◀</span>
-            </button>
             <!-- Add pane / split toggle button -->
-            <button
+            <!-- <button
               id="toggle-split-button"
               type="button"
               class="ghost icon-button"
@@ -102,18 +102,8 @@
               aria-pressed="false"
             >
               <span class="icon" aria-hidden="true">+</span>
-            </button>
+            </button> -->
             <!-- Dual editor removed -->
-            <button
-              id="toggle-preview-button"
-              type="button"
-              class="ghost icon-button"
-              title="Hide preview (⌘⇧B)"
-              aria-label="Hide preview"
-              aria-pressed="false"
-            >
-              <span class="icon" aria-hidden="true">▶</span>
-            </button>
             <button
               id="toggle-math-wysiwyg-button"
               type="button"
@@ -353,6 +343,17 @@
             aria-label="Resize editor and preview"
             tabindex="0"
           ></div>
+
+          <button
+            id="toggle-preview-button"
+            type="button"
+            class="ghost icon-button toggle-preview-button"
+            title="Hide preview (⌘⇧B)"
+            aria-label="Hide preview"
+            aria-pressed="false"
+          >
+            <span class="icon" aria-hidden="true">▶</span>
+          </button>
 
           <section class="preview-pane" aria-label="Preview" tabindex="-1">
             <div id="markdown-preview" class="preview-scroll"></div>
@@ -704,13 +705,6 @@
                   <div class="toggle-group">
                     <input type="checkbox" id="softwrap-toggle" class="settings-toggle" checked>
                     <label for="softwrap-toggle" class="toggle-label">Wrap long lines in editor</label>
-                  </div>
-                </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">File Path Display</label>
-                  <div class="toggle-group">
-                    <input type="checkbox" id="show-filename-only" class="settings-toggle">
-                    <label for="show-filename-only" class="toggle-label">Show filename only (hide directory path)</label>
                   </div>
                 </div>
                 

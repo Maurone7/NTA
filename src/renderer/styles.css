@@ -874,6 +874,145 @@ textarea {
   width: 1px;
 }
 
+/* Toggle sidebar button - positioned on the resize handle when sidebar is expanded,
+   and on the left edge of the app when sidebar is collapsed */
+.toggle-sidebar-button {
+  /* Center the button on the sidebar resize handle */
+  position: absolute;
+  top: 50%;
+  left: calc(var(--sidebar-width, 200px) + 12px); /* handle is 24px wide -> center at +12px */
+  transform: translate(-50%, -50%);
+  z-index: 101; /* above sidebar resize handle */
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  color: var(--fg-soft);
+  /* Only animate visual properties (background/color/opacity/box-shadow).
+    Avoid animating transform here so the toggle doesn't animate position/scale
+    when the sidebar is expanded. Active/toggled states still disable
+    transitions explicitly below. */
+  transition: background 0.18s ease, color 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.toggle-sidebar-button:hover {
+  opacity: 1;
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.toggle-sidebar-button:active {
+  transform: translate(-50%, -50%) scale(0.97);
+}
+
+/* Remove transition/animation while the button is being pressed or when
+   it represents an active/toggled state (aria-pressed="true"). This
+   prevents hover/transition side-effects from moving the button while
+   the user is interacting with it or immediately after toggling. */
+.toggle-sidebar-button:active,
+.toggle-sidebar-button[aria-pressed="true"] {
+  transition: none !important;
+}
+
+.toggle-sidebar-button .icon {
+  pointer-events: none;
+}
+
+/* When sidebar is collapsed, pin the button to the left app edge (fixed so it stays visible)
+   and ensure we don't rely on the resize handle element (which may be hidden). */
+.app-shell.sidebar-collapsed .toggle-sidebar-button {
+  position: fixed;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-elevated);
+  color: var(--fg-soft);
+  opacity: 0.95;
+  box-shadow: 0 6px 18px rgba(15, 17, 23, 0.08);
+}
+
+.app-shell.sidebar-collapsed .toggle-sidebar-button:hover {
+  opacity: 1;
+  background: var(--bg-elevated);
+  color: var(--accent);
+  box-shadow: 0 8px 22px rgba(15, 17, 23, 0.12);
+}
+
+/* Toggle preview button - positioned on the workspace splitter when preview is expanded,
+   and on the right edge of the app when preview is collapsed */
+.toggle-preview-button {
+  /* Center the button on the workspace splitter using the editor ratio variable */
+  position: absolute;
+  top: 50%;
+  left: calc(var(--local-editor-ratio, 0.5) * 100%);
+  transform: translate(-50%, -50%);
+  z-index: 901; /* above workspace splitter (which is z-index 900) */
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  color: var(--fg-soft);
+  transition: background 0.18s ease, color 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease, transform 0.08s ease;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.toggle-preview-button:hover {
+  opacity: 1;
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.toggle-preview-button:active {
+  transform: translate(-50%, -50%) scale(0.97);
+}
+
+/* Same for the preview toggle: disable visual transitions while active
+   or when toggled so placement changes are immediate and don't animate. */
+.toggle-preview-button:active,
+.toggle-preview-button[aria-pressed="true"] {
+  transition: none !important;
+}
+
+.toggle-preview-button .icon {
+  pointer-events: none;
+}
+
+/* When preview is collapsed, move button to the right edge of the app */
+.workspace__content.preview-collapsed .toggle-preview-button {
+  position: fixed;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-elevated);
+  color: var(--fg-soft);
+  opacity: 0.95;
+  box-shadow: 0 6px 18px rgba(15, 17, 23, 0.08);
+}
+
+.workspace__content.preview-collapsed .toggle-preview-button:hover {
+  opacity: 1;
+  background: var(--bg-elevated);
+  color: var(--accent);
+  box-shadow: 0 8px 22px rgba(15, 17, 23, 0.12);
+}
+
 .explorer__header {
   display: flex;
   flex-direction: row; /* Change to horizontal layout */

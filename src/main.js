@@ -824,6 +824,20 @@ ipcMain.handle('app:installLatex', async (_event) => {
   }
 });
 
+// Provide application version to renderer when requested. Prefer the
+// Electron `app.getVersion()` API when available, otherwise fall back to
+// reading package.json. This prevents the renderer showing 'Unknown'
+// when the preload requests the version but the main process hadn't
+// previously exposed it.
+const { getAppVersion } = require('./main/version-helper');
+ipcMain.handle('app:getVersion', async () => {
+  try {
+    return await getAppVersion(app);
+  } catch (e) {
+    return 'Unknown';
+  }
+});
+
 // Handle terminal command execution with persistent shell
 // Terminal PTY IPC handlers
 ipcMain.handle('terminal:init', (event, payload) => {

@@ -135,38 +135,8 @@ export const createTreeModule = ({ state, elements, imageExtensions, videoExtens
     return element;
   };
 
-  const renderWorkspaceTree = () => {
-    if (!elements.workspaceTree || !elements.workspaceEmpty) return;
-
-    const treeData = state.tree ?? null;
-    const rootChildren = Array.isArray(treeData?.children) ? treeData.children : [];
-
-    if (!treeData) {
-      elements.workspaceTree.replaceChildren();
-      elements.workspaceTree.hidden = true;
-      elements.workspaceEmpty.textContent = 'Open a folder to browse Markdown and PDF files.';
-      elements.workspaceEmpty.hidden = false;
-      return;
-    }
-
-    elements.workspaceEmpty.hidden = true;
-    elements.workspaceEmpty.textContent = '';
-
-    if (!rootChildren.length) {
-      const emptyMessage = document.createElement('div');
-      emptyMessage.className = 'tree-empty';
-      emptyMessage.textContent = 'No files found in this folder.';
-      elements.workspaceTree.replaceChildren(emptyMessage);
-      elements.workspaceTree.hidden = false;
-      return;
-    }
-
-    const fragment = document.createDocumentFragment();
-    rootChildren.forEach((child) => {
-      fragment.appendChild(createWorkspaceTreeNode(child, 0));
-    });
-
-    elements.workspaceTree.replaceChildren(fragment);
+  const updateTreeActiveHighlight = () => {
+    if (!elements.workspaceTree) return;
     try {
       const activeId = state.activeNoteId;
       const previouslyActive = elements.workspaceTree.querySelectorAll('.tree-node--active');
@@ -192,12 +162,7 @@ export const createTreeModule = ({ state, elements, imageExtensions, videoExtens
         }
       }
     } catch (e) {}
-
-    elements.workspaceTree.hidden = false;
-    elements.workspaceEmpty.hidden = true;
-  };
-
-  // ===================== EVENT HANDLERS (defined before init) =====================
+  };  // ===================== EVENT HANDLERS (defined before init) =====================
 
   const handleTreeNodeDragStart = (event) => {
     const nodeElement = event.target.closest('.tree-node');
@@ -496,6 +461,44 @@ export const createTreeModule = ({ state, elements, imageExtensions, videoExtens
     if (state.contextMenu.open && !event.target.closest('#workspace-context-menu')) closeContextMenu();
   };
 
+  const renderWorkspaceTree = () => {
+    if (!elements.workspaceTree || !elements.workspaceEmpty) return;
+
+    const treeData = state.tree ?? null;
+    const rootChildren = Array.isArray(treeData?.children) ? treeData.children : [];
+
+    if (!treeData) {
+      elements.workspaceTree.replaceChildren();
+      elements.workspaceTree.hidden = true;
+      elements.workspaceEmpty.textContent = 'Open a folder to browse Markdown and PDF files.';
+      elements.workspaceEmpty.hidden = false;
+      return;
+    }
+
+    elements.workspaceEmpty.hidden = true;
+    elements.workspaceEmpty.textContent = '';
+
+    if (!rootChildren.length) {
+      const emptyMessage = document.createElement('div');
+      emptyMessage.className = 'tree-empty';
+      emptyMessage.textContent = 'No files found in this folder.';
+      elements.workspaceTree.replaceChildren(emptyMessage);
+      elements.workspaceTree.hidden = false;
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    rootChildren.forEach((child) => {
+      fragment.appendChild(createWorkspaceTreeNode(child, 0));
+    });
+
+    elements.workspaceTree.replaceChildren(fragment);
+    updateTreeActiveHighlight();
+
+    elements.workspaceTree.hidden = false;
+    elements.workspaceEmpty.hidden = true;
+  };
+
   // ===================== INITIALIZATION FUNCTION =====================
 
   const init = (providedActions = {}) => {
@@ -548,7 +551,8 @@ export const createTreeModule = ({ state, elements, imageExtensions, videoExtens
     closeContextMenu,
     workspaceNodeContainsActive,
     createWorkspaceTreeNode,
-    renderWorkspaceTree
+    renderWorkspaceTree,
+    updateTreeActiveHighlight
   };
 };
 

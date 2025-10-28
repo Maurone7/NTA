@@ -2080,8 +2080,14 @@ function getActiveEditorInstance() {
 // the `Pane` implementation is the single source of truth for pane behavior.
 
 const domPurifyConfig = {
-  ADD_TAGS: ['section', 'header', 'article', 'mark', 'script', 'iframe'],
-  ADD_ATTR: [
+  ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'p', 'a', 'ul', 'ol', 'nl', 'li', 'b', 'i', 'strong', 'em', 'strike', 'code', 'hr', 'br', 'div', 'table', 'thead', 'caption', 'tbody', 'tr', 'th', 'td', 'pre', 'iframe', 'img', 'video', 'source', 'audio', 'section', 'header', 'article', 'mark', 'script', 'span', 'button', 'form', 'input', 'textarea', 'label', 'select', 'option', 'fieldset', 'legend', 'details', 'summary', 'nav', 'aside', 'footer', 'figure', 'figcaption'],
+  ALLOWED_ATTR: [
+    'href',
+    'name',
+    'target',
+    'id',
+    'class',
+    'style',
     'role',
     'tabindex',
     'data-note-id',
@@ -2090,7 +2096,6 @@ const domPurifyConfig = {
     'data-embed-depth',
     'data-raw-src',
     'loading',
-    'id',
     'data-block-id',
     'data-block-label',
     'data-block-missing',
@@ -2101,8 +2106,31 @@ const domPurifyConfig = {
     'type',
     'sandbox',
     'allow',
-    'allowfullscreen'
-  ]
+    'allowfullscreen',
+    'onclick',
+    'onload',
+    'onchange',
+    'onsubmit',
+    'onmouseover',
+    'onmouseout',
+    'placeholder',
+    'value',
+    'checked',
+    'selected',
+    'disabled',
+    'readonly',
+    'required',
+    'width',
+    'height',
+    'alt',
+    'title',
+    'controls',
+    'preload',
+    'autoplay',
+    'muted',
+    'loop'
+  ],
+  KEEP_CONTENT: true
 };
 
 // Configurable limits / debug flags
@@ -6806,7 +6834,7 @@ const processPreviewHtmlIframes = async () => {
     return;
   }
 
-  const iframes = Array.from(elements.preview.querySelectorAll('iframe.html-embed-iframe[data-raw-src]'));
+  const iframes = Array.from(elements.preview.querySelectorAll('iframe[class*="html-embed-iframe"][data-raw-src]'));
   if (!iframes.length) {
     return;
   }
@@ -6874,7 +6902,22 @@ const processPreviewHtmlIframes = async () => {
 
           if (candidate) {
             htmlResourceCache.set(cacheKey, candidate);
-            iframe.src = candidate;
+            // For HTML files, load content and set srcdoc instead of src
+            if (rawSrc.toLowerCase().endsWith('.html')) {
+              try {
+                const response = await fetch(candidate);
+                if (response.ok) {
+                  const htmlContent = await response.text();
+                  iframe.srcdoc = htmlContent;
+                } else {
+                  iframe.src = candidate;
+                }
+              } catch (fetchError) {
+                iframe.src = candidate;
+              }
+            } else {
+              iframe.src = candidate;
+            }
             iframe.onload = () => { if (window.autoResizeIframe) window.autoResizeIframe(iframe); };
             return;
           }
@@ -6899,7 +6942,26 @@ const processPreviewHtmlIframes = async () => {
   // Debug prints removed
         if (result?.value) {
           htmlResourceCache.set(cacheKey, result.value);
-          iframe.src = result.value;
+          // For HTML files, load the content and set srcdoc instead of src
+          // This ensures the HTML is rendered, not displayed as raw text
+          if (rawSrc.toLowerCase().endsWith('.html') || result?.mimeType === 'text/html') {
+            try {
+              // Try to fetch the HTML content
+              const response = await fetch(result.value);
+              if (response.ok) {
+                const htmlContent = await response.text();
+                iframe.srcdoc = htmlContent;
+              } else {
+                // Fallback to src if fetch fails
+                iframe.src = result.value;
+              }
+            } catch (fetchError) {
+              // Fallback to src if fetch fails
+              iframe.src = result.value;
+            }
+          } else {
+            iframe.src = result.value;
+          }
           iframe.onload = () => { if (window.autoResizeIframe) window.autoResizeIframe(iframe); };
         } else {
           htmlResourceCache.set(cacheKey, null);
@@ -19342,9 +19404,9 @@ const createHtmlCodeBlockExtension = () => {
       const attributes = [
         `id="${iframeId}"`,
         `src="${blobUrl}"`,
+        'class="html-embed-iframe"',
         'sandbox="allow-scripts allow-forms allow-popups"',
-        'style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 4px; background: white; transition: height 0.3s ease;"',
-        'onload="autoResizeIframe(this)"'
+        'style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 4px; background: white; transition: height 0.3s ease;"'
       ];
       
       return `<iframe ${attributes.join(' ')}>Your browser does not support iframes.</iframe>`;
