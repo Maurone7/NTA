@@ -877,10 +877,14 @@ textarea {
 /* Toggle sidebar button - positioned on the resize handle when sidebar is expanded,
    and on the left edge of the app when sidebar is collapsed */
 .toggle-sidebar-button {
-  /* Center the button on the sidebar resize handle */
+  /* Position relative to parent (app-shell).
+     Center the button vertically on the visible sidebar resize handle
+     by accounting for the terminal height (which shortens the handle).
+     Use a centered transform so hover/active states don't shift the
+     transform origin and cause jumps. */
   position: absolute;
-  top: 50%;
-  left: calc(var(--sidebar-width, 200px) + 12px); /* handle is 24px wide -> center at +12px */
+  top: calc((100% - var(--terminal-height, 0px)) / 2);
+  left: calc(var(--sidebar-width, 200px));
   transform: translate(-50%, -50%);
   z-index: 101; /* above sidebar resize handle */
   width: 32px;
@@ -895,11 +899,7 @@ textarea {
   background: transparent;
   border: none;
   color: var(--fg-soft);
-  /* Only animate visual properties (background/color/opacity/box-shadow).
-    Avoid animating transform here so the toggle doesn't animate position/scale
-    when the sidebar is expanded. Active/toggled states still disable
-    transitions explicitly below. */
-  transition: background 0.18s ease, color 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease;
+  transition: background 0.18s ease, color 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
   cursor: pointer;
   opacity: 0.6;
 }
@@ -911,6 +911,8 @@ textarea {
 }
 
 .toggle-sidebar-button:active {
+  /* Keep the same translate baseline and only scale on active to avoid
+     a transform origin shift that would move the button. */
   transform: translate(-50%, -50%) scale(0.97);
 }
 
@@ -938,21 +940,26 @@ textarea {
   color: var(--fg-soft);
   opacity: 0.95;
   box-shadow: 0 6px 18px rgba(15, 17, 23, 0.08);
+  pointer-events: auto;
+  /* Disable hover effects when sidebar is collapsed */
+  transition: none;
 }
 
 .app-shell.sidebar-collapsed .toggle-sidebar-button:hover {
-  opacity: 1;
+  opacity: 0.95;
   background: var(--bg-elevated);
-  color: var(--accent);
-  box-shadow: 0 8px 22px rgba(15, 17, 23, 0.12);
+  color: var(--fg-soft);
+  box-shadow: 0 6px 18px rgba(15, 17, 23, 0.08);
 }
 
 /* Toggle preview button - positioned on the workspace splitter when preview is expanded,
    and on the right edge of the app when preview is collapsed */
 .toggle-preview-button {
-  /* Center the button on the workspace splitter using the editor ratio variable */
+  /* Center the button on the workspace splitter using the editor ratio variable.
+     Offset vertically to remain centered on the visible splitter/handle
+     when the terminal is open by subtracting --terminal-height. */
   position: absolute;
-  top: 50%;
+  top: calc((100% - var(--terminal-height, 0px)) / 2);
   left: calc(var(--local-editor-ratio, 0.5) * 100%);
   transform: translate(-50%, -50%);
   z-index: 901; /* above workspace splitter (which is z-index 900) */
@@ -968,7 +975,7 @@ textarea {
   background: transparent;
   border: none;
   color: var(--fg-soft);
-  transition: background 0.18s ease, color 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease, transform 0.08s ease;
+  transition: background 0.18s ease, color 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease;
   cursor: pointer;
   opacity: 0.6;
 }
@@ -5120,6 +5127,52 @@ body[data-high-contrast="true"] .keybinding-input:focus {
   line-height: 1.1;
 }
 
+/* Terminal header */
+.nta-terminal-header {
+  height: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06));
+  color: var(--fg-soft);
+  box-sizing: border-box;
+}
+.nta-terminal-header__left { display:flex; align-items:center; gap:8px; }
+.nta-terminal-title { font-size: 13px; font-weight:600; color: var(--fg); }
+.nta-terminal-header__right { display:flex; align-items:center; gap:6px; }
+
+.terminal-action-button,
+.terminal-close-button {
+  height: 28px;
+  min-width: 28px;
+  border: none;
+  background: transparent;
+  color: var(--fg-soft);
+  border-radius: 6px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+}
+.terminal-action-button:hover,
+.terminal-close-button:hover { background: rgba(255,255,255,0.03); color: var(--fg); }
+.terminal-close-button { font-weight: 700; }
+
+/* Slight polish: make terminal container background subtly translucent in dark mode */
+.nta-terminal-container { background: linear-gradient(180deg, rgba(10,10,10,0.98), rgba(8,8,8,0.96)); }
+.nta-terminal { background: transparent; }
+
+/* Update xterm theme references so content appears on dark background */
+.nta-terminal .xterm-viewport,
+.nta-terminal .xterm-screen { background: transparent !important; }
+
+
 /* Make xterm's .xterm-viewport and .xterm-screen fill the container cleanly */
 .nta-terminal .xterm {
   height: 100% !important;
@@ -5128,7 +5181,6 @@ body[data-high-contrast="true"] .keybinding-input:focus {
   padding: 0 !important;
 }
 .nta-terminal .xterm-screen {
-  /* Reserve roughly four terminal lines of breathing room at the bottom */
-  padding-bottom: calc(4 * 1.1em);
   box-sizing: border-box;
+  padding-bottom: 0;
 }

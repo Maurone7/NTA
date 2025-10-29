@@ -238,6 +238,8 @@ const elements = {
   newFileButton: document.getElementById('new-file-button') || document.createElement('button'),
   exportPdfOption: document.getElementById('export-pdf-option') || document.createElement('button'),
   exportHtmlOption: document.getElementById('export-html-option') || document.createElement('button'),
+  exportDocxOption: document.getElementById('export-docx-option') || document.createElement('button'),
+  exportEpubOption: document.getElementById('export-epub-option') || document.createElement('button'),
   settingsButton: document.getElementById('settings-button') || document.createElement('button'),
   settingsModal: document.getElementById('settings-modal') || document.createElement('div'),
   settingsClose: document.getElementById('settings-close') || document.createElement('button'),
@@ -540,8 +542,11 @@ const storageKeys = {
   cmdEDirectExport: 'NTA.cmdEDirectExport',
   hashtagPanelMinimized: 'NTA.hashtagPanelMinimized',
   hashtagPanelHeight: 'NTA.hashtagPanelHeight',
-  hashtagPanelPrevHeight: 'NTA.hashtagPanelPrevHeight'
+  hashtagPanelPrevHeight: 'NTA.hashtagPanelPrevHeight',
+  lastOpenedNoteId: 'NTA.lastOpenedNoteId'
 };
+
+let editorSessionRestoreAttempted = false;
 
 // ...existing code...
 
@@ -1110,6 +1115,8 @@ const state = {
   // Embedded terminal state
   terminalVisible: false,
   terminalInstance: null,
+  terminalResizeObserver: null,
+  terminalWindowResizeHandler: null,
   resizingTerminal: false,
   terminalResizePointerId: null,
   initialTerminalMouseY: null,
@@ -1135,6 +1142,7 @@ const state = {
   activeTabId: null,
   htmlPreviewToken: null,
   blockIndex: new Map(),
+  blockIndexKeysByNote: new Map(),
   blockLabelsByNote: new Map(),
   userTyping: false,
   hashtagIndex: new Map(),
@@ -1220,6 +1228,7 @@ const state = {
     messages: [],
     overlay: null
   },
+  sessionRestored: false,
   lastRenderableNoteId: null,
   latexRenderMode: 'auto', // 'auto' (PDF if available), 'pdf', or 'html'
   latexInstalled: null, // null = unchecked, true/false = checked
@@ -1689,13 +1698,6 @@ class Pane {
       tabBarTabs.id = `tab-bar-tabs-${id}`;
       tabBarTabs.setAttribute('role', 'tablist');
       paneTabBar.appendChild(tabBarTabs);
-      const newTabButton = document.createElement('button');
-      newTabButton.className = 'tab-bar__new-tab';
-      newTabButton.id = `new-tab-button-${id}`;
-      newTabButton.title = 'New Tab';
-      newTabButton.setAttribute('aria-label', 'New Tab');
-      newTabButton.textContent = '+';
-      paneTabBar.appendChild(newTabButton);
       section.appendChild(paneTabBar);
 
       const badge = document.createElement('div');
@@ -1704,16 +1706,11 @@ class Pane {
       badge.textContent = label;
       section.appendChild(badge);
 
-      const actions = document.createElement('div');
-      actions.className = 'editor-pane__actions';
-      const closeBtn = document.createElement('button');
-      closeBtn.className = 'icon-button small';
-      closeBtn.type = 'button';
-      closeBtn.title = 'Close pane';
-      closeBtn.setAttribute('aria-label', 'Close pane');
-      closeBtn.textContent = '✕';
-      actions.appendChild(closeBtn);
-      section.appendChild(actions);
+  const actions = document.createElement('div');
+  actions.className = 'editor-pane__actions';
+  actions.hidden = true;
+  actions.setAttribute('aria-hidden', 'true');
+  section.appendChild(actions);
 
       const searchHighlights = document.createElement('div');
       searchHighlights.className = 'editor-search-highlights';
@@ -1787,13 +1784,8 @@ class Pane {
     if (!this.actions && !this.dynamic) {
       this.actions = document.createElement('div');
       this.actions.className = 'editor-pane__actions';
-      const closeBtn = document.createElement('button');
-      closeBtn.className = 'icon-button small';
-      closeBtn.type = 'button';
-      closeBtn.title = 'Close pane';
-      closeBtn.setAttribute('aria-label', 'Close pane');
-      closeBtn.textContent = '✕';
-      this.actions.appendChild(closeBtn);
+      this.actions.hidden = true;
+      this.actions.setAttribute('aria-hidden', 'true');
       this.root.appendChild(this.actions);
     }
 
@@ -2044,24 +2036,6 @@ const createEditorPane = (paneId = null, label = '') => {
 
   // Hide the static right pane when creating dynamic panes to avoid layout conflicts
   try { if (typeof setSplitVisible === 'function') setSplitVisible(false); } catch (e) {}
-
-  // Add event listener for new tab button
-  const newTabBtn = document.getElementById(`new-tab-button-${id}`);
-  if (newTabBtn) {
-    newTabBtn.addEventListener('click', () => {
-      // Check if this pane already has 5 tabs
-      const paneTabs = state.tabs.filter(t => t.paneId === id);
-      if (paneTabs.length >= 5) {
-        console.warn(`Maximum of 5 tabs per pane reached for pane ${id}`);
-        return;
-      }
-      if (state.currentFolder) { void createFileInWorkspace(''); return; }
-      const note = createUntitledNote();
-      const tab = createTab(note.id, note.title || 'Untitled', id);
-      setActiveTab(tab.id);
-      openNoteInPane(note.id, id, { activate: true });
-    });
-  }
 
   return id;
 };
@@ -5144,6 +5118,7 @@ const rebuildBlockIndex = () => {
   // Basic placeholder - parses notes for block references and populates state.blockIndex
   try {
     state.blockIndex = new Map();
+    state.blockIndexKeysByNote = new Map();
     state.notes.forEach((note) => {
       if (!note || note.type !== 'markdown' || !note.content) return;
       // naive: find ^anchor labels like ^abc
@@ -5151,37 +5126,71 @@ const rebuildBlockIndex = () => {
       for (const m of matches) {
         const key = `${note.id}::${m[1]}`;
         state.blockIndex.set(key, { noteId: note.id, blockId: m[1] });
+        if (!state.blockIndexKeysByNote.has(note.id)) {
+          state.blockIndexKeysByNote.set(note.id, []);
+        }
+        state.blockIndexKeysByNote.get(note.id).push(key);
       }
     });
-  } catch (e) { state.blockIndex = new Map(); }
+  } catch (e) {
+    state.blockIndex = new Map();
+    state.blockIndexKeysByNote = new Map();
+  }
 };
 
 // Refresh block index entries for a single note. This is used when a note's
 // content changes so block anchors like ^abc are (re)indexed without
 // rebuilding the entire workspace index.
 const refreshBlockIndexForNote = (note) => {
-  if (!note || note.type !== 'markdown') return;
+  if (!note || !note.id) return;
   try {
-    // Remove any existing entries for this note
-    for (const key of Array.from(state.blockIndex.keys())) {
-      if (typeof key === 'string' && key.startsWith(`${note.id}::`)) {
-        state.blockIndex.delete(key);
-      }
+    if (!state.blockIndex || typeof state.blockIndex.forEach !== 'function') {
+      state.blockIndex = new Map();
+    }
+    if (!state.blockIndexKeysByNote || typeof state.blockIndexKeysByNote.forEach !== 'function') {
+      state.blockIndexKeysByNote = new Map();
     }
 
-    // Re-scan the note content for block anchors like ^label
-    const matches = note.content?.matchAll(/\^(\w[\w-]*)/g);
-    if (matches) {
-      for (const m of matches) {
-        try {
-          const key = `${note.id}::${m[1]}`;
-          state.blockIndex.set(key, { noteId: note.id, blockId: m[1] });
-        } catch (e) { /* ignore individual match errors */ }
+    const previousKeys = state.blockIndexKeysByNote.get(note.id) || null;
+    if (previousKeys && previousKeys.length) {
+      for (const key of previousKeys) {
+        state.blockIndex.delete(key);
+      }
+    } else if (state.blockIndex.size) {
+      // Fallback: first run without cached keys still removes stale entries.
+      const prefix = `${note.id}::`;
+      for (const key of state.blockIndex.keys()) {
+        if (typeof key === 'string' && key.startsWith(prefix)) {
+          state.blockIndex.delete(key);
+        }
       }
     }
+    state.blockIndexKeysByNote.delete(note.id);
+
+    if (note.type !== 'markdown') {
+      return;
+    }
+
+    const matches = note.content?.matchAll(/\^(\w[\w-]*)/g);
+    if (!matches) {
+      return;
+    }
+
+    const collected = [];
+    for (const m of matches) {
+      const blockId = m && m[1];
+      if (!blockId) continue;
+      const key = `${note.id}::${blockId}`;
+      state.blockIndex.set(key, { noteId: note.id, blockId });
+      collected.push(key);
+    }
+
+    if (collected.length) {
+      state.blockIndexKeysByNote.set(note.id, collected);
+    }
   } catch (e) {
-    // Be conservative on errors: ensure blockIndex remains a Map
     try { state.blockIndex = state.blockIndex || new Map(); } catch (ee) { state.blockIndex = new Map(); }
+    try { state.blockIndexKeysByNote = state.blockIndexKeysByNote || new Map(); } catch (ee) { state.blockIndexKeysByNote = new Map(); }
   }
 };
 
@@ -5728,6 +5737,104 @@ const normalizeNote = (note) => {
     updatedAt: note.updatedAt ?? now,
     dirty: Boolean(note.dirty)
   };
+};
+
+const scheduleSessionRestore = (attempt = 0) => {
+  if (state.sessionRestored) {
+    return true;
+  }
+
+  const maxAttempts = 10;
+  let parsed = null;
+  try {
+    const raw = localStorage.getItem(storageKeys.editorPanes);
+    if (raw) parsed = JSON.parse(raw);
+  } catch (e) {
+    parsed = null;
+  }
+
+  const assignments = [];
+  if (parsed && typeof parsed === 'object') {
+    Object.keys(parsed).forEach((paneId) => {
+      const noteId = parsed[paneId]?.noteId;
+      if (!noteId || !state.notes?.has(noteId)) return;
+      assignments.push({ pane: paneId, noteId });
+    });
+  }
+
+  const preferredId = (() => {
+    try {
+      return readStorage(storageKeys.lastOpenedNoteId);
+    } catch (e) {
+      return null;
+    }
+  })();
+
+  if (!assignments.length && (!preferredId || !state.notes?.has(preferredId))) {
+    return false;
+  }
+
+  if (!assignments.length && preferredId && state.notes.has(preferredId)) {
+    assignments.push({ pane: 'left', noteId: preferredId });
+  }
+
+  assignments.forEach((entry) => {
+    if (entry.pane === 'right') {
+      if (typeof setSplitVisible === 'function') {
+        try { setSplitVisible(true); } catch (e) {}
+      }
+      const rightPane = document.querySelector('.editor-pane--right');
+      if (rightPane) {
+        rightPane.hidden = false;
+        try { rightPane.style.display = ''; } catch (e) {}
+      }
+    } else if (entry.pane !== 'left' && entry.pane !== 'right' && !editorInstances[entry.pane]) {
+      try { createEditorPane(entry.pane, ''); } catch (e) {}
+    }
+  });
+
+  const editorsReady = assignments.every((entry) => {
+    const inst = editorInstances?.[entry.pane];
+    return inst && inst.el;
+  });
+
+  if (!editorsReady && attempt < maxAttempts) {
+    const delay = 80 + attempt * 120;
+    setTimeout(() => { scheduleSessionRestore(attempt + 1); }, delay);
+    return false;
+  }
+
+  let activated = false;
+  const preferred = preferredId && state.notes?.has(preferredId) ? preferredId : null;
+  const noteToPane = new Map(assignments.map((entry) => [entry.noteId, entry.pane]));
+
+  assignments.forEach((entry) => {
+    const shouldActivate = !activated && ((preferred && entry.noteId === preferred) || (!preferred && entry.pane === 'left'));
+    try { openNoteInPane(entry.noteId, entry.pane, { activate: shouldActivate }); } catch (e) {}
+    if (shouldActivate) activated = true;
+  });
+
+  if (!activated && preferred) {
+    const targetPane = noteToPane.get(preferred) || assignments[0]?.pane || 'left';
+    try { openNoteInPane(preferred, targetPane, { activate: true }); activated = true; } catch (e) {}
+  }
+
+  state.sessionRestored = activated || assignments.length > 0;
+  return state.sessionRestored;
+};
+
+const restoreEditorSession = () => {
+  if (state.sessionRestored) {
+    return true;
+  }
+  if (editorSessionRestoreAttempted) {
+    return false;
+  }
+  editorSessionRestoreAttempted = true;
+  setTimeout(() => {
+    try { scheduleSessionRestore(); } catch (e) {}
+  }, 0);
+  return true;
 };
 
 const syncPdfCache = () => {
@@ -7695,6 +7802,7 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
     // However, do NOT set the global active note to a PDF. The live preview
     // should continue to show the last markdown note the user was viewing.
     state.activeNoteId = noteId;
+    try { writeStorage(storageKeys.lastOpenedNoteId, noteId); } catch (e) {}
     if (paneNote.type === 'markdown' || paneNote.type === 'latex') {
       state.lastRenderableNoteId = noteId;
       if (paneNote.type === 'markdown') {
@@ -8551,41 +8659,42 @@ const renderLatexPreview = async (latexContent, noteId) => {
     elements.latexWarningBanner.hidden = !showWarning;
   }
 
-  // Check for missing LaTeX packages (only if LaTeX is installed and in PDF/Auto mode)
-  if (state.latexInstalled && (state.latexRenderMode === 'pdf' || state.latexRenderMode === 'auto')) {
-    const packages = extractLatexPackages(latexContent);
-    const missingPackages = checkMissingLatexPackages(packages);
-    
-    // Store missing packages in state for use by install button
-    state.latexPackagesToShow = missingPackages;
-    
-    // Show package warning only if we haven't shown it for this note yet
-    if (missingPackages.length > 0 && state.latexPackagesWarningShown !== noteId) {
-      state.latexPackagesWarningShown = noteId;
-      
-      if (elements.latexPackagesWarningBanner && elements.latexPackagesWarningList) {
-        // Format the package list
-        const packageText = missingPackages.map(p => p.display).join(', ');
-        elements.latexPackagesWarningList.textContent = `This document uses: ${packageText}. Make sure these packages are installed.`;
-        elements.latexPackagesWarningBanner.hidden = false;
-      }
-    } else if (missingPackages.length === 0) {
-      // No packages to warn about, hide the banner
-      if (elements.latexPackagesWarningBanner) {
-        elements.latexPackagesWarningBanner.hidden = true;
-      }
-    }
-  } else {
-    // Hide package warning if LaTeX not installed or in HTML mode
-    if (elements.latexPackagesWarningBanner) {
-      elements.latexPackagesWarningBanner.hidden = true;
-    }
-  }
-
   // Defer the actual compilation to allow the editor to fully render first
   return new Promise((resolve) => {
     requestAnimationFrame(async () => {
       try {
+        // Check for missing LaTeX packages (only if LaTeX is installed and in PDF/Auto mode)
+        // This is done in the deferred section so it can be async
+        if (state.latexInstalled && (state.latexRenderMode === 'pdf' || state.latexRenderMode === 'auto')) {
+          const packages = extractLatexPackages(latexContent);
+          const missingPackages = await checkMissingLatexPackages(packages);
+          
+          // Store missing packages in state for use by install button
+          state.latexPackagesToShow = missingPackages;
+          
+          // Show package warning only if we haven't shown it for this note yet
+          if (missingPackages.length > 0 && state.latexPackagesWarningShown !== noteId) {
+            state.latexPackagesWarningShown = noteId;
+            
+            if (elements.latexPackagesWarningBanner && elements.latexPackagesWarningList) {
+              // Format the package list
+              const packageText = missingPackages.map(p => p.display).join(', ');
+              elements.latexPackagesWarningList.textContent = `This document uses: ${packageText}. Make sure these packages are installed.`;
+              elements.latexPackagesWarningBanner.hidden = false;
+            }
+          } else if (missingPackages.length === 0) {
+            // No packages to warn about, hide the banner
+            if (elements.latexPackagesWarningBanner) {
+              elements.latexPackagesWarningBanner.hidden = true;
+            }
+          }
+        } else {
+          // Hide package warning if LaTeX not installed or in HTML mode
+          if (elements.latexPackagesWarningBanner) {
+            elements.latexPackagesWarningBanner.hidden = true;
+          }
+        }
+
         // If note has an absolutePath and main process exposes compileLatex, try full compile
       // Resolve note using state map or active note helper
       const note = (noteId && state.notes && state.notes.get) ? state.notes.get(noteId) : null;
@@ -8802,7 +8911,7 @@ const extractLatexPackages = (latexContent) => {
  * Check which LaTeX packages might be problematic/missing
  * Common packages that often have issues: tikz, pgfplots, beamer, etc.
  */
-const checkMissingLatexPackages = (packages) => {
+const checkMissingLatexPackages = async (packages) => {
   // Packages that commonly cause issues if not installed
   const commonProblematicPackages = {
     'tikz': 'TikZ (drawing)',
@@ -8824,9 +8933,28 @@ const checkMissingLatexPackages = (packages) => {
     'asymptote': 'Asymptote (graphics)',
   };
   
+  // Get the list of actually installed packages from the system
+  let installedPackages = new Set();
+  try {
+    const result = await awaitPromiseLike(safeApi.invoke('app:checkInstalledLatexPackages'));
+    if (result && result.packages) {
+      installedPackages = new Set(result.packages.map(p => p.name.toLowerCase()));
+      console.log('[Package Check] Retrieved', installedPackages.size, 'installed packages from system');
+    }
+  } catch (e) {
+    console.warn('[Package Check] Failed to check installed packages:', e);
+    // Fall back to static check if system check fails
+  }
+  
   const missingPackages = packages.filter(pkg => {
-    // Check if package is in our problematic list
-    return commonProblematicPackages[pkg.toLowerCase()];
+    // Check if package is in our problematic list AND not actually installed
+    const isProblematic = !!commonProblematicPackages[pkg.toLowerCase()];
+    const isInstalled = installedPackages.has(pkg.toLowerCase());
+    const isMissing = isProblematic && !isInstalled;
+    if (isProblematic) {
+      console.log(`[Package Check] ${pkg}: problematic=${isProblematic}, installed=${isInstalled}, missing=${isMissing}`);
+    }
+    return isMissing;
   });
   
   return missingPackages.map(pkg => ({
@@ -11121,6 +11249,9 @@ const adoptWorkspace = (payload, preferredActiveId = null) => {
   // populated because the editorInstance wasn't ready yet.
   try {
     const ensureOpenInPane = () => {
+      if (state.sessionRestored) {
+        return;
+      }
       try {
         const pref = state.activeNoteId;
         if (!pref || !state.notes || !state.notes.has(pref)) return;
@@ -11132,6 +11263,9 @@ const adoptWorkspace = (payload, preferredActiveId = null) => {
         let attempts = 0;
         const maxAttempts = 12;
         const tryOpen = () => {
+          if (state.sessionRestored) {
+            return;
+          }
           attempts += 1;
           try {
             const inst = (typeof editorInstances !== 'undefined' && editorInstances) ? editorInstances[targetPane] : null;
@@ -11174,6 +11308,8 @@ const adoptWorkspace = (payload, preferredActiveId = null) => {
 // if subhelpers (like rebuilding indexes) throw. This logs errors and tries to
 // perform the minimal adopt behavior where possible.
 function safeAdoptWorkspace(payload, preferredActiveId = null) {
+  state.sessionRestored = false;
+  editorSessionRestoreAttempted = false;
   try {
     try { window.__nta_debug_push && window.__nta_debug_push({ type: 'safeAdoptWorkspace:called', hasPayload: !!payload, folderPath: payload?.folderPath ?? null }); } catch (e) {}
   try { debugLog('[safeAdoptWorkspace] called', { folderPath: payload?.folderPath ?? null, hasTree: !!payload?.tree }); } catch (e) {}
@@ -11233,6 +11369,8 @@ function safeAdoptWorkspace(payload, preferredActiveId = null) {
     try { updateEditorPaneVisuals(); } catch (e) {}
   }
 
+  try { restoreEditorSession(); } catch (e) {}
+
     // Extra UI fixes for fallback adoption: ensure the workspace path/style reflects
     // whether a folder is open. In some fallback flows elements may exist but not
     // have their classes/visibility updated which leaves the sidebar showing
@@ -11279,21 +11417,33 @@ function safeAdoptWorkspace(payload, preferredActiveId = null) {
 try {
   const prefOpenHandler = (preferredActiveId, payloadRef) => {
     try {
+      if (state.sessionRestored) {
+        return;
+      }
       const pref = preferredActiveId || (payloadRef && payloadRef.preferredActiveId) || state.activeNoteId;
       if (!pref || !state.notes || !state.notes.has(pref)) return;
 
-      // Always create a dynamic pane for the preferred note, consistent with + button behavior
-      const createdPaneId = createEditorPane();
-      let targetPane = createdPaneId;
-      if (createdPaneId) {
-        try { window.__nta_debug_push && window.__nta_debug_push({ type: 'safeAdoptWorkspace:create-pane-for-open', pane: targetPane }); } catch (e) {}
-      }
+      let targetPane = state.activeEditorPane || resolvePaneFallback(true);
+      let createdPaneId = null;
 
       let attempts = 0;
       const maxAttempts = 10;
       const tryOpen = () => {
         attempts += 1;
         try {
+          if (state.sessionRestored) {
+            return;
+          }
+          if (!targetPane || !(editorInstances && editorInstances[targetPane])) {
+            if (!createdPaneId) {
+              createdPaneId = createEditorPane();
+              if (createdPaneId) {
+                targetPane = createdPaneId;
+                try { window.__nta_debug_push && window.__nta_debug_push({ type: 'safeAdoptWorkspace:create-pane-for-open', pane: targetPane }); } catch (e) {}
+              }
+            }
+          }
+
           const inst = (typeof editorInstances !== 'undefined' && editorInstances) ? editorInstances[targetPane] : null;
           const hasEl = inst && inst.el;
           if (hasEl) {
@@ -11309,6 +11459,9 @@ try {
           try { window.__nta_debug_push && window.__nta_debug_push({ type: 'safeAdoptWorkspace:open-exception', err: String(e), attempts }); } catch (ee) {}
         }
 
+        if (state.sessionRestored) {
+          return;
+        }
         if (attempts < maxAttempts) {
           const delay = 50 + (attempts * 100);
           try { window.__nta_debug_push && window.__nta_debug_push({ type: 'safeAdoptWorkspace:open-retry', attempt: attempts, targetPane }); } catch (e) {}
@@ -11427,10 +11580,18 @@ const handleWorkspaceTreeClick = (event) => {
       }
     }
 
+    // Always open in the current active pane
+    let targetPane = state.activeEditorPane || resolvePaneFallback(true);
+
+    // If pane creation still failed and no fallback exists, abort gracefully.
+    if (!targetPane) {
+      setStatus('Unable to open an editor pane for this file.', false);
+      return;
+    }
+
     // If the note exists in state, open it. Prefer openNoteInPane which will
     // populate the editor textarea immediately. Fall back to openNoteById for
     // compatibility.
-    const targetPane = state.activeEditorPane || resolvePaneFallback(true);
     try { window.__nta_debug_push && window.__nta_debug_push({ type: 'workspace:click', noteId, targetPane, activeEditorPane: state.activeEditorPane, resolver: resolvePaneFallback(true), hasNote: state.notes.has(noteId) }); } catch (e) {}
     // Defensive fallback: ensure pane mapping is assigned even if openNoteInPane
     // fails silently in minimal test environments. This mirrors expected
@@ -14928,6 +15089,9 @@ const setSidebarWidth = (width) => {
   state.sidebarWidth = clampedWidth;
   document.documentElement.style.setProperty('--sidebar-width', `${clampedWidth}px`);
   
+  // Update preview button position whenever sidebar width changes
+  try { updatePreviewTogglePosition(); } catch (e) {}
+  
   // Save to storage
   writeStorage(storageKeys.sidebarWidth, String(clampedWidth));
 };
@@ -15198,6 +15362,75 @@ const handleHashtagPanelResizeEnd = (event) => {
   document.body.style.cursor = '';
 };
 
+// Terminal layout helpers ensure the xterm viewport stays aligned with the visible area.
+function resizeTerminalViewport(options = {}) {
+  try {
+    const term = options.term || state.terminalInstance;
+    if (!term || typeof term.resize !== 'function') return;
+    const terminalEl = options.terminalEl || document.getElementById('nta-terminal');
+    if (!terminalEl) return;
+
+    const height = Math.max(0, terminalEl.clientHeight || terminalEl.offsetHeight || 0);
+    const width = Math.max(0, terminalEl.clientWidth || terminalEl.offsetWidth || 0);
+    if (!height || !width) return;
+
+    // Prefer actual cell metrics reported by xterm when available.
+    const dims = term && term._core && term._core._renderService
+      ? term._core._renderService.dimensions
+      : null;
+    let cellWidth = dims && (dims.actualCellWidth || dims.actualCellWidthLegacy) || 0;
+    let cellHeight = dims && (dims.actualCellHeight || dims.actualCellHeightLegacy) || 0;
+
+    if (!cellWidth || cellWidth <= 0) {
+      const viewport = term.element?.querySelector('.xterm-viewport');
+      if (viewport && viewport.clientWidth && term.cols) {
+        cellWidth = viewport.clientWidth / term.cols;
+      } else if (term.cols) {
+        cellWidth = width / term.cols;
+      }
+    }
+
+    if (!cellHeight || cellHeight <= 0) {
+      const rowsEl = term.element?.querySelector('.xterm-rows');
+      if (rowsEl && rowsEl.clientHeight && term.rows) {
+        cellHeight = rowsEl.clientHeight / term.rows;
+      } else if (term.rows) {
+        cellHeight = height / term.rows;
+      }
+    }
+
+    if (!cellWidth || cellWidth <= 0) cellWidth = 8;
+    if (!cellHeight || cellHeight <= 0) cellHeight = 18;
+
+    // Keep a slight guard band so the prompt never renders outside the viewport.
+    const colWidth = cellWidth;
+    const rowHeight = cellHeight;
+
+    const cols = Math.max(2, Math.floor(width / colWidth));
+    const rows = Math.max(2, Math.floor((height - rowHeight * 0.15) / rowHeight));
+    if (!cols || !rows) return;
+
+    const changed = cols !== term.cols || rows !== term.rows;
+    if (changed) {
+      try { term.resize(cols, rows); } catch (e) {}
+      try { safeApi.send('terminal:resize', { cols, rows }); } catch (e) {}
+    }
+    try { term.scrollToBottom && term.scrollToBottom(); } catch (e) {}
+  } catch (e) { /* best-effort */ }
+}
+
+function scheduleTerminalViewportResize(options = {}) {
+  try {
+    if (typeof window === 'undefined') {
+      resizeTerminalViewport(options);
+      return;
+    }
+    window.requestAnimationFrame(() => resizeTerminalViewport(options));
+  } catch (e) {
+    resizeTerminalViewport(options);
+  }
+}
+
 // Terminal vertical resize handlers
 const setTerminalHeight = (px) => {
   try {
@@ -15213,23 +15446,7 @@ const setTerminalHeight = (px) => {
     try { document.documentElement.style.setProperty('--terminal-height', `${h}px`); } catch (e) {}
 
     // If xterm is present, recalc rows/cols and resize
-    const term = state.terminalInstance;
-    if (term && typeof term.resize === 'function') {
-      try {
-        const terminalDiv = document.getElementById('nta-terminal');
-        if (!terminalDiv) return;
-        const containerHeight = terminalDiv.offsetHeight;
-        const containerWidth = terminalDiv.offsetWidth;
-        const rowHeight = 13.2;
-        const colWidth = 7.2;
-        const estimatedRows = Math.max(2, Math.floor(containerHeight / rowHeight));
-        const estimatedCols = Math.max(2, Math.floor(containerWidth / colWidth));
-        if (estimatedRows > 0 && estimatedCols > 0) {
-          try { term.resize(estimatedCols, estimatedRows); } catch (e) {}
-          try { window.api && window.api.send && window.api.send('terminal:resize', { cols: estimatedCols, rows: estimatedRows }); } catch (e) {}
-        }
-      } catch (e) { /* ignore layout failures */ }
-    }
+    if (state.terminalInstance) scheduleTerminalViewportResize();
   } catch (e) { /* ignore */ }
 };
 
@@ -23085,9 +23302,12 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
 
       if (result.success) {
         setStatus(`Successfully installed ${missingPackages.length} LaTeX package(s)`, true);
-        // Hide the warning banner after successful installation
+        // Clear the missing packages list and hide the warning banner after successful installation
+        state.latexPackagesToShow = [];
+        state.latexPackagesWarningShown = null; // Reset so warning can show again if different packages are missing
         setTimeout(() => {
           elements.latexPackagesWarningBanner.hidden = true;
+          elements.latexPackagesInstallButton.hidden = true;
         }, 2000);
       } else if (result.needsTlmgrUpdate) {
         // Handle TeX Live version mismatch - open terminal and run update commands
@@ -23398,6 +23618,20 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
       elements.latexPackagesInstallButton.disabled = false;
       elements.latexPackagesInstallButton.textContent = originalText;
     }
+  });
+
+  // Dismiss button for LaTeX packages warning banner
+  elements.latexPackagesDismissButton?.addEventListener('click', () => {
+    console.log('[LaTeX Packages] Dismissing warning banner');
+    state.latexPackagesToShow = [];
+    state.latexPackagesWarningShown = null; // Reset so user can see the warning again if they switch files
+    if (elements.latexPackagesWarningBanner) {
+      elements.latexPackagesWarningBanner.hidden = true;
+    }
+    if (elements.latexPackagesInstallButton) {
+      elements.latexPackagesInstallButton.hidden = true;
+    }
+    setStatus('Package warning dismissed. You can manually install packages via Terminal if needed.', true);
   });
 
   // Test function for terminal integration - can be called from console
@@ -23723,6 +23957,47 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
         window.addEventListener('pointerup', handleTerminalResizeEnd);
         window.addEventListener('pointercancel', handleTerminalResizeEnd);
       } catch (e) { /* ignore in non-window contexts */ }
+        
+        // Wire up terminal header buttons (clear/close) if present in DOM
+        try {
+          const closeBtn = document.getElementById('nta-terminal-close');
+          if (closeBtn) {
+            closeBtn.addEventListener('click', async (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              try {
+                const container = document.getElementById('nta-terminal-container');
+                if (container) {
+                  container.style.display = 'none';
+                  container.hidden = true;
+                  state.terminalVisible = false;
+                  try { document.documentElement.classList.remove('terminal-visible'); } catch (e) {}
+                  try { document.documentElement.style.setProperty('--terminal-height', `0px`); } catch (e) {}
+                }
+                // Ask main to cleanup PTY for this window
+                try { await safeApi.invoke('terminal:cleanup'); } catch (e) {}
+              } catch (e) { /* ignore close errors */ }
+            });
+          }
+        } catch (e) { /* ignore header wiring errors */ }
+
+        // Wire clear button to reset xterm viewport if available
+        try {
+          const clearBtn = document.getElementById('nta-terminal-clear');
+          if (clearBtn) {
+            clearBtn.addEventListener('click', (ev) => {
+              ev.preventDefault(); ev.stopPropagation();
+              try {
+                if (state.terminalInstance && typeof state.terminalInstance.clear === 'function') {
+                  state.terminalInstance.clear();
+                } else {
+                  const td = document.getElementById('nta-terminal');
+                  if (td) td.innerHTML = '';
+                }
+              } catch (e) {}
+            });
+          }
+        } catch (e) { /* ignore */ }
     }
   } catch (e) { /* best-effort */ }
 
@@ -28285,11 +28560,93 @@ function setupLatexProgressListeners() {
   safeApi.on('latex:installation-complete', (data) => {
     const { success, message } = data;
     showStatusMessage(message, success ? 'info' : 'error');
+    
+    if (success) {
+      // Close the terminal if it's open
+      const container = document.getElementById('nta-terminal-container');
+      if (container && container.style.display !== 'none') {
+        console.log('[LaTeX Renderer] Closing terminal after successful installation');
+        safeApi.send('terminal:toggleRequest');
+      }
+      
+      // Hide the LaTeX warning banner
+      if (elements.latexWarningBanner) {
+        console.log('[LaTeX Renderer] Hiding LaTeX warning banner after successful installation');
+        elements.latexWarningBanner.style.display = 'none';
+      }
+      
+      // Reload the app to recognize the new LaTeX installation
+      console.log('[LaTeX Renderer] Reloading app to recognize LaTeX installation');
+      setTimeout(() => {
+        if (window.api && typeof window.api.reload === 'function') {
+          window.api.reload();
+        }
+      }, 2000); // Give user time to see the success message
+    }
   });
   
   safeApi.on('latex:installation-error', (data) => {
     const { error, distribution } = data;
     showStatusMessage(`Failed to install ${distribution}: ${error}`, 'error');
+  });
+
+  // Handle LaTeX installation via terminal
+  safeApi.on('latex:show-terminal-for-install', async (data) => {
+    const { command, distribution, message } = data;
+    
+    try {
+      // Show status message
+      showStatusMessage(`${distribution} installation started. Initializing terminal...`, 'info');
+      
+      const container = document.getElementById('nta-terminal-container');
+      if (!container) {
+        throw new Error('Terminal container not found');
+      }
+      
+      // Check if terminal is already visible
+      const isVisible = container.style.display !== 'none';
+      console.log(`[LaTeX Renderer] Terminal visible: ${isVisible}`);
+      
+      // If terminal isn't visible, show it by sending toggle request
+      if (!isVisible) {
+        console.log(`[LaTeX Renderer] Opening terminal...`);
+        safeApi.send('terminal:toggleRequest');
+        
+        // Wait for terminal to become visible and ready
+        let attempts = 0;
+        while (container.style.display === 'none' && attempts < 50) {
+          await new Promise(r => setTimeout(r, 100));
+          attempts++;
+        }
+        
+        if (attempts >= 50) {
+          console.warn(`[LaTeX Renderer] Terminal did not appear after 5 seconds`);
+        } else {
+          console.log(`[LaTeX Renderer] Terminal opened after ${attempts * 100}ms`);
+        }
+        
+        // Wait a bit more to ensure terminal is fully initialized
+        await new Promise(r => setTimeout(r, 300));
+      } else {
+        console.log(`[LaTeX Renderer] Terminal already visible, ensuring PTY is ready...`);
+        // Terminal is already open, just make sure PTY is initialized
+        try {
+          await safeApi.invoke('terminal:init', { folderPath: null });
+        } catch (err) {
+          console.error(`[LaTeX Renderer] Error initializing PTY: ${err}`);
+        }
+        await new Promise(r => setTimeout(r, 200));
+      }
+      
+      // Send the install command to terminal
+      console.log(`[LaTeX Renderer] Sending install command to terminal: ${command}`);
+      safeApi.send('latex:send-install-command', { command, distribution });
+      
+      showStatusMessage(`${distribution} installation in progress. Check terminal for details.`, 'info');
+    } catch (err) {
+      console.error(`[LaTeX Renderer] Error setting up terminal: ${err}`);
+      showStatusMessage(`Failed to initialize terminal for ${distribution} installation`, 'error');
+    }
   });
 }
 
@@ -28305,16 +28662,148 @@ function setupTerminal() {
     return new Promise((resolve) => {
       let attempts = 0;
       const checkXterm = () => {
+        if (typeof window === 'undefined') {
+          resolve();
+          return;
+        }
         if (typeof window.Terminal !== 'undefined') {
           resolve();
         } else if (attempts < 50) {
           attempts++;
           setTimeout(checkXterm, 100);
+        } else {
+          resolve();
         }
       };
       checkXterm();
     });
   };
+
+  // Initialize terminal immediately
+  (async () => {
+    try {
+      const terminalDiv = document.getElementById('nta-terminal');
+      if (!terminalDiv) return;
+
+      // Wait for xterm to be loaded
+      await waitForXterm();
+
+      // Create xterm instance using global Terminal
+      term = new window.Terminal({
+        fontFamily: 'Monaco, Menlo, Consolas, monospace',
+        fontSize: 12,
+        lineHeight: 1.1,
+        scrollback: 1000,
+        convertEol: true,      // Convert \n to \r\n for proper terminal behavior
+        scrollOnUserInput: true, // Auto-scroll when user types
+        theme: {
+          background: '#000',
+          foreground: '#fff'
+        }
+      });
+
+      // Initialize PTY on backend
+      try {
+        // Initialize PTY on backend and set cwd to current workspace folder when available
+        await safeApi.invoke('terminal:init', { folderPath: state.currentFolder || null });
+      } catch (err) {
+        console.error('Terminal init error:', err);
+        term.write('Error initializing terminal: ' + (err && err.message ? err.message : String(err)) + '\r\n');
+      }
+
+      // Open terminal in the div
+      term.open(terminalDiv);
+      // remember the instance on shared state so resizers can access it
+      try { state.terminalInstance = term; } catch (e) {}
+
+      const resizeArgs = { term, terminalEl: terminalDiv };
+      scheduleTerminalViewportResize(resizeArgs);
+      setTimeout(() => scheduleTerminalViewportResize(resizeArgs), 80);
+
+      // Observe container resizes so prompt stays visible during user-driven adjustments.
+      try {
+        if (state.terminalResizeObserver && typeof state.terminalResizeObserver.disconnect === 'function') {
+          state.terminalResizeObserver.disconnect();
+        }
+        if (typeof ResizeObserver === 'function') {
+          const observer = new ResizeObserver(() => scheduleTerminalViewportResize(resizeArgs));
+          observer.observe(terminalDiv);
+          state.terminalResizeObserver = observer;
+        }
+      } catch (observerError) {
+        debugLog('[terminal] resize observer unavailable:', observerError);
+      }
+
+      if (typeof window !== 'undefined' && !state.terminalWindowResizeHandler) {
+        const handler = () => scheduleTerminalViewportResize(resizeArgs);
+        window.addEventListener('resize', handler, { passive: true });
+        state.terminalWindowResizeHandler = handler;
+      }
+
+      setTimeout(() => {
+        debugLog('[terminal] after layout: cols=', term.cols, 'rows=', term.rows,
+          'buffer capacity:', term.buffer && term.buffer.active ? term.buffer.active.length : 'N/A');
+      }, 100);
+
+      // Initial resize: send the computed terminal dimensions to the PTY
+      // This ensures the PTY is set to match xterm's initial size
+      try {
+        const { cols, rows } = term;
+        if (cols && rows) {
+          debugLog('[terminal] sending initial resize:', cols, 'x', rows);
+          safeApi.send('terminal:resize', { cols, rows });
+        }
+      } catch (e) {
+        console.error('Error sending initial resize:', e);
+      }
+
+      // Handle data from terminal
+      term.onData((data) => {
+        safeApi.send('terminal:data', data);
+      });
+
+      // Handle terminal resize
+      term.onResize(({ cols, rows }) => {
+        debugLog('Terminal resized:', cols, 'x', rows);
+        safeApi.send('terminal:resize', { cols, rows });
+      });
+
+      // Listen for data from PTY backend and keep the viewport aligned
+      // with the latest output without injecting artificial blank lines.
+      safeApi.on('terminal:output', (data) => {
+        if (!term) {
+          return;
+        }
+
+        const keepPromptVisible = () => {
+          try {
+            term.scrollToBottom();
+            const rows = term.element && term.element.querySelector('.xterm-rows');
+            if (rows && rows.lastElementChild && typeof rows.lastElementChild.scrollIntoView === 'function') {
+              rows.lastElementChild.scrollIntoView({ block: 'end' });
+            }
+          } catch (err) {
+            debugLog('[terminal] scroll alignment error:', err);
+          }
+        };
+
+        try {
+          term.write(data);
+          keepPromptVisible();
+          const scheduleScroll = typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+            ? window.requestAnimationFrame.bind(window)
+            : (cb) => setTimeout(cb, 0);
+          scheduleScroll(keepPromptVisible);
+        } catch (err) {
+          debugLog('[terminal] output handler error:', err);
+        }
+      });
+
+      debugLog('[terminal] initialized, terminal size:', term.cols, 'x', term.rows);
+    } catch (error) {
+      console.error('Terminal setup error:', error);
+    }
+  })();
   
   // Listen for terminal toggle event
   safeApi.on('terminal:toggle', async () => {
@@ -28335,125 +28824,13 @@ function setupTerminal() {
         } catch (e) {}
       } catch (e) { }
       
-      if (isToggled && !term) {
-        // Initialize terminal on first open
-        const terminalDiv = document.getElementById('nta-terminal');
-        if (!terminalDiv) return;
-        
-        // Wait for xterm to be loaded
-        await waitForXterm();
-        
-        // Create xterm instance using global Terminal
-        term = new window.Terminal({
-          fontFamily: 'Monaco, Menlo, Consolas, monospace',
-          fontSize: 12,
-          lineHeight: 1.1,
-          scrollback: 1000,
-          convertEol: true,      // Convert \n to \r\n for proper terminal behavior
-          scrollOnUserInput: true, // Auto-scroll when user types
-          theme: {
-            background: '#000',
-            foreground: '#fff'
-          }
-        });
-        
-        // Initialize PTY on backend
-        try {
-          // Initialize PTY on backend and set cwd to current workspace folder when available
-          await safeApi.invoke('terminal:init', { folderPath: state.currentFolder || null });
-        } catch (err) {
-          console.error('Terminal init error:', err);
-          term.write('Error initializing terminal: ' + (err && err.message ? err.message : String(err)) + '\r\n');
-        }
-        
-  // Open terminal in the div
-  term.open(terminalDiv);
-  // remember the instance on shared state so resizers can access it
-  try { state.terminalInstance = term; } catch (e) {}
-        
-        // Force xterm to measure the container and expand to fill available space
-        // This is crucial: xterm doesn't auto-size, we must explicitly trigger it
-        setTimeout(() => {
-          try {
-            debugLog('[terminal] forcing layout recalculation after open');
-            
-            // Get the actual available height and calculate rows
-            const containerHeight = terminalDiv.offsetHeight;
-            const containerWidth = terminalDiv.offsetWidth;
-            
-            // Xterm character dimensions at fontSize 12, lineHeight 1.1
-            // More precise measurement: ~13.2px per row, ~7.2px per column
-            const rowHeight = 13.2;
-            const colWidth = 7.2;
-            
-            const estimatedRows = Math.floor(containerHeight / rowHeight);
-            const estimatedCols = Math.floor(containerWidth / colWidth);
-            
-            debugLog('[terminal] container dimensions:', containerWidth, 'x', containerHeight, 
-                          'calculated rows/cols:', estimatedRows, 'x', estimatedCols);
-            
-            // Resize terminal to use all available space in the container
-            // This makes the visible buffer much larger, enabling scrollback
-              if (estimatedRows > 0 && estimatedCols > 0) {
-              debugLog('[terminal] resizing from', term.cols, 'x', term.rows, 'to', estimatedCols, 'x', estimatedRows);
-              term.resize(estimatedCols, estimatedRows);
-              // Send updated size to PTY so it matches
-              safeApi.send('terminal:resize', { cols: estimatedCols, rows: estimatedRows });
-            }
-          } catch (e) {
-            console.error('[terminal] error forcing layout:', e);
-          }
-        }, 50);
-        
-        // Log final size
-        setTimeout(() => {
-          debugLog('[terminal] after layout: cols=', term.cols, 'rows=', term.rows, 'buffer capacity:', term.buffer.active.length);
-        }, 100);
-        
-        // Initial resize: send the computed terminal dimensions to the PTY
-        // This ensures the PTY is set to match xterm's initial size
-        try {
-          const { cols, rows } = term;
-          if (cols && rows) {
-            debugLog('[terminal] sending initial resize:', cols, 'x', rows);
-            safeApi.send('terminal:resize', { cols, rows });
-          }
-        } catch (e) {
-          console.error('Error sending initial resize:', e);
-        }
-        
-        // Handle data from terminal
-        term.onData((data) => {
-          safeApi.send('terminal:data', data);
-        });
-        
-        // Handle terminal resize
-        term.onResize(({ cols, rows }) => {
-          debugLog('Terminal resized:', cols, 'x', rows);
-          safeApi.send('terminal:resize', { cols, rows });
-        });
-        
-        // Listen for data from PTY backend and keep the viewport aligned
-        // with the latest output without injecting artificial blank lines.
-        safeApi.on('terminal:output', (data) => {
-          if (!term) {
-            return;
-          }
-
-          try {
-            term.write(data);
-            term.scrollToBottom();
-          } catch (err) {
-            debugLog('[terminal] output handler error:', err);
-          }
-        });
-        
-        // Focus terminal
+      // Focus terminal when opened
+      if (isToggled && term) {
         term.focus();
-  debugLog('[terminal] initialized, terminal size:', term.cols, 'x', term.rows);
+        scheduleTerminalViewportResize({ term, terminalEl: document.getElementById('nta-terminal') });
       }
     } catch (error) {
-      console.error('Terminal setup error:', error);
+      console.error('Terminal toggle error:', error);
     }
   });
 }
@@ -28691,6 +29068,7 @@ try {
       panes,
       editorInstances,
       initializeExportHandlers: typeof initializeExportHandlers === 'function' ? initializeExportHandlers : null,
+      resizeTerminalViewport: typeof resizeTerminalViewport === 'function' ? resizeTerminalViewport : null,
     };
   }
 } catch (e) { /* ignore */ }

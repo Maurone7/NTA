@@ -8,7 +8,6 @@ Jane Doe and Robert Brown.
 \bibitem{smith2020}
 John Smith and Alice Johnson.
 \newblock Advances in finite element analysis.
-\newblock {\em International Journal of Computational Methods}, 17:123--145,
-  2020.
+\newblock {\em International Journal of Computational Methods}, 17:123--145, 2020.
 
 \end{thebibliography}

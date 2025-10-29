@@ -304,10 +304,12 @@ This is a test document compiled with LaTeX.
                                pdfContent.includes('xetex');
       assert(hasLatexProducer, 'PDF producer should indicate LaTeX/TeX engine');
 
-      // Check 4: PDF structure - LaTeX PDFs have proper xref and trailer
-      assert(pdfContent.includes('xref'), 'PDF should have xref section');
-      assert(pdfContent.includes('trailer'), 'PDF should have trailer');
-      assert(pdfContent.includes('/Size'), 'PDF trailer should have /Size');
+      // Check 4: PDF structure - LaTeX PDFs have proper xref and trailer/startxref
+      const hasXref = pdfContent.includes('xref') || pdfContent.includes('/Type /XRef');
+      const hasTrailer = pdfContent.includes('trailer') || pdfContent.includes('startxref');
+      assert(hasXref, 'PDF should have xref section or cross-reference stream');
+      assert(hasTrailer, 'PDF should have trailer or startxref');
+      assert(pdfContent.includes('/Size') || pdfContent.includes('/Type /XRef'), 'PDF should have Size in trailer or cross-reference stream');
 
       // Check 5: PDF should contain the document content
       // Look for encoded text from our LaTeX document

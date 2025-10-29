@@ -1,4 +1,4 @@
-const { JSDOM } = require('jsdom');
+const { JSDOM, VirtualConsole } = require('jsdom');
 const assert = require('assert');
 
 describe('Workspace context menu', () => {
@@ -16,6 +16,7 @@ describe('Workspace context menu', () => {
   _origGlobals.HTMLElement = global.HTMLElement;
   _origGlobals.localStorage = global.localStorage;
     // create a minimal DOM matching index.html pieces we need
+    const vConsole = new VirtualConsole();
     const dom = new JSDOM(`<!doctype html><html><body>
       <div id="workspace-tree"></div>
       <div id="workspace-context-menu" class="context-menu" role="menu" hidden>
@@ -27,7 +28,7 @@ describe('Workspace context menu', () => {
         <button type="button" data-action="reveal">Show in Finder</button>
         <button type="button" data-action="delete" class="danger">Delete</button>
       </div>
-    </body></html>`, { runScripts: 'dangerously', resources: 'usable' });
+    </body></html>`, { runScripts: 'dangerously', resources: 'usable', virtualConsole: vConsole });
 
     window = dom.window;
     document = window.document;

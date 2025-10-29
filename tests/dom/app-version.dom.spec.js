@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { JSDOM } = require('jsdom');
+const { JSDOM, VirtualConsole } = require('jsdom');
 const fs = require('fs');
 const path = require('path');
 
@@ -15,7 +15,8 @@ describe('Settings App Version (dom)', function() {
 
   it('prefers preload API getVersion when available', function(done) {
     const html = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer', 'index.html'), 'utf8');
-    const dom = new JSDOM(html, { url: 'http://localhost' });
+    const vConsole = new VirtualConsole();
+    const dom = new JSDOM(html, { url: 'http://localhost', virtualConsole: vConsole });
     // Expose minimal globals expected by the renderer before requiring it
     global.window = dom.window;
     global.document = dom.window.document;
@@ -63,7 +64,8 @@ describe('Settings App Version (dom)', function() {
 
   it('falls back to process.env.npm_package_version when preload missing', function(done) {
     const html = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer', 'index.html'), 'utf8');
-    const dom = new JSDOM(html, { url: 'http://localhost' });
+    const vConsole = new VirtualConsole();
+    const dom = new JSDOM(html, { url: 'http://localhost', virtualConsole: vConsole });
     global.window = dom.window;
     global.document = dom.window.document;
   global.window.matchMedia = function() { return { matches: false, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {} }; };
@@ -102,7 +104,8 @@ describe('Settings App Version (dom)', function() {
 
   it('falls back to fetching package.json when other sources missing', function(done) {
     const html = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer', 'index.html'), 'utf8');
-    const dom = new JSDOM(html, { url: 'http://localhost' });
+    const vConsole = new VirtualConsole();
+    const dom = new JSDOM(html, { url: 'http://localhost', virtualConsole: vConsole });
     global.window = dom.window;
     global.document = dom.window.document;
   global.window.matchMedia = function() { return { matches: false, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {} }; };

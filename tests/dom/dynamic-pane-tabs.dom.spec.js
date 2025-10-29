@@ -28,7 +28,7 @@ describe('DOM: dynamic pane tabs', function() {
       </div>
     </body></html>`;
 
-    const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'http://localhost' });
+    const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'http://localhost', console: true });
     const window = dom.window;
     const document = window.document;
 
@@ -99,9 +99,9 @@ describe('DOM: dynamic pane tabs', function() {
       const tabContainer = document.getElementById(`tab-bar-tabs-${paneId}`);
       assert(tabContainer, 'Dynamic pane should have a tab-bar__tabs container');
 
-      // Check that new tab button exists
+      // Check that new tab button does NOT exist (removed in UI simplification)
       const newTabButton = document.getElementById(`new-tab-button-${paneId}`);
-      assert(newTabButton, 'Dynamic pane should have a new-tab-button');
+      assert(!newTabButton, 'Dynamic pane should NOT have a new-tab-button (removed in UI simplification)');
 
       // Test that renderTabsForPane works (should not throw)
       const renderTabsForPane = hooks.renderTabsForPane;
@@ -127,7 +127,7 @@ describe('DOM: dynamic pane tabs', function() {
     }
   });
 
-  it('new tab button in dynamic pane has click handler', function(done) {
+  it('dynamic panes do not have new tab buttons (UI simplification)', function(done) {
     // Stub console methods to avoid noise BEFORE creating JSDOM
     global.console = {
       debug: () => {},
@@ -143,7 +143,6 @@ describe('DOM: dynamic pane tabs', function() {
           <section class="editor-pane editor-pane--left" data-pane-id="left">
             <div class="pane-tab-bar">
               <div class="tab-bar__tabs" id="tab-bar-tabs-left" role="tablist"></div>
-              <button id="new-tab-button-left" class="tab-bar__new-tab" title="New Tab">+</button>
             </div>
             <textarea id="note-editor"></textarea>
           </section>
@@ -152,7 +151,7 @@ describe('DOM: dynamic pane tabs', function() {
       </div>
     </body></html>`;
 
-    const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'http://localhost' });
+    const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'http://localhost', console: true });
     const window = dom.window;
     const document = window.document;
 
@@ -211,16 +210,9 @@ describe('DOM: dynamic pane tabs', function() {
       const paneId = createEditorPane(null, 'Test Pane');
       assert(paneId, 'createEditorPane should return a pane ID');
 
-      // Get the new tab button
+      // Verify that NO new tab button exists (UI simplification)
       const newTabButton = document.getElementById(`new-tab-button-${paneId}`);
-      assert(newTabButton, 'New tab button should exist');
-
-      // Check that the button has a click event listener
-      // In a real test environment, we'd check for event listeners, but for now
-      // just verify the button exists and is properly configured
-      assert(newTabButton.tagName === 'BUTTON', 'New tab button should be a button element');
-      assert(newTabButton.textContent === '+', 'New tab button should have + text');
-      assert(newTabButton.classList.contains('tab-bar__new-tab'), 'New tab button should have correct class');
+      assert(!newTabButton, 'Dynamic pane should NOT have a new-tab-button (removed in UI simplification)');
 
       done();
     } catch (e) {

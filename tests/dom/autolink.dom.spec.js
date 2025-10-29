@@ -1,11 +1,12 @@
 const assert = require('assert');
-const { JSDOM } = require('jsdom');
+const { JSDOM, VirtualConsole } = require('jsdom');
 
 describe('DOM: autolinkPlainUrlsInTextarea', function() {
   let window, document;
 
   beforeEach(function() {
-    const dom = new JSDOM(`<!doctype html><html><body><textarea id="ta"></textarea></body></html>`, { runScripts: 'outside-only' });
+    const vConsole = new VirtualConsole();
+    const dom = new JSDOM(`<!doctype html><html><body><textarea id="ta"></textarea></body></html>`, { runScripts: 'outside-only', virtualConsole: vConsole });
     window = dom.window;
     document = window.document;
     global.window = window;

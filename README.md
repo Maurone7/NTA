@@ -231,11 +231,9 @@ Embeds the actual content of another note inline, but hide it's from another fil
 - **Resize the sidebar**: drag the thin handle between the sidebar and main content to adjust the workspace width (your preference is automatically saved).
 - **Resize the panes** by dragging the vertical divider (or focus it and use the arrow keys for keyboard control).
 - **Collect related ideas** by dropping `#hashtags` anywhere in your Markdown; the sidebar’s Hashtags panel groups them so you can focus on every matching note at once (use Clear to reset the filter).
-- **Auto-save** happens on every keystroke, so there's no Save button.
 
 # TO-DOs
 Implement function that allows user to change color of certain characters/patterns
-Make "x" to close window more neat
 Allow insertion of 3d models (stl)
 Add &subfigure
-Add the & commands to latex
+The cycles to close all the tabs and reopen them by clicking on a file only happens once. After that nothing happens, make sure that it is fixed

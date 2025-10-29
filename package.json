@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "CI=true electronmon .",
-    "test": "CI=true mocha tests/unit tests/dom tests/smoke --reporter spec",
+    "test": "CI=true mocha tests/unit tests/dom tests/integration tests/smoke --reporter spec",
     "test:smoke": "CI=true node scripts/smoke-test.js",
     "test:update": "CI=true mocha tests/unit/updateMechanism.spec.js --reporter spec",
     "test:e2e-pdf": "CI=true node tests/playwright/e2e-two-pdf-same-pane.js",

@@ -1057,6 +1057,54 @@ ipcMain.handle('app:getVersion', async () => {
   }
 });
 
+ipcMain.handle('app:reload', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    win.reload();
+  }
+  return { success: true };
+});
+
+// Check if specific LaTeX packages are installed in the system
+ipcMain.handle('app:checkInstalledLatexPackages', async (_event, _data) => {
+  try {
+    const { spawn } = require('child_process');
+
+    // Use tlmgr to get the list of all installed packages
+    // tlmgr list --only-installed will show all installed packages
+    const checkInstalledPackages = () => new Promise((resolve) => {
+      const p = spawn('tlmgr', ['list', '--only-installed'], { shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      let stdout = '';
+      let stderr = '';
+      p.stdout && p.stdout.on('data', (d) => { stdout += String(d); });
+      p.stderr && p.stderr.on('data', (d) => { stderr += String(d); });
+      p.on('close', () => {
+        // Parse output: each line is like "i package-name: description"
+        const packages = [];
+        const lines = (stdout + stderr).split('\n');
+        for (const line of lines) {
+          // Match: "i" followed by spaces, then capture the package name (before the colon)
+          const match = line.match(/^i\s+(\S+):/);
+          if (match && match[1]) {
+            packages.push({
+              name: match[1].toLowerCase(),
+              isInstalled: true
+            });
+          }
+        }
+        console.log(`[tlmgr] Parsed ${packages.length} installed packages`);
+        resolve(packages);
+      });
+    });
+
+    const packages = await checkInstalledPackages();
+    return { success: true, packages };
+  } catch (e) {
+    console.error('[tlmgr] Error checking installed LaTeX packages:', e);
+    return { success: false, packages: [], error: String(e) };
+  }
+});
+
 // Handle terminal command execution with persistent shell
 // Terminal PTY IPC handlers
 ipcMain.handle('terminal:init', (event, payload) => {
@@ -1096,6 +1144,46 @@ ipcMain.on('terminal:toggleRequest', (_event) => {
   const win = BrowserWindow.fromWebContents(_event.sender);
   if (win) {
     win.webContents.send('terminal:toggle');
+  }
+});
+
+// Handle LaTeX installation command - send to terminal
+ipcMain.on('latex:send-install-command', (event, { command, distribution }) => {
+  const windowId = event.sender.id;
+  let ptyProcess = ptyProcesses.get(windowId);
+  
+  console.log(`[LaTeX IPC] Received install command for ${distribution}: ${command}`);
+  console.log(`[LaTeX IPC] PTY available: ${!!ptyProcess}, killed: ${ptyProcess ? ptyProcess.killed : 'N/A'}`);
+  
+  // If PTY doesn't exist or is killed, try to initialize it
+  if (!ptyProcess || ptyProcess.killed) {
+    console.log(`[LaTeX IPC] PTY not ready, attempting to initialize...`);
+    const browserWindow = BrowserWindow.fromWebContents(event.sender);
+    if (browserWindow) {
+      ptyProcess = getPtyProcess(windowId, browserWindow, null);
+      console.log(`[LaTeX IPC] PTY initialized: ${!!ptyProcess}`);
+    }
+  }
+  
+  if (ptyProcess && !ptyProcess.killed) {
+    // Send the brew install command to the terminal
+    console.log(`[LaTeX IPC] Sending to PTY: ${command}`);
+    try {
+      ptyProcess.write(`${command}\n`);
+      console.log(`[LaTeX IPC] Command sent successfully`);
+    } catch (err) {
+      console.error(`[LaTeX IPC] Error writing to PTY: ${err.message}`);
+      event.sender.send('latex:installation-error', {
+        error: `Failed to send command to terminal: ${err.message}`,
+        distribution
+      });
+    }
+  } else {
+    console.error(`[LaTeX IPC] PTY not available for window ${windowId}`);
+    event.sender.send('latex:installation-error', {
+      error: 'Terminal initialization failed. Please try again.',
+      distribution
+    });
   }
 });
 

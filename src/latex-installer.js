@@ -152,12 +152,20 @@ async function showDistributionPicker(mainWindow) {
   
   const distributions = [
     {
+      name: 'TinyTeX',
+      size: '150 MB',
+      description: 'Ultra-lightweight LaTeX with auto-install packages',
+      installTime: '1-2 min',
+      command: 'curl -fsSL "https://yihui.org/gh/tinytex/tools/install-unx.sh" | sh && ~/.TinyTeX/bin/*/tlmgr path add',
+      recommended: true
+    },
+    {
       name: 'BasicTeX',
       size: '400 MB',
       description: 'Lightweight LaTeX with auto-install packages',
       installTime: '2-5 min',
       command: `${brewPath} install basictex`,
-      recommended: true
+      recommended: false
     },
     {
       name: 'MacTeX-No-GUI',
@@ -170,7 +178,8 @@ async function showDistributionPicker(mainWindow) {
   ];
 
   const buttons = [
-    'BasicTeX (Recommended) - 400 MB',
+    'TinyTeX (Lightest) - 150 MB',
+    'BasicTeX - 400 MB',
     'MacTeX-No-GUI (Full) - 2 GB',
     'Cancel'
   ];
@@ -178,11 +187,18 @@ async function showDistributionPicker(mainWindow) {
   const detail = 
     'Choose which LaTeX distribution to install:\n\n' +
     '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-    '📦 BasicTeX (Recommended)\n' +
-    '   • Size: 400 MB | Time: 2-5 minutes\n' +
-    '   • Has all essential LaTeX packages\n' +
+    '⚡ TinyTeX (Recommended - Lightest)\n' +
+    '   • Size: 150 MB | Time: 1-2 minutes\n' +
+    '   • Minimal LaTeX core with essential packages\n' +
     '   • Auto-installs additional packages as needed\n' +
-    '   • Perfect balance of size & capability\n\n' +
+    '   • Fastest installation, smallest footprint\n' +
+    '   • Perfect for quick note exports\n\n' +
+    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+    '📦 BasicTeX\n' +
+    '   • Size: 400 MB | Time: 2-5 minutes\n' +
+    '   • Has more essential LaTeX packages\n' +
+    '   • Auto-installs additional packages as needed\n' +
+    '   • Better for complex LaTeX documents\n\n' +
     '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
     '📚 MacTeX-No-GUI (Full)\n' +
     '   • Size: 2.0 GB | Time: 15-30 minutes\n' +
@@ -197,10 +213,10 @@ async function showDistributionPicker(mainWindow) {
     detail,
     buttons,
     defaultId: 0,
-    cancelId: 2
+    cancelId: 3
   });
 
-  if (result.response === 2) {
+  if (result.response === 3) {
     // Cancel
     return null;
   }
@@ -224,152 +240,57 @@ async function attemptAutoInstall(mainWindow) {
     return { installed: false, engine: null };
   }
 
-  const result = await dialog.showMessageBox(mainWindow, {
-    type: 'warning',
-    title: 'Install LaTeX',
-    message: `This will install ${selected.name} (~${selected.size})`,
-    detail: `Installation time: ${selected.installTime}\n\n` +
-            'This may take several minutes depending on your internet speed. ' +
-            'The app will continue to work while installing.',
-    buttons: ['Install in Background', 'Cancel'],
-    defaultId: 0,
-    cancelId: 1
-  });
-
-  if (result.response === 0) {
-    // Run installation in background
-    runInstallationInBackground(selected.command, mainWindow, selected.name);
-    return { 
-      installed: false, 
-      engine: null, 
-      installing: true,
-      distribution: selected.name,
-      message: `Installing ${selected.name}... Please wait.`
-    };
-  }
-
-  return { installed: false, engine: null };
+  // Skip warning dialog and install directly
+  runInstallationInBackground(selected.command, mainWindow, selected.name);
+  return { 
+    installed: false, 
+    engine: null, 
+    installing: true,
+    distribution: selected.name,
+    message: `Installing ${selected.name}... Please wait.`
+  };
 }
 
 /**
- * Run installation in background (non-blocking)
- * Opens a Terminal window for the installation
+ * Run installation in background using the app's built-in terminal
  */
 function runInstallationInBackground(command, mainWindow, distribution) {
-  const { spawn, execSync } = require('child_process');
-  const fs = require('fs');
-  const os = require('os');
-  
-  // Build environment with brew paths added
-  const brewPath = findBrewPath();
-  const brewDir = brewPath.substring(0, brewPath.lastIndexOf('/'));
-  const env = Object.assign({}, process.env, {
-    PATH: `${brewDir}:${process.env.PATH || ''}`
-  });
+  const { ipcMain } = require('electron');
   
   console.log(`[LaTeX] ========== INSTALLATION START ==========`);
   console.log(`[LaTeX] Distribution: ${distribution}`);
   console.log(`[LaTeX] Command: ${command}`);
-  console.log(`[LaTeX] Brew path: ${brewPath}`);
-  console.log(`[LaTeX] Brew directory: ${brewDir}`);
-  console.log(`[LaTeX] NEW PATH: ${brewDir}:${(process.env.PATH || '').split(':').slice(0, 2).join(':')}`);
-  console.log(`[LaTeX] Opening Terminal window for installation...`);
+  console.log(`[LaTeX] Running installation in app terminal...`);
   console.log(`[LaTeX] ==========================================`);
   
-  // Create a temporary script file that will be executed in Terminal
-  const tmpDir = os.tmpdir();
-  const scriptPath = `${tmpDir}/latex-install-${Date.now()}.sh`;
-  
-  // Build the script that will run in Terminal
-  const script = `#!/bin/bash
-# LaTeX Installation Script
-export PATH="${brewDir}:${process.env.PATH || ''}"
-
-echo "=========================================="
-echo "LaTeX Installation - ${distribution}"
-echo "=========================================="
-echo ""
-echo "Command: ${command}"
-echo ""
-echo "This window will close automatically when installation completes."
-echo ""
-
-# Run the installation command
-${command}
-
-INSTALL_CODE=$?
-
-echo ""
-echo "=========================================="
-echo "Installation complete with exit code: $INSTALL_CODE"
-echo "=========================================="
-echo ""
-
-if [ $INSTALL_CODE -eq 0 ]; then
-  echo "✓ Installation successful!"
-  echo "Please restart the Note Taking App to use LaTeX export."
-else
-  echo "✗ Installation may have failed (exit code: $INSTALL_CODE)"
-  echo "Please restart the Note Taking App to verify."
-fi
-
-echo ""
-echo "This window will close in 3 seconds..."
-sleep 3
-`;
-  
   try {
-    // Write the script
-    fs.writeFileSync(scriptPath, script, { mode: 0o755 });
-    console.log(`[LaTeX] Created installation script: ${scriptPath}`);
-    
-    // Open the script in Terminal using AppleScript
-    // This is the most reliable way to run with proper I/O and sudo support
-    const appleScript = `
-tell application "Terminal"
-  activate
-  do script "${scriptPath}"
-end tell
-`;
-    
-    console.log(`[LaTeX] Opening Terminal window...`);
-    
-    // Execute the AppleScript
-    execSync(`osascript -e '${appleScript}'`, {
-      env: process.env,
-      stdio: 'pipe'
-    });
-    
-    console.log(`[LaTeX] Terminal window opened`);
-    
     // Send progress update to renderer
     try {
       mainWindow.webContents.send('latex:installation-progress', {
-        progress: 5,
-        message: `Opening Terminal for ${distribution} installation...`,
+        progress: 10,
+  message: `Installing ${distribution}... Running the installation command automatically in the built-in terminal.`,
         elapsed: 0
       });
     } catch (e) {
       // Window might have closed
     }
     
-    // Clean up the script file after a delay (give Terminal time to read it)
-    setTimeout(() => {
-      try {
-        if (fs.existsSync(scriptPath)) {
-          fs.unlinkSync(scriptPath);
-          console.log(`[LaTeX] Cleaned up installation script`);
-        }
-      } catch (e) {
-        // File might already be deleted
-      }
-    }, 5000);
+    // Tell renderer to show terminal and send installation command
+    try {
+      mainWindow.webContents.send('latex:show-terminal-for-install', {
+        command: command,
+        distribution: distribution,
+        message: `Installing ${distribution}...\n\nExecuting: ${command}\n\nThis will take a few minutes. Press Enter to start.`
+      });
+    } catch (e) {
+      console.error(`[LaTeX] Error sending terminal command: ${e.message}`);
+    }
     
     // Monitor for completion by checking if LaTeX is installed
     monitorInstallationCompletion(mainWindow, distribution);
     
   } catch (err) {
-    console.error(`[LaTeX] Error setting up installation: ${err.message}`);
+    console.error(`[LaTeX] Error starting installation: ${err.message}`);
     try {
       mainWindow.webContents.send('latex:installation-error', {
         error: `Failed to start installation: ${err.message}`,
@@ -386,21 +307,56 @@ end tell
  */
 function monitorInstallationCompletion(mainWindow, distribution) {
   let checkCount = 0;
-  const maxChecks = 180; // Check for up to 30 minutes (180 * 10 seconds)
+  
+  // Set max checks based on distribution
+  let maxChecks;
+  let estimatedTotal;
+  
+  if (distribution === 'TinyTeX') {
+    maxChecks = 120; // Check for up to 20 minutes (120 * 10 seconds) - should complete in ~60s
+    estimatedTotal = 60;
+  } else if (distribution === 'BasicTeX') {
+    maxChecks = 180; // Check for up to 30 minutes - should complete in ~180-300s
+    estimatedTotal = 300;
+  } else {
+    maxChecks = 360; // Check for up to 60 minutes for MacTeX-No-GUI - should complete in ~1320s
+    estimatedTotal = 1800;
+  }
+  
+  console.log(`[LaTeX] Starting completion monitor: ${distribution}, timeout=${maxChecks * 10}s, estimated=${estimatedTotal}s`);
   
   const checkInterval = setInterval(() => {
     checkCount++;
     
-    // Check if LaTeX is now installed
+    // Check if LaTeX is now installed (try multiple commands)
+    let isInstalled = false;
+    let checkedCmd = '';
+    
     try {
+      checkedCmd = 'xelatex --version';
       require('child_process').execSync('xelatex --version 2>&1', { 
         stdio: 'pipe',
         timeout: 5000
       });
-      
-      // If we get here, LaTeX is installed!
+      isInstalled = true;
+    } catch (e) {
+      // Try pdflatex as fallback
+      try {
+        checkedCmd = 'pdflatex --version';
+        require('child_process').execSync('pdflatex --version 2>&1', { 
+          stdio: 'pipe',
+          timeout: 5000
+        });
+        isInstalled = true;
+      } catch (e2) {
+        // Still not installed
+      }
+    }
+    
+    if (isInstalled) {
+      // LaTeX is now installed!
       clearInterval(checkInterval);
-      console.log(`[LaTeX] Installation completed successfully!`);
+      console.log(`[LaTeX] ✓ Installation completed! Detected ${checkedCmd}`);
       
       try {
         mainWindow.webContents.send('latex:installation-complete', {
@@ -414,13 +370,14 @@ function monitorInstallationCompletion(mainWindow, distribution) {
         // Window might have closed
       }
       
-    } catch (e) {
+    } else {
       // LaTeX not installed yet, keep checking
       
       // Send progress updates
       const elapsed = checkCount * 10;
-      const estimatedTotal = distribution === 'BasicTeX' ? 180 : 1320; // seconds
-      const progress = Math.min(90, Math.round((elapsed / estimatedTotal) * 90));
+      const progress = Math.min(99, Math.round((elapsed / estimatedTotal) * 95) + 1); // 1-99% progress
+      
+      console.log(`[LaTeX] Check ${checkCount}/${maxChecks}: not installed yet (${progress}% / ${Math.round(elapsed / 60)}m)`);
       
       try {
         mainWindow.webContents.send('latex:installation-progress', {
@@ -435,7 +392,7 @@ function monitorInstallationCompletion(mainWindow, distribution) {
       // Stop checking after max time
       if (checkCount >= maxChecks) {
         clearInterval(checkInterval);
-        console.log(`[LaTeX] Installation check timed out after 30 minutes`);
+        console.log(`[LaTeX] Installation check timed out after ${Math.round(maxChecks * 10 / 60)}m`);
         
         try {
           mainWindow.webContents.send('latex:installation-complete', {
@@ -443,7 +400,7 @@ function monitorInstallationCompletion(mainWindow, distribution) {
             code: 0,
             distribution,
             elapsed: checkCount * 10,
-            message: `Installation monitoring stopped. Please restart the app to verify LaTeX installation.`
+            message: `Installation monitoring stopped after ${Math.round(maxChecks * 10 / 60)}m. Please restart the app to verify LaTeX installation.`
           });
         } catch (err) {
           // Window might have closed

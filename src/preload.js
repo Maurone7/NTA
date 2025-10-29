@@ -44,6 +44,7 @@ const api = {
   
   // Update methods removed: updater removed from this build
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
+  reload: () => ipcRenderer.invoke('app:reload'),
   
   // LaTeX installation helper
   installLatex: () => ipcRenderer.invoke('app:installLatex'),
@@ -71,7 +72,7 @@ const api = {
   
   // General event listener (update-related channels removed)
   on: (channel, callback) => {
-    const validChannels = ['workspace:changed', 'workspace:fileDeleted', 'latex:installation-progress', 'latex:installation-complete', 'latex:installation-error', 'terminal:toggle', 'terminal:output'];
+    const validChannels = ['workspace:changed', 'workspace:fileDeleted', 'latex:installation-progress', 'latex:installation-complete', 'latex:installation-error', 'latex:show-terminal-for-install', 'terminal:toggle', 'terminal:output'];
     if (validChannels.includes(channel)) {
       ipcRenderer.on(channel, (_event, data) => callback(data));
     }
