@@ -800,7 +800,38 @@ ipcMain.handle('app:installLatexPackages', async (_event, data) => {
 
     // For TeX Live (tlmgr), we need elevated permissions on most systems
     if (manager === 'tlmgr') {
-      // Try to install without sudo first
+      // Helper to run tlmgr commands and capture output
+      const runTlmgr = (args) => new Promise((resolve) => {
+        const p = spawn('tlmgr', args, { shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
+        let stdout = '';
+        let stderr = '';
+        p.stdout && p.stdout.on('data', (d) => { stdout += String(d); });
+        p.stderr && p.stderr.on('data', (d) => { stderr += String(d); });
+        p.on('error', (err) => resolve({ code: 127, error: String(err), stdout, stderr }));
+        p.on('close', (code) => resolve({ code, stdout, stderr }));
+      });
+
+      // First check for version mismatch (TeX Live older than remote)
+      const versionResult = await runTlmgr(['update', '--self']);
+      const combinedOutput = (versionResult.stdout + versionResult.stderr).toLowerCase();
+      
+      if (combinedOutput.includes('cross release updates') || combinedOutput.includes('older than remote')) {
+        // Need to download and run update-tlmgr-latest.sh for major version upgrades
+        return {
+          success: false,
+          needsTlmgrUpdate: true,
+          error: `Your TeX Live is older than the remote repository. For cross-release updates, please run these commands:\n\ncd /tmp\ncurl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh\nchmod +x update-tlmgr-latest.sh\n/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add\n./update-tlmgr-latest.sh\n\nThis will update tlmgr to handle cross-release updates. After it completes, restart the app and try installing packages again.`,
+          updateCommands: [
+            'cd /tmp',
+            'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh',
+            'chmod +x update-tlmgr-latest.sh',
+            '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add',
+            './update-tlmgr-latest.sh'
+          ]
+        };
+      }
+
+      // Now try to install packages
       const installPackages = (args) => new Promise((resolve) => {
         const p = spawn('tlmgr', args, { shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
         let stdout = '';
@@ -819,6 +850,19 @@ ipcMain.handle('app:installLatexPackages', async (_event, data) => {
                 success: false, 
                 error: `Installation requires elevated privileges. Please run the following command in Terminal:\n\nsudo tlmgr install ${packages.join(' ')}\n\nThen restart the app.`,
                 needsSudo: true
+              });
+            } else if (errorMsg.includes('cross release updates') || errorMsg.includes('older than remote')) {
+              resolve({
+                success: false,
+                needsTlmgrUpdate: true,
+                error: `Your TeX Live is older than the remote repository. For cross-release updates, please run these commands:\n\ncd /tmp\ncurl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh\nchmod +x update-tlmgr-latest.sh\n/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add\n./update-tlmgr-latest.sh\n\nThis will update tlmgr to handle cross-release updates. After it completes, restart the app and try again.`,
+                updateCommands: [
+                  'cd /tmp',
+                  'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh',
+                  'chmod +x update-tlmgr-latest.sh',
+                  '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add',
+                  './update-tlmgr-latest.sh'
+                ]
               });
             } else {
               resolve({ success: false, error: errorMsg });

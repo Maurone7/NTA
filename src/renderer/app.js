@@ -23089,6 +23089,154 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
         setTimeout(() => {
           elements.latexPackagesWarningBanner.hidden = true;
         }, 2000);
+      } else if (result.needsTlmgrUpdate) {
+        // Handle TeX Live version mismatch - open terminal and run update commands
+        setStatus('Opening terminal to update TeX Live...', true);
+        
+        try {
+          const container = document.getElementById('nta-terminal-container');
+          const terminalDiv = document.getElementById('nta-terminal');
+          
+          if (container && terminalDiv) {
+            // Check if terminal is hidden
+            const isHidden = container.style.display === 'none' || container.hidden;
+            
+            console.log('[LaTeX Update] Terminal visible:', !isHidden);
+            
+            if (isHidden) {
+              // Show terminal container
+              console.log('[LaTeX Update] Showing terminal container...');
+              container.style.display = 'flex';
+              container.hidden = false;
+              state.terminalVisible = true;
+              
+              try {
+                document.documentElement.classList.add('terminal-visible');
+              } catch (e) {}
+              
+              // Trigger terminal initialization
+              console.log('[LaTeX Update] Triggering terminal initialization...');
+              
+              try {
+                safeApi.send('terminal:toggleRequest');
+              } catch (e) {
+                console.error('[LaTeX Update] Error sending toggle request:', e);
+              }
+              
+              // Wait for terminal to be ready
+              const waitForTerminalReady = () => new Promise((resolve) => {
+                let attempts = 0;
+                const maxAttempts = 50; // ~5 seconds max
+                
+                const checkReady = () => {
+                  if (state.terminalInstance && state.terminalInstance.cols && state.terminalInstance.rows) {
+                    console.log('[LaTeX Update] Terminal ready! Cols:', state.terminalInstance.cols, 'Rows:', state.terminalInstance.rows);
+                    resolve(true);
+                  } else if (attempts < maxAttempts) {
+                    attempts++;
+                    setTimeout(checkReady, 100);
+                  } else {
+                    console.warn('[LaTeX Update] Terminal not ready after timeout, trying anyway');
+                    resolve(false);
+                  }
+                };
+                
+                checkReady();
+              });
+              
+              // Wait for terminal, then send update commands
+              try {
+                await waitForTerminalReady();
+                console.log('[LaTeX Update] Sending update commands to terminal');
+                
+                // Small additional delay to ensure PTY is fully connected
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
+                // Get the update commands from result
+                const updateCommands = result.updateCommands || ['cd /tmp', 'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh', 'chmod +x update-tlmgr-latest.sh', '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add', './update-tlmgr-latest.sh'];
+                
+                // Send each command sequentially with delays
+                for (let i = 0; i < updateCommands.length; i++) {
+                  const command = updateCommands[i];
+                  safeApi.send('terminal:data', command + '\r\n');
+                  console.log('[LaTeX Update] Sent:', command);
+                  
+                  // Wait between commands (except for the last one)
+                  if (i < updateCommands.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                  }
+                }
+                
+                setStatus('TeX Live is updating. This may take a few minutes. When complete, close this and try installing packages again.', true);
+              } catch (e) {
+                console.error('[LaTeX Update] Error in terminal ready flow:', e);
+                // Try sending anyway
+                const updateCommands = result.updateCommands || ['cd /tmp', 'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh', 'chmod +x update-tlmgr-latest.sh', '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add', './update-tlmgr-latest.sh'];
+                for (let i = 0; i < updateCommands.length; i++) {
+                  const command = updateCommands[i];
+                  safeApi.send('terminal:data', command + '\r\n');
+                  
+                  // Wait between commands (except for the last one)
+                  if (i < updateCommands.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                  }
+                }
+              }
+            } else {
+              // Terminal already visible, just send commands
+              console.log('[LaTeX Update] Terminal already visible, sending commands');
+              
+              const updateCommands = result.updateCommands || ['cd /tmp', 'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh', 'chmod +x update-tlmgr-latest.sh', '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add', './update-tlmgr-latest.sh'];
+              
+              if (state.terminalInstance && state.terminalInstance.cols) {
+                // Send each command sequentially with delays
+                for (let i = 0; i < updateCommands.length; i++) {
+                  const command = updateCommands[i];
+                  safeApi.send('terminal:data', command + '\r\n');
+                  console.log('[LaTeX Update] Sent:', command);
+                  
+                  // Wait between commands (except for the last one)
+                  if (i < updateCommands.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                  }
+                }
+                
+                setStatus('TeX Live is updating. This may take a few minutes. When complete, close this and try installing packages again.', true);
+              } else {
+                // Terminal visible but not ready, wait a bit
+                setTimeout(() => {
+                  const updateCommands = result.updateCommands || ['cd /tmp', 'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh', 'chmod +x update-tlmgr-latest.sh', '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add', './update-tlmgr-latest.sh'];
+                  for (let i = 0; i < updateCommands.length; i++) {
+                    const command = updateCommands[i];
+                    safeApi.send('terminal:data', command + '\r\n');
+                    
+                    // Wait between commands (except for the last one)
+                    if (i < updateCommands.length - 1) {
+                      setTimeout(() => {}, 2000);
+                    }
+                  }
+                  setStatus('TeX Live is updating. This may take a few minutes. When complete, close this and try installing packages again.', true);
+                }, 500);
+              }
+            }
+          } else {
+            console.error('[LaTeX Update] Terminal elements not found');
+            // Fallback to alert if terminal not available
+            const updateCommands = result.updateCommands || ['cd /tmp', 'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh', 'chmod +x update-tlmgr-latest.sh', '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add', './update-tlmgr-latest.sh'];
+            alert('Your TeX Live installation is outdated.\n\nPlease run these commands in Terminal:\n\n' + 
+              updateCommands.join('\n') + '\n\n' +
+              'This will download and run the update script. After it completes, restart the app and try installing packages again.\n\n' +
+              (result.error ? 'Details: ' + result.error : ''));
+          }
+        } catch (e) {
+          console.error('Error opening terminal for update:', e);
+          // Fallback to alert
+          const updateCommands = result.updateCommands || ['cd /tmp', 'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh', 'chmod +x update-tlmgr-latest.sh', '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add', './update-tlmgr-latest.sh'];
+          alert('Your TeX Live installation is outdated.\n\nPlease run these commands in Terminal:\n\n' + 
+            updateCommands.join('\n') + '\n\n' +
+            'This will download and run the update script. After it completes, restart the app and try installing packages again.\n\n' +
+            (result.error ? 'Details: ' + result.error : ''));
+        }
       } else if (result.needsSudo) {
         // Extract the command from the error message
         const errorText = result.error || '';
