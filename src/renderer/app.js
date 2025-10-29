@@ -23152,8 +23152,14 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
                 // Small additional delay to ensure PTY is fully connected
                 await new Promise(resolve => setTimeout(resolve, 200));
                 
-                // Get the update commands from result
-                const updateCommands = result.updateCommands || ['cd /tmp', 'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh', 'chmod +x update-tlmgr-latest.sh', '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add', './update-tlmgr-latest.sh'];
+                // Get the update commands from result (should include platform-specific tlmgr path)
+                const updateCommands = result.updateCommands || [
+                  'cd /tmp',
+                  'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh',
+                  'chmod +x update-tlmgr-latest.sh',
+                  'tlmgr path add',
+                  './update-tlmgr-latest.sh'
+                ];
                 
                 // Send each command sequentially with delays
                 for (let i = 0; i < updateCommands.length; i++) {
@@ -23171,7 +23177,13 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
               } catch (e) {
                 console.error('[LaTeX Update] Error in terminal ready flow:', e);
                 // Try sending anyway
-                const updateCommands = result.updateCommands || ['cd /tmp', 'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh', 'chmod +x update-tlmgr-latest.sh', '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add', './update-tlmgr-latest.sh'];
+                const updateCommands = result.updateCommands || [
+                  'cd /tmp',
+                  'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh',
+                  'chmod +x update-tlmgr-latest.sh',
+                  'tlmgr path add',
+                  './update-tlmgr-latest.sh'
+                ];
                 for (let i = 0; i < updateCommands.length; i++) {
                   const command = updateCommands[i];
                   safeApi.send('terminal:data', command + '\r\n');
@@ -23186,7 +23198,13 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
               // Terminal already visible, just send commands
               console.log('[LaTeX Update] Terminal already visible, sending commands');
               
-              const updateCommands = result.updateCommands || ['cd /tmp', 'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh', 'chmod +x update-tlmgr-latest.sh', '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add', './update-tlmgr-latest.sh'];
+              const updateCommands = result.updateCommands || [
+                'cd /tmp',
+                'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh',
+                'chmod +x update-tlmgr-latest.sh',
+                'tlmgr path add',
+                './update-tlmgr-latest.sh'
+              ];
               
               if (state.terminalInstance && state.terminalInstance.cols) {
                 // Send each command sequentially with delays
@@ -23205,7 +23223,13 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
               } else {
                 // Terminal visible but not ready, wait a bit
                 setTimeout(() => {
-                  const updateCommands = result.updateCommands || ['cd /tmp', 'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh', 'chmod +x update-tlmgr-latest.sh', '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add', './update-tlmgr-latest.sh'];
+                  const updateCommands = result.updateCommands || [
+                    'cd /tmp',
+                    'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh',
+                    'chmod +x update-tlmgr-latest.sh',
+                    'tlmgr path add',
+                    './update-tlmgr-latest.sh'
+                  ];
                   for (let i = 0; i < updateCommands.length; i++) {
                     const command = updateCommands[i];
                     safeApi.send('terminal:data', command + '\r\n');
@@ -23222,7 +23246,13 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
           } else {
             console.error('[LaTeX Update] Terminal elements not found');
             // Fallback to alert if terminal not available
-            const updateCommands = result.updateCommands || ['cd /tmp', 'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh', 'chmod +x update-tlmgr-latest.sh', '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add', './update-tlmgr-latest.sh'];
+            const updateCommands = result.updateCommands || [
+              'cd /tmp',
+              'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh',
+              'chmod +x update-tlmgr-latest.sh',
+              'tlmgr path add',
+              './update-tlmgr-latest.sh'
+            ];
             alert('Your TeX Live installation is outdated.\n\nPlease run these commands in Terminal:\n\n' + 
               updateCommands.join('\n') + '\n\n' +
               'This will download and run the update script. After it completes, restart the app and try installing packages again.\n\n' +
@@ -23231,7 +23261,13 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
         } catch (e) {
           console.error('Error opening terminal for update:', e);
           // Fallback to alert
-          const updateCommands = result.updateCommands || ['cd /tmp', 'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh', 'chmod +x update-tlmgr-latest.sh', '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add', './update-tlmgr-latest.sh'];
+          const updateCommands = result.updateCommands || [
+            'cd /tmp',
+            'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh',
+            'chmod +x update-tlmgr-latest.sh',
+            'tlmgr path add',
+            './update-tlmgr-latest.sh'
+          ];
           alert('Your TeX Live installation is outdated.\n\nPlease run these commands in Terminal:\n\n' + 
             updateCommands.join('\n') + '\n\n' +
             'This will download and run the update script. After it completes, restart the app and try installing packages again.\n\n' +

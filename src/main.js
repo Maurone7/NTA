@@ -811,21 +811,65 @@ ipcMain.handle('app:installLatexPackages', async (_event, data) => {
         p.on('close', (code) => resolve({ code, stdout, stderr }));
       });
 
+      // Helper to get TeX Live installation info and platform-specific tlmgr path
+      const getTexLiveInfo = () => new Promise((resolve) => {
+        const p = spawn('tlmgr', ['--version'], { shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
+        let stdout = '';
+        let stderr = '';
+        p.stdout && p.stdout.on('data', (d) => { stdout += String(d); });
+        p.stderr && p.stderr.on('data', (d) => { stderr += String(d); });
+        p.on('close', () => {
+          const output = (stdout + stderr);
+          // Parse version info: "TeX Live (https://tug.org/texlive) version 2023"
+          const versionMatch = output.match(/version (\d{4})/);
+          const version = versionMatch ? versionMatch[1] : '2023';
+          
+          // Parse installation path: "tlmgr using installation: /usr/local/texlive/2023"
+          const pathMatch = output.match(/installation: (.+)/);
+          const texLiveRoot = pathMatch ? pathMatch[1].trim() : `/usr/local/texlive/${version}`;
+          
+          // Determine platform architecture
+          let arch = 'x86_64-linux'; // default
+          const platform = process.platform;
+          const arch_info = os.arch();
+          
+          if (platform === 'darwin') {
+            // macOS - use universal-darwin for all Macs (Intel and Apple Silicon)
+            arch = 'universal-darwin';
+          } else if (platform === 'linux') {
+            // Linux
+            arch = arch_info === 'arm64' ? 'aarch64-linux' : 'x86_64-linux';
+          } else if (platform === 'win32') {
+            // Windows - doesn't use this path format
+            arch = 'windows';
+          }
+          
+          const tlmgrPath = path.join(texLiveRoot, 'bin', arch, 'tlmgr');
+          resolve({ version, texLiveRoot, arch, tlmgrPath });
+        });
+      });
+
+      const texLiveInfo = await getTexLiveInfo();
+      const { version: texLiveVersion, texLiveRoot, arch, tlmgrPath } = texLiveInfo;
+
       // First check for version mismatch (TeX Live older than remote)
       const versionResult = await runTlmgr(['update', '--self']);
       const combinedOutput = (versionResult.stdout + versionResult.stderr).toLowerCase();
       
       if (combinedOutput.includes('cross release updates') || combinedOutput.includes('older than remote')) {
         // Need to download and run update-tlmgr-latest.sh for major version upgrades
+        const pathAddCmd = arch === 'windows' ? 'echo PATH add not needed on Windows' : `${tlmgrPath} path add`;
         return {
           success: false,
           needsTlmgrUpdate: true,
-          error: `Your TeX Live is older than the remote repository. For cross-release updates, please run these commands:\n\ncd /tmp\ncurl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh\nchmod +x update-tlmgr-latest.sh\n/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add\n./update-tlmgr-latest.sh\n\nThis will update tlmgr to handle cross-release updates. After it completes, restart the app and try installing packages again.`,
-          updateCommands: [
+          error: `Your TeX Live is older than the remote repository. For cross-release updates, please run these commands:\n\ncd /tmp\ncurl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh\nchmod +x update-tlmgr-latest.sh\n${pathAddCmd}\n./update-tlmgr-latest.sh\n\nThis will update tlmgr to handle cross-release updates. After it completes, restart the app and try installing packages again.`,
+          updateCommands: arch === 'windows' ? [
+            'powershell -Command "cd $env:TEMP; (New-Object Net.WebClient).DownloadFile(\'https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.exe\', \'update-tlmgr-latest.exe\'); .\\update-tlmgr-latest.exe"'
+          ] : [
             'cd /tmp',
             'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh',
             'chmod +x update-tlmgr-latest.sh',
-            '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add',
+            pathAddCmd,
             './update-tlmgr-latest.sh'
           ]
         };
@@ -852,15 +896,19 @@ ipcMain.handle('app:installLatexPackages', async (_event, data) => {
                 needsSudo: true
               });
             } else if (errorMsg.includes('cross release updates') || errorMsg.includes('older than remote')) {
+              // Same as above - need to update tlmgr for cross-release updates
+              const pathAddCmd = arch === 'windows' ? 'echo PATH add not needed on Windows' : `${tlmgrPath} path add`;
               resolve({
                 success: false,
                 needsTlmgrUpdate: true,
-                error: `Your TeX Live is older than the remote repository. For cross-release updates, please run these commands:\n\ncd /tmp\ncurl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh\nchmod +x update-tlmgr-latest.sh\n/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add\n./update-tlmgr-latest.sh\n\nThis will update tlmgr to handle cross-release updates. After it completes, restart the app and try again.`,
-                updateCommands: [
+                error: `Your TeX Live is older than the remote repository. For cross-release updates, please run these commands:\n\ncd /tmp\ncurl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh\nchmod +x update-tlmgr-latest.sh\n${pathAddCmd}\n./update-tlmgr-latest.sh\n\nThis will update tlmgr to handle cross-release updates. After it completes, restart the app and try again.`,
+                updateCommands: arch === 'windows' ? [
+                  'powershell -Command "cd $env:TEMP; (New-Object Net.WebClient).DownloadFile(\'https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.exe\', \'update-tlmgr-latest.exe\'); .\\update-tlmgr-latest.exe"'
+                ] : [
                   'cd /tmp',
                   'curl -L https://mirror.ctan.org/systems/texlive/tlnet/update-tlmgr-latest.sh -o update-tlmgr-latest.sh',
                   'chmod +x update-tlmgr-latest.sh',
-                  '/usr/local/texlive/2025/bin/x86_64-linux/tlmgr path add',
+                  pathAddCmd,
                   './update-tlmgr-latest.sh'
                 ]
               });
