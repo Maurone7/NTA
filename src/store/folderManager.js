@@ -118,7 +118,7 @@ const toIsoString = (value) => (value instanceof Date ? value.toISOString() : ne
 const sortEntries = (entries) =>
   entries.sort((a, b) => {
     if (a.type === b.type) {
-      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase(), undefined, { numeric: true });
     }
     return a.type === 'directory' ? -1 : 1;
   });

@@ -1,0 +1,104 @@
+# Terminal Integration Test Page
+
+## Test the Terminal Command Functionality
+
+This page provides buttons to test the terminal integration.
+
+<div style="margin: 20px 0;">
+  <button onclick="testBasicEcho()" style="padding: 10px 20px; margin: 5px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+    Test Basic Echo
+  </button>
+
+  <button onclick="testPwd()" style="padding: 10px 20px; margin: 5px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">
+    Test pwd Command
+  </button>
+
+  <button onclick="testLs()" style="padding: 10px 20px; margin: 5px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">
+    Test ls Command
+  </button>
+
+  <button onclick="testSudo()" style="padding: 10px 20px; margin: 5px; background: #F44336; color: white; border: none; border-radius: 4px; cursor: pointer;">
+    Test Sudo (Will Fail)
+  </button>
+</div>
+
+## Test Results
+
+<div id="test-results" style="margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 4px; font-family: monospace; white-space: pre-wrap;">
+Test results will appear here...
+</div>
+
+## Instructions
+
+1. Click any test button above
+2. Watch the terminal at the bottom of the app
+3. Check the console (DevTools) for detailed logs
+4. Verify that commands appear and execute in the terminal
+
+## Expected Behavior
+
+- **Terminal opens** automatically if closed
+- **Command appears** in terminal after 1-2 seconds
+- **Command executes** and shows output
+- **Console shows** detailed logging
+
+<script>
+// Test functions that call the global testTerminalCommand function
+function testBasicEcho() {
+  const results = document.getElementById('test-results');
+  results.textContent = 'Running: echo "Hello from terminal test!"\n\nCheck the terminal at the bottom of the app...';
+
+  if (typeof window.testTerminalCommand === 'function') {
+    window.testTerminalCommand('echo "Hello from terminal test!"');
+    results.textContent += '\n\nCommand sent! Check console for details.';
+  } else {
+    results.textContent += '\n\nERROR: testTerminalCommand function not found. Check console for errors.';
+  }
+}
+
+function testPwd() {
+  const results = document.getElementById('test-results');
+  results.textContent = 'Running: pwd\n\nCheck the terminal at the bottom of the app...';
+
+  if (typeof window.testTerminalCommand === 'function') {
+    window.testTerminalCommand('pwd');
+    results.textContent += '\n\nCommand sent! Check console for details.';
+  } else {
+    results.textContent += '\n\nERROR: testTerminalCommand function not found. Check console for errors.';
+  }
+}
+
+function testLs() {
+  const results = document.getElementById('test-results');
+  results.textContent = 'Running: ls -la\n\nCheck the terminal at the bottom of the app...';
+
+  if (typeof window.testTerminalCommand === 'function') {
+    window.testTerminalCommand('ls -la');
+    results.textContent += '\n\nCommand sent! Check console for details.';
+  } else {
+    results.textContent += '\n\nERROR: testTerminalCommand function not found. Check console for errors.';
+  }
+}
+
+function testSudo() {
+  const results = document.getElementById('test-results');
+  results.textContent = 'Running: sudo echo "This will show permission prompt"\n\nCheck the terminal at the bottom of the app...';
+
+  if (typeof window.testTerminalCommand === 'function') {
+    window.testTerminalCommand('sudo echo "This will show permission prompt"');
+    results.textContent += '\n\nCommand sent! You may be prompted for password.';
+  } else {
+    results.textContent += '\n\nERROR: testTerminalCommand function not found. Check console for errors.';
+  }
+}
+
+// Check if test function is available
+document.addEventListener('DOMContentLoaded', function() {
+  const results = document.getElementById('test-results');
+  if (typeof window.testTerminalCommand === 'function') {
+    results.textContent = '✅ Terminal test function is available.\n\nClick a button above to test terminal integration.';
+  } else {
+    results.textContent = '❌ Terminal test function not found.\n\nCheck browser console for errors.\n\nMake sure the app has loaded completely.';
+  }
+});
+</script>

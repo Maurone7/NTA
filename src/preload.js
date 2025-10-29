@@ -47,6 +47,7 @@ const api = {
   
   // LaTeX installation helper
   installLatex: () => ipcRenderer.invoke('app:installLatex'),
+  checkLatexInstalled: () => ipcRenderer.invoke('app:checkLatexInstalled'),
   
   // Generic invoke for backward compatibility with existing renderer code
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),

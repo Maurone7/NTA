@@ -339,6 +339,49 @@
           </button>
 
           <section class="preview-pane" aria-label="Preview" tabindex="-1">
+            <!-- LaTeX rendering mode selector (shown only when LaTeX file is active) -->
+            <div id="latex-mode-selector" class="latex-mode-selector" hidden>
+              <label for="latex-render-mode" class="latex-mode-selector__label">Render as:</label>
+              <select id="latex-render-mode" class="latex-mode-selector__select" aria-label="LaTeX rendering mode">
+                <option value="auto">Auto (PDF if available)</option>
+                <option value="pdf">PDF (LaTeX compiled)</option>
+                <option value="html">HTML (KaTeX math)</option>
+              </select>
+            </div>
+            
+            <!-- LaTeX not installed warning banner -->
+            <div id="latex-warning-banner" class="latex-warning-banner" hidden aria-live="polite" role="alert">
+              <div class="latex-warning-banner__content">
+                <span class="latex-warning-banner__icon">⚠️</span>
+                <div class="latex-warning-banner__text">
+                  <strong>LaTeX is not installed</strong>
+                  <p>To use PDF rendering, you need to install LaTeX on your system.</p>
+                </div>
+                <button id="latex-install-button" class="latex-warning-banner__button" aria-label="Install LaTeX">
+                  Install LaTeX
+                </button>
+              </div>
+            </div>
+            
+            <!-- Missing LaTeX packages warning banner -->
+            <div id="latex-packages-warning-banner" class="latex-packages-warning-banner" hidden aria-live="polite" role="alert">
+              <div class="latex-packages-warning-banner__content">
+                <span class="latex-packages-warning-banner__icon">📦</span>
+                <div class="latex-packages-warning-banner__text">
+                  <strong>Some LaTeX packages may not be installed</strong>
+                  <p id="latex-packages-warning-list"></p>
+                </div>
+                <div class="latex-packages-warning-banner__buttons">
+                  <button id="latex-packages-install-button" class="latex-packages-warning-banner__button latex-packages-warning-banner__button--install" aria-label="Install missing packages">
+                    Install Missing
+                  </button>
+                  <button id="latex-packages-dismiss-button" class="latex-packages-warning-banner__button" aria-label="Dismiss warning">
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+            
             <div id="markdown-preview" class="preview-scroll"></div>
             <pre id="code-viewer" class="code-viewer"><code></code></pre>
             <figure id="image-viewer" class="image-viewer" aria-label="Image preview">

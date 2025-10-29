@@ -1,0 +1,14 @@
+\begin{thebibliography}{1}
+
+\bibitem{doe2018}
+Jane Doe and Robert Brown.
+\newblock Modern techniques in structural analysis.
+\newblock {\em Journal of Engineering Mechanics}, 144(8):04018076, 2018.
+
+\bibitem{smith2020}
+John Smith and Alice Johnson.
+\newblock Advances in finite element analysis.
+\newblock {\em International Journal of Computational Methods}, 17:123--145,
+  2020.
+
+\end{thebibliography}

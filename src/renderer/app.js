@@ -193,6 +193,14 @@ const elements = {
   editorRight: document.getElementById('note-editor-right') || document.createElement('textarea'),
   preview: document.getElementById('markdown-preview') || document.createElement('div'),
   pdfViewer: document.getElementById('pdf-viewer') || document.createElement('div'),
+  latexModeSelector: document.getElementById('latex-mode-selector') || document.createElement('div'),
+  latexRenderMode: document.getElementById('latex-render-mode') || document.createElement('select'),
+  latexWarningBanner: document.getElementById('latex-warning-banner') || document.createElement('div'),
+  latexInstallButton: document.getElementById('latex-install-button') || document.createElement('button'),
+  latexPackagesWarningBanner: document.getElementById('latex-packages-warning-banner') || document.createElement('div'),
+  latexPackagesWarningList: document.getElementById('latex-packages-warning-list') || document.createElement('p'),
+  latexPackagesInstallButton: document.getElementById('latex-packages-install-button') || document.createElement('button'),
+  latexPackagesDismissButton: document.getElementById('latex-packages-dismiss-button') || document.createElement('button'),
   codeViewer: document.getElementById('code-viewer') || document.createElement('div'),
   codeViewerCode: document.querySelector('#code-viewer code') || document.createElement('code'),
   imageViewer: document.getElementById('image-viewer') || document.createElement('div'),
@@ -377,7 +385,11 @@ const elements = {
   autocompleteDelayValue: document.getElementById('autocomplete-delay-value') || document.createElement('span'),
   resetAutocompleteDelayButton: document.getElementById('reset-autocomplete-delay') || document.createElement('button'),
   fileTreeSortSelect: document.getElementById('file-tree-sort-select') || document.createElement('select'),
-  mathRenderingQualitySelect: document.getElementById('math-rendering-quality-select') || document.createElement('select')
+  mathRenderingQualitySelect: document.getElementById('math-rendering-quality-select') || document.createElement('select'),
+  resetKeybindingsBtn: document.getElementById('reset-keybindings-btn') || document.createElement('button'),
+  keybindingKeysInput: document.getElementById('keybinding-keys-input') || document.createElement('input'),
+  keybindingActionSelect: document.getElementById('keybinding-action-select') || document.createElement('select'),
+  addKeybindingBtn: document.getElementById('add-keybinding-btn') || document.createElement('button')
 };
 
 // Ensure editor dividers exist and are normalized early. Some tests dispatch
@@ -542,6 +554,14 @@ function executeKeybindingAction(action, event) {
     case 'export-html':
       event.preventDefault();
       elements.exportHtmlOption?.click();
+      break;
+    case 'export-docx':
+      event.preventDefault();
+      elements.exportDocxOption?.click();
+      break;
+    case 'export-epub':
+      event.preventDefault();
+      elements.exportEpubOption?.click();
       break;
     case 'settings':
       event.preventDefault();
@@ -1200,7 +1220,13 @@ const state = {
     messages: [],
     overlay: null
   },
-  lastRenderableNoteId: null
+  lastRenderableNoteId: null,
+  latexRenderMode: 'auto', // 'auto' (PDF if available), 'pdf', or 'html'
+  latexInstalled: null, // null = unchecked, true/false = checked
+  latexWarningShown: false, // Track if we've already shown the warning for this file
+  latexPackagesWarningShown: null, // null = unchecked, or the note ID it was shown for
+  latexPackagesToShow: [], // Packages to display in warning
+  missingPackagesByFile: {} // Track missing packages by file ID for installation
 };
 
 // Tree module will be initialized later after extension variables are declared
@@ -7460,8 +7486,14 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
                     paneNote.content = txt;
                     state.notes.set(paneNote.id, paneNote);
                     if (inst.el) inst.el.value = txt;
-                    // Trigger preview render
-                    try { if (paneNote.type === 'latex') renderLatexPreview(paneNote.content ?? '', paneNote.id); else renderMarkdownPreview(paneNote); } catch (e) {}
+                    // Trigger preview render, deferring LaTeX rendering until editor is ready
+                    if (paneNote.type === 'latex') {
+                      requestAnimationFrame(() => {
+                        try { renderLatexPreview(paneNote.content ?? '', paneNote.id); } catch (e) {}
+                      });
+                    } else {
+                      try { renderMarkdownPreview(paneNote); } catch (e) {}
+                    }
                   }
                 } catch (e) { /* ignore fetch errors */ }
               }
@@ -7469,7 +7501,17 @@ const openNoteInPane = (noteId, pane = 'left', options = { activate: true }) => 
           })();
         } else {
           // Trigger preview render for existing content
-          try { if (paneNote.type === 'latex') renderLatexPreview(paneNote.content ?? '', paneNote.id); else renderMarkdownPreview(paneNote); } catch (e) {}
+          // For LaTeX files, defer rendering until after the editor has fully loaded
+          if (paneNote.type === 'latex') {
+            try {
+              // Use requestAnimationFrame to defer until after DOM is painted
+              requestAnimationFrame(() => {
+                try { renderLatexPreview(paneNote.content ?? '', paneNote.id); } catch (e) {}
+              });
+            } catch (e) {}
+          } else {
+            try { renderMarkdownPreview(paneNote); } catch (e) {}
+          }
         }
       } else if (paneNote.type === 'notebook') {
         // For notebooks, render the notebook viewer with Edit mode
@@ -8323,6 +8365,162 @@ const preprocessInlineCommands = (content) => {
   return processed;
 };
 
+const renderLatexMath = (element) => {
+  if (!element || typeof window.katex === 'undefined') {
+    return;
+  }
+
+  try {
+    // Find all math expressions in the element
+    const mathElements = element.querySelectorAll('.math, .katex, [data-math], [data-katex]');
+    mathElements.forEach(el => {
+      // Skip if already processed
+      if (el.querySelector('.katex')) {
+        return;
+      }
+
+      const mathText = el.textContent || el.innerText || '';
+      if (!mathText.trim()) {
+        return;
+      }
+
+      try {
+        // Determine if it's display math (block) or inline math
+        const isDisplay = el.classList.contains('math-display') ||
+                         el.hasAttribute('data-display') ||
+                         mathText.includes('\\[') ||
+                         mathText.includes('\\]');
+
+        // Render with KaTeX
+        const html = window.katex.renderToString(mathText.trim(), {
+          displayMode: isDisplay,
+          throwOnError: false,
+          errorColor: '#cc0000',
+          strict: false
+        });
+
+        el.innerHTML = html;
+        el.classList.add('katex-processed');
+      } catch (mathError) {
+        // If KaTeX fails, show the original text
+        el.innerHTML = `<code>${mathText}</code>`;
+        el.classList.add('katex-error');
+      }
+    });
+
+    // Also process any text content that contains math delimiters
+    const walker = document.createTreeWalker(
+      element,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: (node) => {
+          // Only process text nodes that are not inside already processed math
+          const parent = node.parentElement;
+          if (parent && (parent.closest('.katex') || parent.closest('.math'))) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          // Check if text contains math delimiters
+          const text = node.textContent || '';
+          if (text.match(/\$[^$]+\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)/)) {
+            return NodeFilter.FILTER_ACCEPT;
+          }
+
+          return NodeFilter.FILTER_REJECT;
+        }
+      }
+    );
+
+    const textNodes = [];
+    let currentNode = walker.nextNode();
+    while (currentNode) {
+      textNodes.push(currentNode);
+      currentNode = walker.nextNode();
+    }
+
+    // Process text nodes in reverse order to maintain indices
+    textNodes.reverse().forEach(textNode => {
+      const text = textNode.textContent || '';
+      const parent = textNode.parentElement;
+
+      if (!parent) return;
+
+      // Split text by math expressions and create spans
+      const parts = text.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\))/g);
+
+      if (parts.length > 1) {
+        const fragment = document.createDocumentFragment();
+
+        parts.forEach(part => {
+          if (!part) return;
+
+          if (part.startsWith('$$') && part.endsWith('$$')) {
+            // Display math: $$...$$
+            const mathText = part.slice(2, -2);
+            const span = document.createElement('span');
+            span.className = 'math math-display';
+            span.textContent = mathText;
+            fragment.appendChild(span);
+          } else if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
+            // Inline math: $...$
+            const mathText = part.slice(1, -1);
+            const span = document.createElement('span');
+            span.className = 'math math-inline';
+            span.textContent = mathText;
+            fragment.appendChild(span);
+          } else if (part.startsWith('\\[') && part.endsWith('\\]')) {
+            // Display math: \[...\]
+            const mathText = part.slice(2, -2);
+            const span = document.createElement('span');
+            span.className = 'math math-display';
+            span.textContent = mathText;
+            fragment.appendChild(span);
+          } else if (part.startsWith('\\(') && part.endsWith('\\)')) {
+            // Inline math: \(...\)
+            const mathText = part.slice(2, -2);
+            const span = document.createElement('span');
+            span.className = 'math math-inline';
+            span.textContent = mathText;
+            fragment.appendChild(span);
+          } else {
+            // Regular text
+            fragment.appendChild(document.createTextNode(part));
+          }
+        });
+
+        parent.replaceChild(fragment, textNode);
+      }
+    });
+
+    // Now render all the math spans we just created
+    const newMathElements = element.querySelectorAll('.math:not(.katex-processed)');
+    newMathElements.forEach(el => {
+      const mathText = el.textContent || '';
+      if (!mathText.trim()) return;
+
+      try {
+        const isDisplay = el.classList.contains('math-display');
+        const html = window.katex.renderToString(mathText.trim(), {
+          displayMode: isDisplay,
+          throwOnError: false,
+          errorColor: '#cc0000',
+          strict: false
+        });
+
+        el.innerHTML = html;
+        el.classList.add('katex-processed');
+      } catch (mathError) {
+        el.innerHTML = `<code style="color: #cc0000;">${mathText}</code>`;
+        el.classList.add('katex-error');
+      }
+    });
+
+  } catch (error) {
+    // If anything goes wrong, just continue without math rendering
+    console.warn('LaTeX math rendering failed:', error);
+  }
+};
+
 const renderLatexPreview = async (latexContent, noteId) => {
   // Debug prints removed
   if (!elements.preview) {
@@ -8330,85 +8528,141 @@ const renderLatexPreview = async (latexContent, noteId) => {
     return;
   }
 
-  try {
-    // If note has an absolutePath and main process exposes compileLatex, try full compile
-  // Resolve note using state map or active note helper
-  const note = (noteId && state.notes && state.notes.get) ? state.notes.get(noteId) : null;
-  const active = typeof getActiveNote === 'function' ? getActiveNote() : null;
-  const resolvedNote = note || active || null;
-  const abs = resolvedNote ? (resolvedNote.absolutePath || resolvedNote.storedPath || '') : '';
-    let compiledPdfShown = false;
-    if (abs) {
-      // Attempt to compile; show intermediate message
-      elements.preview.innerHTML = `<div class="latex-compiling">Compiling LaTeX…</div>`;
-      try {
-        const result = await awaitPromiseLike(safeApi.invoke('compileLatex', { absolutePath: abs }));
-        if (result && result.success && result.pdfPath) {
-          // Try to load the compiled PDF via resolveResource so it becomes a data: URI
-          try {
-            const res = await awaitPromiseLike(safeApi.invoke('resolveResource', { src: result.pdfPath, notePath: abs, folderPath: state.currentFolder }));
-            if (res && res.value) {
-              // Remember compiled PDF path so exports can prefer the exact compiled output
-              try {
-                state.compiledPdfByNote = state.compiledPdfByNote || new Map();
-                if (noteId) state.compiledPdfByNote.set(noteId, result.pdfPath);
-              } catch (e) { /* ignore */ }
-
-              // Use existing PDF viewer to display the compiled PDF
-              const pdfNote = { id: `compiled-pdf-${Date.now()}`, type: 'pdf', absolutePath: result.pdfPath };
-              try { await renderPdfPreview(pdfNote); compiledPdfShown = true; } catch (e) { compiledPdfShown = false; }
-            }
-          } catch (e) { /* fall through to HTML fallback */ }
-        }
-      } catch (e) { /* ignore and fallback below */ }
-    }
-
-    if (!compiledPdfShown) {
-  // Basic LaTeX processing: split content and render math expressions
-  const cleanedLatex = preprocessInlineCommands(latexContent);
-  const processedHtml = processLatexContent(cleanedLatex, noteId);
-      elements.preview.innerHTML = processedHtml;
-      // Render citations in the preview if bibliography is available
-      renderCitationsInPreview(cleanedLatex, noteId);
-    }
-  // Debug prints removed
-    
-    // Process any math expressions with KaTeX
-  if (typeof renderMathInElement === 'function') {
-  // Debug prints removed
-      renderMathInElement(elements.preview, {
-        delimiters: [
-          {left: '$$', right: '$$', display: true},
-          {left: '$', right: '$', display: false},
-          {left: '\\[', right: '\\]', display: true},
-          {left: '\\(', right: '\\)', display: false}
-        ],
-        throwOnError: false
-      });
-  // Debug prints removed
-    } else {
-  // Debug prints removed
-    }
-
-    // Add basic styling for LaTeX content
-    elements.preview.classList.add('latex-preview');
-  // Debug prints removed
-    
-    // Process images, videos and iframes produced by LaTeX content.
-    // LaTeX -> HTML conversion emits <img data-raw-src="..."> entries which
-    // must be resolved to data: URLs via window.api.resolveResource. Call the
-    // same post-processing helpers used for Markdown previews so the resources
-    // are fetched and the hover/preview UI is wired up.
-    void processPreviewImages();
-    void processPreviewVideos();
-    void processPreviewHtmlIframes();
-    initializeHtmlEmbedResize();
-    addImageHoverPreviews();
-    
-  } catch (error) {
-  // Debug prints removed
-    elements.preview.innerHTML = `<pre>${latexContent}</pre>`;
+  // Show/hide the LaTeX render mode selector
+  if (elements.latexModeSelector) {
+    elements.latexModeSelector.hidden = false;
   }
+
+  // Check if LaTeX is installed (cache the result)
+  if (state.latexInstalled === null) {
+    try {
+      const status = await safeApi.invoke('checkLatexInstalled');
+      state.latexInstalled = status && status.installed;
+    } catch (e) {
+      state.latexInstalled = false;
+    }
+  }
+
+  // Show warning banner if LaTeX is not installed and user is in PDF or Auto mode
+  const showWarning = !state.latexInstalled && 
+                      (state.latexRenderMode === 'pdf' || state.latexRenderMode === 'auto');
+  
+  if (elements.latexWarningBanner) {
+    elements.latexWarningBanner.hidden = !showWarning;
+  }
+
+  // Check for missing LaTeX packages (only if LaTeX is installed and in PDF/Auto mode)
+  if (state.latexInstalled && (state.latexRenderMode === 'pdf' || state.latexRenderMode === 'auto')) {
+    const packages = extractLatexPackages(latexContent);
+    const missingPackages = checkMissingLatexPackages(packages);
+    
+    // Store missing packages in state for use by install button
+    state.latexPackagesToShow = missingPackages;
+    
+    // Show package warning only if we haven't shown it for this note yet
+    if (missingPackages.length > 0 && state.latexPackagesWarningShown !== noteId) {
+      state.latexPackagesWarningShown = noteId;
+      
+      if (elements.latexPackagesWarningBanner && elements.latexPackagesWarningList) {
+        // Format the package list
+        const packageText = missingPackages.map(p => p.display).join(', ');
+        elements.latexPackagesWarningList.textContent = `This document uses: ${packageText}. Make sure these packages are installed.`;
+        elements.latexPackagesWarningBanner.hidden = false;
+      }
+    } else if (missingPackages.length === 0) {
+      // No packages to warn about, hide the banner
+      if (elements.latexPackagesWarningBanner) {
+        elements.latexPackagesWarningBanner.hidden = true;
+      }
+    }
+  } else {
+    // Hide package warning if LaTeX not installed or in HTML mode
+    if (elements.latexPackagesWarningBanner) {
+      elements.latexPackagesWarningBanner.hidden = true;
+    }
+  }
+
+  // Defer the actual compilation to allow the editor to fully render first
+  return new Promise((resolve) => {
+    requestAnimationFrame(async () => {
+      try {
+        // If note has an absolutePath and main process exposes compileLatex, try full compile
+      // Resolve note using state map or active note helper
+      const note = (noteId && state.notes && state.notes.get) ? state.notes.get(noteId) : null;
+      const active = typeof getActiveNote === 'function' ? getActiveNote() : null;
+      const resolvedNote = note || active || null;
+      const abs = resolvedNote ? (resolvedNote.absolutePath || resolvedNote.storedPath || '') : '';
+        let compiledPdfShown = false;
+        // Only attempt PDF compilation if user hasn't explicitly chosen HTML mode and LaTeX is installed
+        const shouldTryPdf = state.latexRenderMode !== 'html' && state.latexInstalled;
+        if (abs && shouldTryPdf) {
+          // Attempt to compile; show intermediate message
+          elements.preview.innerHTML = `<div class="latex-compiling">Compiling LaTeX…</div>`;
+          try {
+            const result = await awaitPromiseLike(safeApi.invoke('compileLatex', { absolutePath: abs }));
+            if (result && result.success && result.pdfPath) {
+              // Try to load the compiled PDF via resolveResource so it becomes a data: URI
+              try {
+                const res = await awaitPromiseLike(safeApi.invoke('resolveResource', { src: result.pdfPath, notePath: abs, folderPath: state.currentFolder }));
+                if (res && res.value) {
+                  // Remember compiled PDF path so exports can prefer the exact compiled output
+                  try {
+                    state.compiledPdfByNote = state.compiledPdfByNote || new Map();
+                    if (noteId) state.compiledPdfByNote.set(noteId, result.pdfPath);
+                  } catch (e) { /* ignore */ }
+
+                  // Use existing PDF viewer to display the compiled PDF
+                  const pdfNote = { id: `compiled-pdf-${Date.now()}`, type: 'pdf', absolutePath: result.pdfPath };
+                  elements.preview.innerHTML = '';
+                  // Switch to pdf-mode for proper CSS styling of the PDF viewer
+                  elements.workspaceContent?.classList.remove('latex-mode');
+                  elements.workspaceContent?.classList.add('pdf-mode');
+                  try { await renderPdfPreview(pdfNote); compiledPdfShown = true; } catch (e) { compiledPdfShown = false; }
+                }
+              } catch (e) { /* fall through to HTML fallback */ }
+            }
+          } catch (e) { /* ignore and fallback below */ }
+        }
+
+        if (!compiledPdfShown) {
+          // Switch back to latex-mode for HTML rendering
+          elements.workspaceContent?.classList.remove('pdf-mode');
+          elements.workspaceContent?.classList.add('latex-mode');
+      // Basic LaTeX processing: split content and render math expressions
+      const cleanedLatex = preprocessInlineCommands(latexContent);
+      const processedHtml = processLatexContent(cleanedLatex, noteId);
+          elements.preview.innerHTML = processedHtml;
+          // Render citations in the preview if bibliography is available
+          renderCitationsInPreview(cleanedLatex, noteId);
+        }
+      // Debug prints removed
+        
+        // Process any math expressions with KaTeX
+        renderLatexMath(elements.preview);
+
+        // Add basic styling for LaTeX content
+        elements.preview.classList.add('latex-preview');
+      // Debug prints removed
+        
+        // Process images, videos and iframes produced by LaTeX content.
+        // LaTeX -> HTML conversion emits <img data-raw-src="..."> entries which
+        // must be resolved to data: URLs via window.api.resolveResource. Call the
+        // same post-processing helpers used for Markdown previews so the resources
+        // are fetched and the hover/preview UI is wired up.
+        void processPreviewImages();
+        void processPreviewVideos();
+        void processPreviewHtmlIframes();
+        initializeHtmlEmbedResize();
+        addImageHoverPreviews();
+        
+        resolve();
+      } catch (error) {
+      // Debug prints removed
+        elements.preview.innerHTML = `<pre>${latexContent}</pre>`;
+        resolve();
+      }
+    });
+  });
 };
 
 // Helper to allow awaiting values that may be plain values or Promises
@@ -8522,6 +8776,63 @@ const convertLatexWidthToCss = (widthSpec) => {
   }
   
   return 'auto';
+};
+
+/**
+ * Extract LaTeX packages used in content
+ * Returns array of package names: ['amsmath', 'graphicx', etc.]
+ */
+const extractLatexPackages = (latexContent) => {
+  if (!latexContent) return [];
+  
+  const packages = [];
+  // Match \usepackage{packagename} or \usepackage[options]{packagename}
+  const regex = /\\usepackage(?:\[[^\]]*\])?\{([^}]+)\}/g;
+  let match;
+  
+  while ((match = regex.exec(latexContent)) !== null) {
+    const packageNames = match[1].split(',').map(p => p.trim());
+    packages.push(...packageNames);
+  }
+  
+  return [...new Set(packages)]; // Remove duplicates
+};
+
+/**
+ * Check which LaTeX packages might be problematic/missing
+ * Common packages that often have issues: tikz, pgfplots, beamer, etc.
+ */
+const checkMissingLatexPackages = (packages) => {
+  // Packages that commonly cause issues if not installed
+  const commonProblematicPackages = {
+    'tikz': 'TikZ (drawing)',
+    'pgfplots': 'PGFPlots (plotting)',
+    'beamer': 'Beamer (presentations)',
+    'xcolor': 'XColor (colors)',
+    'fontspec': 'FontSpec (custom fonts)',
+    'unicode-math': 'Unicode-Math (Unicode symbols)',
+    'listings': 'Listings (code highlighting)',
+    'minted': 'Minted (syntax highlighting)',
+    'siunitx': 'SIunitx (scientific units)',
+    'geometry': 'Geometry (page layout)',
+    'fancyhdr': 'FancyHdr (headers/footers)',
+    'hyperref': 'Hyperref (links)',
+    'biblatex': 'Biblatex (bibliography)',
+    'natbib': 'Natbib (citations)',
+    'chemfig': 'ChemFig (chemistry)',
+    'circuitikz': 'CircuitTikz (circuits)',
+    'asymptote': 'Asymptote (graphics)',
+  };
+  
+  const missingPackages = packages.filter(pkg => {
+    // Check if package is in our problematic list
+    return commonProblematicPackages[pkg.toLowerCase()];
+  });
+  
+  return missingPackages.map(pkg => ({
+    name: pkg,
+    display: commonProblematicPackages[pkg.toLowerCase()] || pkg
+  }));
 };
 
 const processLatexContent = (latexContent, noteId = null) => {
@@ -10444,6 +10755,16 @@ const renderActiveNote = () => {
   const resetPreviewState = () => {
     elements.workspaceContent?.classList.remove('pdf-mode', 'code-mode', 'notebook-mode', 'image-mode', 'video-mode', 'html-mode');
   if (elements.preview) { try { elements.preview.innerHTML = ''; } catch (e) { } }
+    // Hide LaTeX mode selector and warning banners when switching away from LaTeX files
+    if (elements.latexModeSelector) {
+      elements.latexModeSelector.hidden = true;
+    }
+    if (elements.latexWarningBanner) {
+      elements.latexWarningBanner.hidden = true;
+    }
+    if (elements.latexPackagesWarningBanner) {
+      elements.latexPackagesWarningBanner.hidden = true;
+    }
     // Hide math preview popup
     if (elements.mathPreviewPopup) {
       elements.mathPreviewPopup.classList.remove('visible');
@@ -10702,7 +11023,7 @@ const persistNotes = async () => {
   }
 
   const dirtyNotes = Array.from(state.notes.values()).filter(
-    (note) => note.type === 'markdown' && note.dirty && note.absolutePath
+    (note) => (note.type === 'markdown' || note.type === 'latex') && note.dirty && note.absolutePath
   );
 
   if (!dirtyNotes.length) {
@@ -22701,6 +23022,324 @@ video.addEventListener('touchstart', () => { try { const edt = getEditorForOverl
   elements.fileTreeSortSelect?.addEventListener('change', handleFileTreeSortChange);
   elements.mathRenderingQualitySelect?.addEventListener('change', handleMathRenderingQualityChange);
 
+  // LaTeX rendering mode selector
+  elements.latexRenderMode?.addEventListener('change', (e) => {
+    state.latexRenderMode = e.target.value;
+    // Re-render the active note if it's a LaTeX file
+    const activeNote = getActiveNote();
+    if (activeNote && activeNote.type === 'latex') {
+      renderLatexPreview(activeNote.content ?? '', activeNote.id);
+    }
+  });
+
+  // LaTeX install button
+  elements.latexInstallButton?.addEventListener('click', async () => {
+    try {
+      elements.latexInstallButton.disabled = true;
+      elements.latexInstallButton.textContent = 'Opening installer...';
+      
+      const result = await safeApi.invoke('installLatex');
+      
+      if (result && result.installing) {
+        setStatus('LaTeX installation started. The installer will open in a terminal.', true);
+      } else if (result && result.success) {
+        setStatus('LaTeX installed successfully! Restart the app to use PDF rendering.', true);
+        state.latexInstalled = true;
+      } else {
+        setStatus('LaTeX installation cancelled or encountered an error.', 'warn');
+      }
+    } catch (error) {
+      console.error('Failed to start LaTeX installation:', error);
+      setStatus('Failed to start LaTeX installation', 'error');
+    } finally {
+      elements.latexInstallButton.disabled = false;
+      elements.latexInstallButton.textContent = 'Install LaTeX';
+    }
+  });
+
+  // LaTeX packages warning dismiss button
+  elements.latexPackagesDismissButton?.addEventListener('click', () => {
+    if (elements.latexPackagesWarningBanner) {
+      elements.latexPackagesWarningBanner.hidden = true;
+    }
+  });
+
+  // LaTeX packages warning install button
+  elements.latexPackagesInstallButton?.addEventListener('click', async () => {
+    // Get the current missing packages from state
+    const missingPackages = state.latexPackagesToShow || [];
+    if (!Array.isArray(missingPackages) || missingPackages.length === 0) {
+      setStatus('No missing packages detected', true);
+      return;
+    }
+
+    // Disable button and show progress
+    const originalText = elements.latexPackagesInstallButton.textContent;
+    elements.latexPackagesInstallButton.disabled = true;
+    elements.latexPackagesInstallButton.textContent = 'Installing...';
+
+    try {
+      const result = await safeApi.invoke('app:installLatexPackages', {
+        packages: missingPackages.map(p => p.name)
+      });
+
+      if (result.success) {
+        setStatus(`Successfully installed ${missingPackages.length} LaTeX package(s)`, true);
+        // Hide the warning banner after successful installation
+        setTimeout(() => {
+          elements.latexPackagesWarningBanner.hidden = true;
+        }, 2000);
+      } else if (result.needsSudo) {
+        // Extract the command from the error message
+        const errorText = result.error || '';
+        const commandMatch = errorText.match(/sudo tlmgr install .+/);
+        const command = commandMatch ? commandMatch[0] : '';
+        
+        console.log('[LaTeX Install] Detected need for sudo. Command:', command);
+        
+        if (command) {
+          // Open terminal and run the command
+          setStatus('Opening terminal to install packages...', true);
+          
+          try {
+            const container = document.getElementById('nta-terminal-container');
+            const terminalDiv = document.getElementById('nta-terminal');
+            
+            if (container && terminalDiv) {
+              // Check if terminal is hidden
+              const isHidden = container.style.display === 'none' || container.hidden;
+              
+              console.log('[LaTeX Install] Terminal visible:', !isHidden);
+              
+              if (isHidden) {
+                // Show terminal container - this triggers setupTerminal() logic
+                console.log('[LaTeX Install] Showing terminal container...');
+                container.style.display = 'flex';
+                container.hidden = false;
+                state.terminalVisible = true;
+                
+                try {
+                  document.documentElement.classList.add('terminal-visible');
+                } catch (e) {}
+                
+                // Now we need to wait for the terminal to be fully initialized
+                // The setupTerminal function has a listener for 'terminal:toggle'
+                // We need to trigger that to properly initialize xterm and PTY
+                console.log('[LaTeX Install] Triggering terminal initialization...');
+                
+                // Send a request to the main process to toggle terminal
+                try {
+                  safeApi.send('terminal:toggleRequest');
+                } catch (e) {
+                  console.error('[LaTeX Install] Error sending toggle request:', e);
+                }
+                
+                // Now wait for terminal initialization to complete
+                // We'll use a Promise to wait for the terminal to be ready
+                const waitForTerminalReady = () => new Promise((resolve) => {
+                  let attempts = 0;
+                  const maxAttempts = 50; // ~5 seconds max
+                  
+                  const checkReady = () => {
+                    // Check if terminal instance is created and PTY is connected
+                    // by checking if the terminal output handler is responding
+                    if (state.terminalInstance && state.terminalInstance.cols && state.terminalInstance.rows) {
+                      console.log('[LaTeX Install] Terminal ready! Cols:', state.terminalInstance.cols, 'Rows:', state.terminalInstance.rows);
+                      resolve(true);
+                    } else if (attempts < maxAttempts) {
+                      attempts++;
+                      setTimeout(checkReady, 100);
+                    } else {
+                      console.warn('[LaTeX Install] Terminal not ready after timeout, trying anyway');
+                      resolve(false);
+                    }
+                  };
+                  
+                  checkReady();
+                });
+                
+                // Wait for terminal to be ready, then send command
+                try {
+                  await waitForTerminalReady();
+                  console.log('[LaTeX Install] Sending command to terminal:', command);
+                  
+                  // Small additional delay to ensure PTY is fully connected
+                  await new Promise(resolve => setTimeout(resolve, 200));
+                  
+                  safeApi.send('terminal:data', command + '\r\n');
+                  console.log('[LaTeX Install] Command sent successfully');
+                } catch (e) {
+                  console.error('[LaTeX Install] Error in terminal ready flow:', e);
+                  safeApi.send('terminal:data', command + '\r\n');
+                }
+              } else {
+                // Terminal already visible, just send command
+                console.log('[LaTeX Install] Terminal already visible, sending command');
+                
+                // Check if terminal is ready
+                if (state.terminalInstance && state.terminalInstance.cols) {
+                  safeApi.send('terminal:data', command + '\r\n');
+                  console.log('[LaTeX Install] Command sent to ready terminal');
+                } else {
+                  // Terminal visible but not ready, wait a bit
+                  setTimeout(() => {
+                    safeApi.send('terminal:data', command + '\r\n');
+                    console.log('[LaTeX Install] Command sent after delay');
+                  }, 500);
+                }
+              }
+            } else {
+              console.error('[LaTeX Install] Terminal elements not found');
+              throw new Error('Terminal elements not found in DOM');
+            }
+          } catch (e) {
+            console.error('Error opening terminal:', e);
+            // Fallback: show alert with command
+            alert('LaTeX package installation requires administrator privileges.\n\nPlease run this command in Terminal:\n\n' + command + '\n\nThen restart the app.');
+          }
+        } else {
+          // Fallback to alert if we couldn't parse command
+          console.error('[LaTeX Install] Could not parse command from error:', errorText);
+          alert('LaTeX package installation requires administrator privileges.\n\nPlease run the following command in Terminal:\n\n' + errorText + '\n\nThen restart the app.');
+        }
+      } else {
+        setStatus(`Failed to install packages: ${result.error}`, false);
+        alert('Failed to install LaTeX packages:\n\n' + result.error);
+      }
+    } catch (error) {
+      console.error('Error installing LaTeX packages:', error);
+      setStatus(`Error installing packages: ${error.message}`, false);
+      alert('Error installing LaTeX packages:\n\n' + error.message);
+    } finally {
+      elements.latexPackagesInstallButton.disabled = false;
+      elements.latexPackagesInstallButton.textContent = originalText;
+    }
+  });
+
+  // Test function for terminal integration - can be called from console
+  window.testTerminalCommand = async (command = 'echo "Terminal test successful!"') => {
+    console.log('[Terminal Test] Starting test with command:', command);
+    
+    try {
+      const container = document.getElementById('nta-terminal-container');
+      const terminalDiv = document.getElementById('nta-terminal');
+      
+      if (!container || !terminalDiv) {
+        console.error('[Terminal Test] Terminal elements not found');
+        return false;
+      }
+      
+      // Check if terminal is hidden
+      const isHidden = container.style.display === 'none' || container.hidden;
+      console.log('[Terminal Test] Terminal visible:', !isHidden);
+      
+      if (isHidden) {
+        // Show terminal container and trigger initialization
+        console.log('[Terminal Test] Showing terminal container...');
+        container.style.display = 'flex';
+        container.hidden = false;
+        state.terminalVisible = true;
+        
+        try {
+          document.documentElement.classList.add('terminal-visible');
+        } catch (e) {}
+        
+        // Trigger terminal initialization
+        console.log('[Terminal Test] Triggering terminal initialization...');
+        try {
+          safeApi.send('terminal:toggleRequest');
+        } catch (e) {
+          console.error('[Terminal Test] Error sending toggle request:', e);
+        }
+        
+        // Wait for terminal to be ready
+        const waitForTerminalReady = () => new Promise((resolve) => {
+          let attempts = 0;
+          const maxAttempts = 50;
+          
+          const checkReady = () => {
+            if (state.terminalInstance && state.terminalInstance.cols && state.terminalInstance.rows) {
+              console.log('[Terminal Test] Terminal ready! Cols:', state.terminalInstance.cols, 'Rows:', state.terminalInstance.rows);
+              resolve(true);
+            } else if (attempts < maxAttempts) {
+              attempts++;
+              setTimeout(checkReady, 100);
+            } else {
+              console.warn('[Terminal Test] Terminal not ready after timeout, trying anyway');
+              resolve(false);
+            }
+          };
+          
+          checkReady();
+        });
+        
+        try {
+          await waitForTerminalReady();
+          console.log('[Terminal Test] Sending command:', command);
+          
+          // Small additional delay to ensure PTY is fully connected
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          safeApi.send('terminal:data', command + '\r\n');
+          console.log('[Terminal Test] Command sent successfully');
+          return true;
+        } catch (e) {
+          console.error('[Terminal Test] Error in terminal ready flow:', e);
+          safeApi.send('terminal:data', command + '\r\n');
+          return true;
+        }
+      } else {
+        // Terminal already visible
+        console.log('[Terminal Test] Terminal already visible');
+        
+        // Check if terminal is ready
+        if (state.terminalInstance && state.terminalInstance.cols) {
+          console.log('[Terminal Test] Terminal is ready, sending command');
+          safeApi.send('terminal:data', command + '\r\n');
+          return true;
+        } else {
+          // Terminal visible but not ready, wait
+          console.log('[Terminal Test] Terminal visible but not ready, waiting...');
+          
+          const waitForTerminalReady = () => new Promise((resolve) => {
+            let attempts = 0;
+            const maxAttempts = 50;
+            
+            const checkReady = () => {
+              if (state.terminalInstance && state.terminalInstance.cols && state.terminalInstance.rows) {
+                console.log('[Terminal Test] Terminal now ready! Cols:', state.terminalInstance.cols, 'Rows:', state.terminalInstance.rows);
+                resolve(true);
+              } else if (attempts < maxAttempts) {
+                attempts++;
+                setTimeout(checkReady, 100);
+              } else {
+                console.warn('[Terminal Test] Terminal not ready after timeout, trying anyway');
+                resolve(false);
+              }
+            };
+            
+            checkReady();
+          });
+          
+          try {
+            await waitForTerminalReady();
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            safeApi.send('terminal:data', command + '\r\n');
+            console.log('[Terminal Test] Command sent successfully after wait');
+            return true;
+          } catch (e) {
+            console.error('[Terminal Test] Error:', e);
+            return false;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Terminal Test] Unexpected error:', e);
+      return false;
+    }
+  };
+
   elements.settingsModal?.addEventListener('click', (event) => {
     if (event.target === elements.settingsModal) {
       closeSettingsModal();
@@ -27161,13 +27800,31 @@ function loadKeybindings() {
 }
 
 function renderKeybindingsList() {
-  if (!elements.keybindingsList) return;
-  elements.keybindingsList.innerHTML = '';
-  (_keybindings || []).forEach(k => {
+  const keybindingsList = document.getElementById('keybindings-list');
+  if (!keybindingsList) return;
+  keybindingsList.innerHTML = '';
+  (_keybindings || []).forEach((k, index) => {
     const div = document.createElement('div');
     div.className = 'keybinding-item';
-    div.textContent = `${k.action || 'unknown'} — ${k.keys || ''}`;
-    elements.keybindingsList.appendChild(div);
+    
+    const textSpan = document.createElement('span');
+    textSpan.textContent = `${k.action || 'unknown'} — ${k.keys || ''}`;
+    div.appendChild(textSpan);
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = 'Remove';
+    removeBtn.className = 'remove-keybinding-btn';
+    removeBtn.addEventListener('click', () => {
+      _keybindings.splice(index, 1);
+      try {
+        localStorage.setItem('NTA.keybindings', JSON.stringify(_keybindings));
+      } catch (e) {}
+      renderKeybindingsList();
+      setStatus(`Removed keybinding: ${k.action} → ${k.keys}`, true);
+    });
+    div.appendChild(removeBtn);
+    
+    keybindingsList.appendChild(div);
   });
 }
 
@@ -27178,6 +27835,17 @@ function resetKeybindings() {
 }
 
 function handleKeybinding(e) {
+  // Check custom keybindings first
+  const keyCombo = buildKeyCombo(e);
+  const binding = _keybindings.find(kb => kb.keys === keyCombo);
+
+  if (binding) {
+    e.preventDefault();
+    executeKeybindingAction(binding.action, e);
+    return;
+  }
+
+  // Fallback to hardcoded keybindings for backward compatibility
   // Minimal: intercept Ctrl/Cmd+Shift+P as example
   // Toggle: Cmd/Ctrl+Shift+P (example)
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
@@ -27204,11 +27872,126 @@ function handleKeybinding(e) {
   }
 }
 
+function buildKeyCombo(e) {
+  const parts = [];
+  if (e.ctrlKey || e.metaKey) parts.push(e.metaKey ? 'Cmd' : 'Ctrl');
+  if (e.altKey) parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+
+  // Add the main key (skip modifier keys)
+  if (!['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+    parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
+  }
+
+  return parts.join('+');
+}
+
+// Initialize keybinding input functionality
+function initializeKeybindingInput() {
+  // Load keybindings from localStorage
+  try {
+    const saved = localStorage.getItem('NTA.keybindings');
+    if (saved) {
+      _keybindings = JSON.parse(saved);
+    }
+  } catch (e) {
+    _keybindings = [];
+  }
+
+  // Re-query DOM elements to handle test environments where DOM is created after module load
+  const keybindingKeysInput = document.getElementById('keybinding-keys-input');
+  const addKeybindingBtn = document.getElementById('add-keybinding-btn');
+  const resetKeybindingsBtn = document.getElementById('reset-keybindings-btn');
+
+  if (!keybindingKeysInput || !addKeybindingBtn || !resetKeybindingsBtn) return;
+
+  let currentKeys = [];
+
+  // Handle key presses in the input field
+  keybindingKeysInput.addEventListener('keydown', (e) => {
+    e.preventDefault(); // Prevent default behavior
+
+    // Clear current keys if Escape is pressed
+    if (e.key === 'Escape') {
+      currentKeys = [];
+      keybindingKeysInput.value = '';
+      return;
+    }
+
+    // Build key combination
+    const parts = [];
+    if (e.ctrlKey || e.metaKey) parts.push(e.metaKey ? 'Cmd' : 'Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+
+    // Add the main key (skip modifier keys)
+    if (!['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+      parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    }
+
+    // Only capture if we have a non-modifier key (prevent single modifier captures)
+    if (parts.length > (e.ctrlKey || e.metaKey ? 1 : 0) + (e.altKey ? 1 : 0) + (e.shiftKey ? 1 : 0)) {
+      currentKeys = parts;
+      keybindingKeysInput.value = parts.join('+');
+    }
+  });
+
+  // Handle focus to clear the input when clicked
+  keybindingKeysInput.addEventListener('focus', () => {
+    currentKeys = [];
+    keybindingKeysInput.value = '';
+  });
+
+  // Handle Add button click
+  addKeybindingBtn.addEventListener('click', () => {
+    const keybindingActionSelect = document.getElementById('keybinding-action-select');
+    if (!keybindingActionSelect || !currentKeys.length) return;
+
+    const action = keybindingActionSelect.value;
+    const keys = currentKeys.join('+');
+
+    // Check if this keybinding already exists
+    const existing = _keybindings.find(kb => kb.keys === keys);
+    if (existing) {
+      setStatus('Keybinding already exists', false);
+      return;
+    }
+
+    // Add the new keybinding
+    _keybindings.push({ action, keys });
+    try {
+      localStorage.setItem('NTA.keybindings', JSON.stringify(_keybindings));
+    } catch (e) {}
+
+    // Clear the input
+    currentKeys = [];
+    keybindingKeysInput.value = '';
+    keybindingActionSelect.value = '';
+
+    // Re-render the list
+    renderKeybindingsList();
+
+    setStatus(`Added keybinding: ${action} → ${keys}`, true);
+  });
+
+  // Handle Reset button click
+  resetKeybindingsBtn.addEventListener('click', () => {
+    resetKeybindings();
+  });
+
+  // Initial render
+  renderKeybindingsList();
+}
+
 // Initialize accessibility features when DOM is ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeAccessibility);
+  document.addEventListener('DOMContentLoaded', () => {
+    initializeAccessibility();
+    initializeKeybindingInput();
+  });
 } else {
   initializeAccessibility();
+  initializeKeybindingInput();
 }
 
 // Export functionality - delegates to existing export functions based on format
@@ -27688,7 +28471,7 @@ try {
       computeWikiSuggestionPosition: typeof computeWikiSuggestionPosition === 'function' ? computeWikiSuggestionPosition : null,
       renderWikiSuggestions: typeof renderWikiSuggestions === 'function' ? renderWikiSuggestions : null,
       handleLatexEnvironmentAutoComplete: typeof handleLatexEnvironmentAutoComplete === 'function' ? handleLatexEnvironmentAutoComplete : null,
-      handleGlobalShortcuts: typeof handleGlobalShortcuts === 'function' ? handleGlobalShortcuts : null,
+      handleKeybinding: typeof handleKeybinding === 'function' ? handleKeybinding : null,
       updateFileMetadataUI: typeof updateFileMetadataUI === 'function' ? updateFileMetadataUI : null,
       updateActionAvailability: typeof updateActionAvailability === 'function' ? updateActionAvailability : null,
       createEditorPane: typeof createEditorPane === 'function' ? createEditorPane : null,
@@ -27705,10 +28488,12 @@ try {
       reinitializeEditorInstances: typeof reinitializeEditorInstances === 'function' ? reinitializeEditorInstances : null,
       configureMarked: typeof configureMarked === 'function' ? configureMarked : null,
       handleExport: typeof handleExport === 'function' ? handleExport : null,
+      handleGlobalShortcuts: typeof handleGlobalShortcuts === 'function' ? handleGlobalShortcuts : null,
       // Expose autosave controls for tests so they can stop the interval and
       // avoid keeping the Node process alive.
       startAutosave: typeof startAutosave === 'function' ? startAutosave : null,
       stopAutosave: typeof stopAutosave === 'function' ? stopAutosave : null,
+      initializeKeybindingInput: typeof initializeKeybindingInput === 'function' ? initializeKeybindingInput : null,
       elements,
   // Small helpers exposed for unit testing
   safeCall: typeof safeCall === 'function' ? safeCall : null,
@@ -27720,7 +28505,8 @@ try {
       // Expose Pane class and panes map for testing pane lifecycle
       Pane: typeof Pane === 'function' ? Pane : null,
       panes,
-      editorInstances
+      editorInstances,
+      initializeExportHandlers: typeof initializeExportHandlers === 'function' ? initializeExportHandlers : null,
     };
   }
 } catch (e) { /* ignore */ }

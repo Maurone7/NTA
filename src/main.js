@@ -714,15 +714,12 @@ ipcMain.handle('workspace:compileLatex', async (_event, data) => {
     if (!exists || !exists.isFile()) return { success: false, error: 'File not found' };
 
     const { spawn } = require('child_process');
-    const os = require('os');
-    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'nta-tex-'));
+    const sourceDir = path.dirname(absolutePath);
     const baseName = path.basename(absolutePath);
-    const targetPath = path.join(tmpDir, baseName);
+    const texFilename = baseName;
 
-    // Copy source file into temp dir so compilation doesn't touch original folder
-    await fs.promises.copyFile(absolutePath, targetPath);
-
-    // Prefer latexmk if available
+    // Compile directly in the source directory
+    // This allows LaTeX to access images, bibliography files, data files, etc.
     const tryExec = (cmd, args, opts) => new Promise((resolve) => {
       const p = spawn(cmd, args, opts);
       let stdout = '';
@@ -733,21 +730,20 @@ ipcMain.handle('workspace:compileLatex', async (_event, data) => {
       p.on('close', (code) => resolve({ code, stdout, stderr }));
     });
 
-    const texFilename = path.basename(targetPath);
     // First try latexmk -pdf -interaction=nonstopmode -halt-on-error <file>
-    let res = await tryExec('latexmk', ['-pdf', '-interaction=nonstopmode', '-halt-on-error', texFilename], { cwd: tmpDir });
+    let res = await tryExec('latexmk', ['-pdf', '-interaction=nonstopmode', '-halt-on-error', texFilename], { cwd: sourceDir });
     if (res.code !== 0) {
       // fallback to running pdflatex twice
-      res = await tryExec('pdflatex', ['-interaction=nonstopmode', texFilename], { cwd: tmpDir });
+      res = await tryExec('pdflatex', ['-interaction=nonstopmode', texFilename], { cwd: sourceDir });
       if (res.code === 0) {
         // run a second pass
-        await tryExec('pdflatex', ['-interaction=nonstopmode', texFilename], { cwd: tmpDir });
+        await tryExec('pdflatex', ['-interaction=nonstopmode', texFilename], { cwd: sourceDir });
       }
     }
 
-    // Expected output PDF in tmpDir with same base name but .pdf ext
+    // Expected output PDF in source directory with same base name but .pdf ext
     const pdfName = texFilename.replace(/\.tex$/i, '.pdf');
-    const pdfPath = path.join(tmpDir, pdfName);
+    const pdfPath = path.join(sourceDir, pdfName);
     const pdfExists = await fs.promises.stat(pdfPath).catch(() => null);
     if (pdfExists && pdfExists.isFile()) {
       return { success: true, pdfPath };
@@ -755,6 +751,106 @@ ipcMain.handle('workspace:compileLatex', async (_event, data) => {
 
     // If compilation failed, return stderr/stdout where available
     return { success: false, error: 'Compilation failed', detail: res && (res.stderr || res.stdout) ? (res.stderr || res.stdout) : null };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+});
+
+// Install missing LaTeX packages
+ipcMain.handle('app:installLatexPackages', async (_event, data) => {
+  try {
+    const packages = Array.isArray(data?.packages) ? data.packages : [];
+    if (packages.length === 0) {
+      return { success: false, error: 'No packages specified' };
+    }
+
+    const { spawn } = require('child_process');
+
+    // Detect which LaTeX distribution is available
+    const detectLatexManager = () => new Promise((resolve) => {
+      const checkCmd = (cmd) => new Promise((res) => {
+        const p = spawn(cmd, ['--version'], { shell: true });
+        p.on('error', () => res(false));
+        p.on('close', (code) => res(code === 0));
+      });
+
+      // Try TeX Live package manager first (tlmgr)
+      checkCmd('tlmgr').then((hasTlmgr) => {
+        if (hasTlmgr) {
+          resolve('tlmgr');
+        } else {
+          // Try MiKTeX package manager (mpm or miktex-mpm)
+          checkCmd('mpm').then((hasMpm) => {
+            if (hasMpm) {
+              resolve('mpm');
+            } else {
+              checkCmd('miktex-mpm').then((hasMiktex) => {
+                resolve(hasMiktex ? 'miktex-mpm' : null);
+              });
+            }
+          });
+        }
+      });
+    });
+
+    const manager = await detectLatexManager();
+    if (!manager) {
+      return { success: false, error: 'No LaTeX package manager found (tlmgr or mpm)' };
+    }
+
+    // For TeX Live (tlmgr), we need elevated permissions on most systems
+    if (manager === 'tlmgr') {
+      // Try to install without sudo first
+      const installPackages = (args) => new Promise((resolve) => {
+        const p = spawn('tlmgr', args, { shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
+        let stdout = '';
+        let stderr = '';
+        p.stdout && p.stdout.on('data', (d) => { stdout += String(d); });
+        p.stderr && p.stderr.on('data', (d) => { stderr += String(d); });
+        p.on('error', (err) => resolve({ success: false, error: String(err) }));
+        p.on('close', (code) => {
+          if (code === 0) {
+            resolve({ success: true, installed: packages });
+          } else {
+            // Check if error is permission-related
+            const errorMsg = stderr || stdout || '';
+            if (errorMsg.includes('not writable') || errorMsg.includes('permission') || code === 1) {
+              resolve({ 
+                success: false, 
+                error: `Installation requires elevated privileges. Please run the following command in Terminal:\n\nsudo tlmgr install ${packages.join(' ')}\n\nThen restart the app.`,
+                needsSudo: true
+              });
+            } else {
+              resolve({ success: false, error: errorMsg });
+            }
+          }
+        });
+      });
+
+      const result = await installPackages(['install', ...packages]);
+      return result;
+    } else {
+      // MiKTeX: mpm --install=package1 --install=package2 ...
+      const installPackages = (args) => new Promise((resolve) => {
+        const p = spawn(manager, args, { shell: true, stdio: ['pipe', 'pipe', 'pipe'] });
+        let stdout = '';
+        let stderr = '';
+        p.stdout && p.stdout.on('data', (d) => { stdout += String(d); });
+        p.stderr && p.stderr.on('data', (d) => { stderr += String(d); });
+        p.on('error', (err) => resolve({ success: false, error: String(err) }));
+        p.on('close', (code) => {
+          if (code === 0) {
+            resolve({ success: true, installed: packages });
+          } else {
+            resolve({ success: false, error: stderr || stdout || 'Installation failed' });
+          }
+        });
+      });
+
+      const args = packages.map(p => `--install=${p}`);
+      const result = await installPackages(args);
+      return result;
+    }
   } catch (e) {
     return { success: false, error: String(e) };
   }
@@ -845,6 +941,16 @@ ipcMain.handle('app:installLatex', async (_event) => {
   }
 });
 
+// Check if LaTeX is installed
+ipcMain.handle('app:checkLatexInstalled', async (_event) => {
+  try {
+    const status = checkLatexInstalled();
+    return status;
+  } catch (error) {
+    return { installed: false, engine: null, version: null };
+  }
+});
+
 // Provide application version to renderer when requested. Prefer the
 // Electron `app.getVersion()` API when available, otherwise fall back to
 // reading package.json. This prevents the renderer showing 'Unknown'
@@ -891,6 +997,14 @@ ipcMain.on('terminal:resize', (event, { cols, rows }) => {
 ipcMain.handle('terminal:cleanup', (_event, windowId) => {
   closePtyProcess(windowId);
   return { success: true };
+});
+
+// Handle request to toggle terminal from renderer
+ipcMain.on('terminal:toggleRequest', (_event) => {
+  const win = BrowserWindow.fromWebContents(_event.sender);
+  if (win) {
+    win.webContents.send('terminal:toggle');
+  }
 });
 
 app.on('window-all-closed', () => {

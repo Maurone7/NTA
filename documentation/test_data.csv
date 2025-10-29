@@ -1,0 +1,6 @@
+Method,Accuracy,Time_ms,Status
+Method A,95.2%,12.5,PASS
+Method B,97.8%,18.3,PASS
+Method C,99.1%,25.7,PASS
+Method D,98.5%,22.1,PASS
+Method E,96.8%,15.3,PASS
