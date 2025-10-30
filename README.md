@@ -236,4 +236,3 @@ Embeds the actual content of another note inline, but hide it's from another fil
 Implement function that allows user to change color of certain characters/patterns
 Allow insertion of 3d models (stl)
 Add &subfigure
-The cycles to close all the tabs and reopen them by clicking on a file only happens once. After that nothing happens, make sure that it is fixed

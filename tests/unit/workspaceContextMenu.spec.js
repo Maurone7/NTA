@@ -259,4 +259,79 @@ describe('Workspace context menu', () => {
       }
     }, 80);
   });
+
+  it('clamps context menu so it stays inside the viewport when opened near edges', () => {
+    const menu = document.getElementById('workspace-context-menu');
+    assert.ok(menu);
+
+    // Save originals so test is non-destructive
+    const origInnerWidth = window.innerWidth;
+    const origInnerHeight = window.innerHeight;
+    const origGetRect = menu.getBoundingClientRect;
+    const origLeft = menu.style.left;
+    const origTop = menu.style.top;
+
+    try {
+      // Set a small viewport to force clamping
+      window.innerWidth = 200;
+      window.innerHeight = 200;
+
+      // Provide a fake bounding rect for measurement so JSDOM returns predictable sizes
+      menu.getBoundingClientRect = () => ({ width: 100, height: 50, left: 0, top: 0, right: 0, bottom: 0 });
+
+      // Request a position near the bottom-right corner which would normally overflow
+      if (app && app.__test__ && typeof app.__test__.openContextMenu === 'function') {
+        app.__test__.openContextMenu('note1', 190, 190);
+      }
+
+      // Expect the menu left/top to be clamped inside the viewport with an 8px margin
+      const margin = 8;
+      const expectedMaxX = Math.max(margin, window.innerWidth - 100 - margin);
+      const expectedMaxY = Math.max(margin, window.innerHeight - 50 - margin);
+
+      const left = parseInt(menu.style.left || '0', 10) || 0;
+      const top = parseInt(menu.style.top || '0', 10) || 0;
+
+      // Be permissive: the value should be within the allowed range (clamped)
+      assert.ok(left <= expectedMaxX && left >= margin, `menu left (${left}) should be within [${margin}, ${expectedMaxX}]`);
+      assert.ok(top <= expectedMaxY && top >= margin, `menu top (${top}) should be within [${margin}, ${expectedMaxY}]`);
+    } finally {
+      // Restore originals
+      window.innerWidth = origInnerWidth;
+      window.innerHeight = origInnerHeight;
+      if (origGetRect) menu.getBoundingClientRect = origGetRect; else delete menu.getBoundingClientRect;
+      menu.style.left = origLeft || '';
+      menu.style.top = origTop || '';
+    }
+  });
+
+  it('clicking outside the open context menu closes it', (done) => {
+    const menu = document.getElementById('workspace-context-menu');
+    assert.ok(menu);
+
+    // Open the menu programmatically
+    if (app && app.__test__ && typeof app.__test__.openContextMenu === 'function') {
+      app.__test__.openContextMenu('note1', 50, 60);
+    }
+
+    // Menu should now be visible according to app state
+    const appState = app.__test__.state;
+    assert.ok(appState.contextMenu.open === true);
+    assert.strictEqual(menu.hidden, false);
+
+    // Dispatch a click on the document body (outside the menu)
+    const evt = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+    document.body.dispatchEvent(evt);
+
+    // The global click handler may run synchronously or asynchronously depending
+    // on the environment; wait a microtask to be robust.
+    setTimeout(() => {
+      try {
+        // Menu should be closed
+        assert.strictEqual(appState.contextMenu.open, false);
+        assert.strictEqual(menu.hidden, true);
+        done();
+      } catch (err) { done(err); }
+    }, 0);
+  });
 });

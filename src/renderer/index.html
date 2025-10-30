@@ -74,119 +74,6 @@
         <span class="icon" aria-hidden="true">◀</span>
       </button>
       <main class="workspace" id="main-content">
-        <div class="workspace__toolbar">
-          <div class="workspace__filemeta">
-            <div class="workspace__filename-wrapper">
-              <div class="workspace__filename" id="file-name" tabindex="0">No file selected</div>
-              <form id="rename-file-form" class="rename-file-form" hidden>
-                <input
-                  id="rename-file-input"
-                  name="fileName"
-                  type="text"
-                  placeholder="Untitled.md"
-                  autocomplete="off"
-                  required
-                />
-              </form>
-            </div>
-            <div class="workspace__filepath" id="file-path">Open a folder and select a file to get started.</div>
-          </div>
-          <div class="workspace__actions">
-            <button
-              id="toggle-math-wysiwyg-button"
-              type="button"
-              class="ghost icon-button"
-              title="Toggle Math WYSIWYG (⌘L)"
-              aria-label="Toggle Math WYSIWYG"
-              aria-pressed="false"
-            >
-              <span class="icon" aria-hidden="true">∑</span>
-            </button>
-            <button
-              id="generate-toc-button"
-              type="button"
-              class="ghost icon-button"
-              title="Generate Table of Contents (⌘T)"
-              aria-label="Generate Table of Contents"
-            >
-              <span class="icon" aria-hidden="true">📑</span>
-            </button>
-            <button
-              id="show-stats-button"
-              type="button"
-              class="ghost icon-button"
-              title="Show Note Statistics (⌘I)"
-              aria-label="Show Note Statistics"
-            >
-              <span class="icon" aria-hidden="true">📊</span>
-            </button>
-            <button
-              id="show-templates-button"
-              type="button"
-              class="ghost icon-button"
-              title="Note Templates (⌘⇧T)"
-              aria-label="Note Templates"
-            >
-              <span class="icon" aria-hidden="true">📝</span>
-            </button>
-            <button
-              id="insert-matrix-table-button"
-              type="button"
-              class="ghost icon-button"
-              title="Insert Matrix/Table (⌘⇧M)"
-              aria-label="Insert Matrix or Table"
-            >
-              <span class="icon" aria-hidden="true">🔢</span>
-            </button>
-            <div class="export-dropdown">
-              <button
-                id="export-dropdown-button"
-                class="ghost export-dropdown__button"
-                title="Export current note (⌘E)"
-                aria-haspopup="true"
-                aria-expanded="false"
-              >
-                Export as
-                <span class="export-dropdown__arrow">▼</span>
-              </button>
-              <div class="export-dropdown__menu" id="export-dropdown-menu" role="menu">
-                <button
-                  id="export-pdf-option"
-                  class="export-dropdown__option"
-                  role="menuitem"
-                  title="Export as PDF"
-                >
-                  PDF
-                </button>
-                <button
-                  id="export-html-option"
-                  class="export-dropdown__option"
-                  role="menuitem"
-                  title="Export as HTML"
-                >
-                  HTML
-                </button>
-                <button
-                  id="export-docx-option"
-                  class="export-dropdown__option"
-                  role="menuitem"
-                  title="Export as Word document"
-                >
-                  DOCX
-                </button>
-                <button
-                  id="export-epub-option"
-                  class="export-dropdown__option"
-                  role="menuitem"
-                  title="Export as EPUB ebook"
-                >
-                  EPUB
-                </button>
-              </div>
-            </div>
-            <!-- toggle-split-button removed -->
-          </div>
-        </div>
         <div class="workspace__content">
           <section class="editor-pane editor-pane--left" aria-label="Markdown editor (left)">
             <div class="editor-pane__badge" data-pane="left"></div>
@@ -598,6 +485,98 @@
             <div id="autosave-text">Autosave off</div>
             <button class="save-now" id="save-now-button" title="Save Now">Save now</button>
           </div>
+          <button
+            id="toggle-math-wysiwyg-button"
+            type="button"
+            class="status-bar__math ghost icon-button"
+            title="Toggle Math WYSIWYG (⌘L)"
+            aria-label="Toggle Math WYSIWYG"
+            aria-pressed="false"
+          >
+            <span class="icon" aria-hidden="true">∑</span>
+          </button>
+          <button
+            id="generate-toc-button"
+            type="button"
+            class="status-bar__toc ghost icon-button"
+            title="Generate Table of Contents (⌘T)"
+            aria-label="Generate Table of Contents"
+          >
+            <span class="icon" aria-hidden="true">📑</span>
+          </button>
+          <button
+            id="show-templates-button"
+            type="button"
+            class="status-bar__templates ghost icon-button"
+            title="Note Templates (⌘⇧T)"
+            aria-label="Note Templates"
+          >
+            <span class="icon" aria-hidden="true">📝</span>
+          </button>
+          <button
+            id="insert-matrix-table-button"
+            type="button"
+            class="status-bar__matrix ghost icon-button"
+            title="Insert Matrix/Table (⌘⇧M)"
+            aria-label="Insert Matrix or Table"
+          >
+            <span class="icon" aria-hidden="true">🔢</span>
+          </button>
+          <div class="status-bar__export-dropdown">
+            <button
+              id="export-dropdown-button"
+              class="status-bar__export ghost export-dropdown__button"
+              title="Export current note (⌘E)"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              Export as
+              <span class="export-dropdown__arrow">▼</span>
+            </button>
+            <div class="export-dropdown__menu" id="export-dropdown-menu" role="menu">
+              <button
+                id="export-pdf-option"
+                class="export-dropdown__option"
+                role="menuitem"
+                title="Export as PDF"
+              >
+                PDF
+              </button>
+              <button
+                id="export-html-option"
+                class="export-dropdown__option"
+                role="menuitem"
+                title="Export as HTML"
+              >
+                HTML
+              </button>
+              <button
+                id="export-docx-option"
+                class="export-dropdown__option"
+                role="menuitem"
+                title="Export as Word document"
+              >
+                DOCX
+              </button>
+              <button
+                id="export-epub-option"
+                class="export-dropdown__option"
+                role="menuitem"
+                title="Export as EPUB ebook"
+              >
+                EPUB
+              </button>
+            </div>
+          </div>
+          <button
+            id="show-stats-button"
+            type="button"
+            class="status-bar__stats ghost icon-button"
+            title="Show Note Statistics (⌘I)"
+            aria-label="Show Note Statistics"
+          >
+            <span class="icon" aria-hidden="true">📊</span>
+          </button>
           <button id="settings-button" class="status-bar__settings" title="Settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"></circle>
@@ -647,6 +626,7 @@
     <!-- Settings Modal -->
     <div id="settings-modal" class="settings-modal">
       <div class="settings-modal__content">
+        <div id="settings-resizer" class="settings-modal__resizer" aria-hidden="true"></div>
         <div class="settings-modal__header">
           <h2 class="settings-modal__title">Settings</h2>
           <button id="settings-close" class="settings-modal__close" title="Close Settings">&times;</button>
@@ -669,78 +649,81 @@
             <!-- Appearance Tab -->
             <div class="settings-tab active" id="appearance-tab">
               <div class="settings-section">
-                <div class="settings-item">
-                  <label class="settings-item__label">Theme</label>
-                  <select id="theme-select" class="settings-select">
-                    <option value="system">System</option>
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
-                  </select>
-                </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">Background Color</label>
-                  <div class="color-picker-group">
-                    <input type="color" id="bg-color-picker" class="color-picker" value="#f7f8fa">
-                    <button id="reset-bg-color" class="settings-button--secondary">Reset</button>
-                  </div>
-                </div>
+                <div class="settings-grid">
+                    <div class="settings-item">
+                      <label class="settings-item__label">Theme</label>
+                      <select id="theme-select" class="settings-select">
+                        <option value="system">System</option>
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                      </select>
+                    </div>
+                    <div class="settings-item">
+                      <label class="settings-item__label">Background Color</label>
+                      <div class="color-picker-group">
+                        <input type="color" id="bg-color-picker" class="color-picker" value="#f7f8fa">
+                        <button id="reset-bg-color" class="settings-button--secondary">Reset</button>
+                      </div>
+                    </div>
 
-                <div class="settings-item">
-                  <label class="settings-item__label">Font Family</label>
-                  <div class="font-family-group">
-                    <select id="font-family-select" class="settings-select">
-                      <option value="system">System Font (SF Pro)</option>
-                      <option value="Inter">Inter</option>
-                      <option value="Roboto">Roboto</option>
-                      <option value="Open Sans">Open Sans</option>
-                      <option value="Source Sans Pro">Source Sans Pro</option>
-                      <option value="Lato">Lato</option>
-                      <option value="Poppins">Poppins</option>
-                      <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
-                      <option value="Fira Code">Fira Code (Monospace)</option>
-                      <option value="Monaco">Monaco (Monospace)</option>
-                    </select>
-                    <span id="font-preview-sample" class="font-preview-sample"></span>
-                    <button id="reset-font-family" class="settings-button--secondary">Reset</button>
-                  </div>
-                </div>
+                    <div class="settings-item">
+                      <label class="settings-item__label">Font Family</label>
+                      <div class="font-family-group">
+                        <select id="font-family-select" class="settings-select">
+                          <option value="system">System Font (SF Pro)</option>
+                          <option value="Inter">Inter</option>
+                          <option value="Roboto">Roboto</option>
+                          <option value="Open Sans">Open Sans</option>
+                          <option value="Source Sans Pro">Source Sans Pro</option>
+                          <option value="Lato">Lato</option>
+                          <option value="Poppins">Poppins</option>
+                          <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
+                          <option value="Fira Code">Fira Code (Monospace)</option>
+                          <option value="Monaco">Monaco (Monospace)</option>
+                        </select>
+                        <span id="font-preview-sample" class="font-preview-sample"></span>
+                        <button id="reset-font-family" class="settings-button--secondary">Reset</button>
+                      </div>
+                    </div>
 
-                <div class="settings-item">
-                  <label class="settings-item__label">Font Size</label>
-                  <div class="slider-group">
-                    <input type="range" id="font-size-slider" class="settings-slider" min="11" max="20" value="14" step="1">
-                    <span id="font-size-value" class="slider-value">14px</span>
-                    <button id="reset-font-size" class="settings-button--secondary">Reset</button>
-                  </div>
-                </div>
-                <!-- Common extra settings -->
-                <div class="settings-item">
-                  <label class="settings-item__label">Autosave</label>
-                  <div class="toggle-group">
-                    <input type="checkbox" id="autosave-toggle" class="settings-toggle">
-                    <label for="autosave-toggle" class="toggle-label">Enable autosave</label>
-                  </div>
-                </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">Autosave Interval</label>
-                  <div class="slider-group">
-                    <input type="range" id="autosave-interval" class="settings-slider" min="5" max="300" value="30" step="5">
-                    <span id="autosave-interval-value" class="slider-value">30s</span>
-                  </div>
-                </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">Editor Spellcheck</label>
-                  <div class="toggle-group">
-                    <input type="checkbox" id="spellcheck-toggle" class="settings-toggle" checked>
-                    <label for="spellcheck-toggle" class="toggle-label">Enable spellcheck in editor</label>
-                  </div>
-                </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">Soft Wrap</label>
-                  <div class="toggle-group">
-                    <input type="checkbox" id="softwrap-toggle" class="settings-toggle" checked>
-                    <label for="softwrap-toggle" class="toggle-label">Wrap long lines in editor</label>
-                  </div>
+                    <div class="settings-item">
+                      <label class="settings-item__label">Font Size</label>
+                      <div class="slider-group">
+                        <input type="range" id="font-size-slider" class="settings-slider" min="11" max="20" value="14" step="1">
+                        <span id="font-size-value" class="slider-value">14px</span>
+                        <button id="reset-font-size" class="settings-button--secondary">Reset</button>
+                      </div>
+                    </div>
+
+                    <!-- Common extra settings -->
+                    <div class="settings-item">
+                      <label class="settings-item__label">Autosave</label>
+                      <div class="toggle-group">
+                        <input type="checkbox" id="autosave-toggle" class="settings-toggle">
+                        <label for="autosave-toggle" class="toggle-label">Enable autosave</label>
+                      </div>
+                    </div>
+                    <div class="settings-item">
+                      <label class="settings-item__label">Autosave Interval</label>
+                      <div class="slider-group">
+                        <input type="range" id="autosave-interval" class="settings-slider" min="5" max="300" value="30" step="5">
+                        <span id="autosave-interval-value" class="slider-value">30s</span>
+                      </div>
+                    </div>
+                    <div class="settings-item">
+                      <label class="settings-item__label">Editor Spellcheck</label>
+                      <div class="toggle-group">
+                        <input type="checkbox" id="spellcheck-toggle" class="settings-toggle" checked>
+                        <label for="spellcheck-toggle" class="toggle-label">Enable spellcheck in editor</label>
+                      </div>
+                    </div>
+                    <div class="settings-item">
+                      <label class="settings-item__label">Soft Wrap</label>
+                      <div class="toggle-group">
+                        <input type="checkbox" id="softwrap-toggle" class="settings-toggle" checked>
+                        <label for="softwrap-toggle" class="toggle-label">Wrap long lines in editor</label>
+                      </div>
+                    </div>
                 </div>
                 
               </div>
@@ -749,39 +732,113 @@
             <!-- Accessibility Tab -->
             <div class="settings-tab" id="accessibility-tab">
               <div class="settings-section">
-                <div class="settings-item">
-                  <label class="settings-item__label">High Contrast Mode</label>
-                  <div class="toggle-group">
-                    <input type="checkbox" id="high-contrast-toggle" class="settings-toggle">
-                    <label for="high-contrast-toggle" class="toggle-label">Enable high contrast mode for better accessibility</label>
-                  </div>
-                </div>
-                
-                <div class="settings-section">
-                  <h4 class="settings-section__title">Keyboard Shortcuts</h4>
-                  <div class="settings-item">
-                    <label class="settings-item__label">Add Custom Keybinding</label>
-                    <div class="keybinding-controls">
-                      <div class="keybinding-input-group">
-                        <select id="keybinding-action-select" class="keybinding-select">
-                          <option value="">Select Action</option>
-                          <option value="export-pdf">Export PDF</option>
-                          <option value="export-html">Export HTML</option>
-                          <option value="settings">Open Settings</option>
-                          <option value="bold">Bold Text</option>
-                          <option value="italic">Italic Text</option>
-                          <option value="code">Code Block</option>
-                          <option value="link">Insert Link</option>
-                          <option value="insert-latex">Insert LaTeX Block</option>
-                          <option value="open-citation">Open Citation Picker</option>
+                <div class="settings-grid">
+                    <div class="settings-item">
+                      <label class="settings-item__label">High Contrast Mode</label>
+                      <div class="toggle-group">
+                        <input type="checkbox" id="high-contrast-toggle" class="settings-toggle">
+                        <label for="high-contrast-toggle" class="toggle-label">Enable high contrast mode for better accessibility</label>
+                      </div>
+                    </div>
+
+                    <div class="settings-item">
+                      <label class="settings-item__label">Reduce Motion</label>
+                      <div class="toggle-group">
+                        <input type="checkbox" id="reduce-motion-toggle" class="settings-toggle">
+                        <label for="reduce-motion-toggle" class="toggle-label">Disable non-essential animations and motion</label>
+                      </div>
+                    </div>
+
+                    <div class="settings-item">
+                      <label class="settings-item__label">Dyslexia-friendly</label>
+                      <div class="toggle-group">
+                        <input type="checkbox" id="dyslexia-font-toggle" class="settings-toggle">
+                        <label for="dyslexia-font-toggle" class="toggle-label">Use dyslexia-friendly spacing and font adjustments</label>
+                      </div>
+                    </div>
+
+                    <div class="settings-item">
+                      <label class="settings-item__label">Show Focus Indicators</label>
+                      <div class="toggle-group">
+                        <input type="checkbox" id="focus-indicators-toggle" class="settings-toggle">
+                        <label for="focus-indicators-toggle" class="toggle-label">Always show visible focus rings for keyboard navigation</label>
+                      </div>
+                    </div>
+
+                    <div class="settings-item">
+                      <label class="settings-item__label">UI Scale</label>
+                      <div class="slider-group">
+                        <select id="ui-scale-select" class="settings-select">
+                          <option value="1">100%</option>
+                          <option value="1.1">110%</option>
+                          <option value="1.25">125%</option>
+                          <option value="1.5">150%</option>
                         </select>
-                        <input type="text" id="keybinding-keys-input" class="keybinding-input" placeholder="Press keys (e.g., Ctrl+S)" readonly>
-                        <button id="add-keybinding-btn" class="settings-button--primary">Add</button>
                       </div>
-                      <div id="keybindings-list" class="keybindings-list">
-                        <!-- Keybindings will be populated dynamically -->
+                    </div>
+
+                    <div class="settings-item">
+                      <label class="settings-item__label">Line Height</label>
+                      <div class="slider-group">
+                        <select id="line-height-select" class="settings-select">
+                          <option value="1">Normal</option>
+                          <option value="1.25">Comfortable</option>
+                          <option value="1.5">Spacious</option>
+                        </select>
                       </div>
-                      <button id="reset-keybindings-btn" class="settings-button--secondary">Reset to Defaults</button>
+                    </div>
+
+                    <div class="settings-item">
+                      <label class="settings-item__label">Text Spacing</label>
+                      <div class="slider-group">
+                        <select id="text-spacing-select" class="settings-select">
+                          <option value="normal">Normal</option>
+                          <option value="wide">Wide</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div class="settings-item">
+                      <label class="settings-item__label">Large Cursor</label>
+                      <div class="toggle-group">
+                        <input type="checkbox" id="large-cursor-toggle" class="settings-toggle">
+                        <label for="large-cursor-toggle" class="toggle-label">Increase cursor visibility in text areas</label>
+                      </div>
+                    </div>
+
+                    <div class="settings-item">
+                      <label class="settings-item__label">Keyboard Shortcuts</label>
+                      <div class="keybinding-controls">
+                        <div class="keybinding-input-group">
+                          <select id="keybinding-action-select" class="keybinding-select">
+                            <option value="">Select Action</option>
+                            <option value="export-pdf">Export PDF</option>
+                            <option value="export-html">Export HTML</option>
+                            <option value="settings">Open Settings</option>
+                            <option value="bold">Bold Text</option>
+                            <option value="italic">Italic Text</option>
+                            <option value="code">Code Block</option>
+                            <option value="link">Insert Link</option>
+                            <option value="insert-latex">Insert LaTeX Block</option>
+                            <option value="open-citation">Open Citation Picker</option>
+                          </select>
+                          <input type="text" id="keybinding-keys-input" class="keybinding-input" placeholder="Press keys (e.g., Ctrl+S)" readonly>
+                          <button id="add-keybinding-btn" class="settings-button--primary">Add</button>
+                        </div>
+                        <div id="keybindings-list" class="keybindings-list">
+                          <!-- Keybindings will be populated dynamically -->
+                        </div>
+                        <button id="reset-keybindings-btn" class="settings-button--secondary">Reset to Defaults</button>
+                      </div>
+                    </div>
+                </div>
+
+                <div class="settings-section" style="margin-top:18px;">
+                  <div id="accessibility-preview-wrapper" class="accessibility-preview-wrapper">
+                    <h4 class="settings-section__title">Preview</h4>
+                    <div id="accessibility-preview" class="accessibility-preview">
+                      <p class="preview-sample-text">The quick brown fox jumps over the lazy dog — Accessibility preview text.</p>
+                      <p class="preview-sample-note">Use the controls on the left to see how the UI responds.</p>
                     </div>
                   </div>
                 </div>
@@ -791,26 +848,28 @@
             <!-- Layout Tab -->
             <div class="settings-tab" id="layout-tab">
               <div class="settings-section">
-                <div class="settings-item">
-                  <label class="settings-item__label">Border Color</label>
-                  <div class="color-picker-group">
-                    <input type="color" id="border-color-picker" class="color-picker" value="#e2e8f0">
-                    <button id="reset-border-color" class="settings-button--secondary">Reset</button>
+                <div class="settings-grid">
+                  <div class="settings-item">
+                    <label class="settings-item__label">Border Color</label>
+                    <div class="color-picker-group">
+                      <input type="color" id="border-color-picker" class="color-picker" value="#e2e8f0">
+                      <button id="reset-border-color" class="settings-button--secondary">Reset</button>
+                    </div>
                   </div>
-                </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">Border Thickness</label>
-                  <div class="slider-group">
-                    <input type="range" id="border-thickness-slider" class="settings-slider" min="1" max="4" value="1" step="1">
-                    <span id="border-thickness-value" class="slider-value">1px</span>
-                    <button id="reset-border-thickness" class="settings-button--secondary">Reset</button>
+                  <div class="settings-item">
+                    <label class="settings-item__label">Border Thickness</label>
+                    <div class="slider-group">
+                      <input type="range" id="border-thickness-slider" class="settings-slider" min="1" max="4" value="1" step="1">
+                      <span id="border-thickness-value" class="slider-value">1px</span>
+                      <button id="reset-border-thickness" class="settings-button--secondary">Reset</button>
+                    </div>
                   </div>
-                </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">Show Line Numbers</label>
-                  <div class="toggle-group">
-                    <input type="checkbox" id="show-line-numbers" class="settings-toggle">
-                    <label for="show-line-numbers" class="toggle-label">Show line numbers in editor</label>
+                  <div class="settings-item">
+                    <label class="settings-item__label">Show Line Numbers</label>
+                    <div class="toggle-group">
+                      <input type="checkbox" id="show-line-numbers" class="settings-toggle">
+                      <label for="show-line-numbers" class="toggle-label">Show line numbers in editor</label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -819,48 +878,50 @@
             <!-- Export Tab -->
             <div class="settings-tab" id="export-tab">
               <div class="settings-section">
-                <div class="settings-item">
-                  <label class="settings-item__label">Default Export Format</label>
-                  <select id="default-export-format-select" class="settings-select">
-                    <option value="pdf">PDF</option>
-                    <option value="html">HTML</option>
-                    <option value="docx">DOCX</option>
-                    <option value="epub">EPUB</option>
-                  </select>
-                </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">Direct Export with Cmd+E</label>
-                  <div class="toggle-group">
-                    <input type="checkbox" id="cmd-e-direct-export-toggle" class="settings-toggle">
-                    <label for="cmd-e-direct-export-toggle" class="toggle-label">When enabled, Cmd+E exports using the default format. When disabled, opens the export menu.</label>
-                  </div>
-                </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">Export Settings</label>
-                  <div class="export-controls">
-                    <button id="export-settings-btn" class="settings-button">Export Settings</button>
-                    <select id="export-format-select" class="settings-select">
-                      <option value="json">JSON Format</option>
-                      <option value="yaml">YAML Format</option>
-                      <option value="txt">Text Format</option>
+                <div class="settings-grid">
+                  <div class="settings-item">
+                    <label class="settings-item__label">Default Export Format</label>
+                    <select id="default-export-format-select" class="settings-select">
+                      <option value="pdf">PDF</option>
+                      <option value="html">HTML</option>
+                      <option value="docx">DOCX</option>
+                      <option value="epub">EPUB</option>
                     </select>
                   </div>
-                </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">Import Settings</label>
-                  <div class="import-controls">
-                    <input type="file" id="import-settings-input" accept=".json,.yaml,.yml,.txt" style="display: none;">
-                    <button id="import-settings-btn" class="settings-button--secondary">Import Settings</button>
-                    <span id="import-status" class="import-status"></span>
+                  <div class="settings-item">
+                    <label class="settings-item__label">Direct Export with Cmd+E</label>
+                    <div class="toggle-group">
+                      <input type="checkbox" id="cmd-e-direct-export-toggle" class="settings-toggle">
+                      <label for="cmd-e-direct-export-toggle" class="toggle-label">When enabled, Cmd+E exports using the default format. When disabled, opens the export menu.</label>
+                    </div>
                   </div>
-                </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">Export Preview</label>
-                  <div class="export-preview">
-                    <textarea id="export-preview-text" class="export-preview__text" readonly placeholder="Settings will appear here when you click Export..."></textarea>
-                    <div class="export-preview__actions">
-                      <button id="copy-settings-btn" class="settings-button--secondary" disabled>Copy to Clipboard</button>
-                      <button id="download-settings-btn" class="settings-button--secondary" disabled>Download File</button>
+                  <div class="settings-item">
+                    <label class="settings-item__label">Export Settings</label>
+                    <div class="export-controls">
+                      <button id="export-settings-btn" class="settings-button">Export Settings</button>
+                      <select id="export-format-select" class="settings-select">
+                        <option value="json">JSON Format</option>
+                        <option value="yaml">YAML Format</option>
+                        <option value="txt">Text Format</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="settings-item">
+                    <label class="settings-item__label">Import Settings</label>
+                    <div class="import-controls">
+                      <input type="file" id="import-settings-input" accept=".json,.yaml,.yml,.txt" style="display: none;">
+                      <button id="import-settings-btn" class="settings-button--secondary">Import Settings</button>
+                      <span id="import-status" class="import-status"></span>
+                    </div>
+                  </div>
+                  <div class="settings-item">
+                    <label class="settings-item__label">Export Preview</label>
+                    <div class="export-preview">
+                      <textarea id="export-preview-text" class="export-preview__text" readonly placeholder="Settings will appear here when you click Export..."></textarea>
+                      <div class="export-preview__actions">
+                        <button id="copy-settings-btn" class="settings-button--secondary" disabled>Copy to Clipboard</button>
+                        <button id="download-settings-btn" class="settings-button--secondary" disabled>Download File</button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -870,216 +931,218 @@
             <!-- Advanced Tab -->
             <div class="settings-tab" id="advanced-tab">
               <div class="settings-section">
-                <!-- Component-specific Settings -->
-                <div class="settings-divider">
-                  <h3 class="settings-divider__title">Component Settings</h3>
-                </div>
-                
-                <!-- Component Selector -->
-                <div class="settings-item">
-                  <label class="settings-item__label">Select Component</label>
-                  <select id="component-selector" class="settings-select">
-                    <option value="workspace">Workspace</option>
-                    <option value="editor">Editor</option>
-                    <option value="preview">Preview</option>
-                    <option value="statusbar">Status Bar</option>
-                    <option value="titlebar">Title Bar</option>
-                  </select>
-                </div>
-                
-                <!-- Unified Component Settings -->
-                <div id="component-settings" class="component-settings-container">
-                  <!-- Background Color Setting -->
-                  <div class="settings-item">
-                    <label class="settings-item__label">
-                      <input type="checkbox" id="component-use-global-bg" class="settings-checkbox" checked>
-                      Use Global Background Color
-                    </label>
-                    <div class="color-picker-group" id="component-bg-controls">
-                      <input type="color" id="component-bg-color-picker" class="color-picker" value="#f1f3f4" disabled>
-                      <button id="reset-component-bg-color" class="settings-button--secondary" disabled>Reset</button>
+                <div class="settings-grid">
+                    <!-- Component-specific Settings -->
+                    <div class="settings-divider">
+                      <h3 class="settings-divider__title">Component Settings</h3>
                     </div>
-                  </div>
-                  
-                  <!-- Font Family Setting -->
-                  <div class="settings-item">
-                    <label class="settings-item__label">
-                      <input type="checkbox" id="component-use-global-font" class="settings-checkbox" checked>
-                      Use Global Font Family
-                    </label>
-                    <div class="font-family-group" id="component-font-controls">
-                      <select id="component-font-family-select" class="settings-select" disabled>
-                        <option value="system">System Font (SF Pro)</option>
-                        <option value="Inter">Inter</option>
-                        <option value="Roboto">Roboto</option>
-                        <option value="Open Sans">Open Sans</option>
-                        <option value="Source Sans Pro">Source Sans Pro</option>
-                        <option value="Lato">Lato</option>
-                        <option value="Poppins">Poppins</option>
-                        <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
-                        <option value="Fira Code">Fira Code (Monospace)</option>
-                        <option value="Monaco">Monaco (Monospace)</option>
+                    
+                    <!-- Component Selector -->
+                    <div class="settings-item">
+                      <label class="settings-item__label">Select Component</label>
+                      <select id="component-selector" class="settings-select">
+                        <option value="workspace">Workspace</option>
+                        <option value="editor">Editor</option>
+                        <option value="preview">Preview</option>
+                        <option value="statusbar">Status Bar</option>
+                        <option value="titlebar">Title Bar</option>
                       </select>
-                      <button id="reset-component-font-family" class="settings-button--secondary" disabled>Reset</button>
                     </div>
-                  </div>
-                  
-                  <!-- Font Size Setting -->
-                  <div class="settings-item">
-                    <label class="settings-item__label">
-                      <input type="checkbox" id="component-use-global-size" class="settings-checkbox" checked>
-                      Use Global Font Size
-                    </label>
-                    <div class="slider-group" id="component-size-controls">
-                      <input type="range" id="component-font-size-slider" class="settings-slider" min="10" max="20" value="13" step="1" disabled>
-                      <span id="component-font-size-value" class="slider-value">13px</span>
-                      <button id="reset-component-font-size" class="settings-button--secondary" disabled>Reset</button>
+                    
+                    <!-- Unified Component Settings -->
+                    <div id="component-settings" class="component-settings-container">
+                      <!-- Background Color Setting -->
+                      <div class="settings-item">
+                        <label class="settings-item__label">
+                          <input type="checkbox" id="component-use-global-bg" class="settings-checkbox" checked>
+                          Use Global Background Color
+                        </label>
+                        <div class="color-picker-group" id="component-bg-controls">
+                          <input type="color" id="component-bg-color-picker" class="color-picker" value="#f1f3f4" disabled>
+                          <button id="reset-component-bg-color" class="settings-button--secondary" disabled>Reset</button>
+                        </div>
+                      </div>
+                      
+                      <!-- Font Family Setting -->
+                      <div class="settings-item">
+                        <label class="settings-item__label">
+                          <input type="checkbox" id="component-use-global-font" class="settings-checkbox" checked>
+                          Use Global Font Family
+                        </label>
+                        <div class="font-family-group" id="component-font-controls">
+                          <select id="component-font-family-select" class="settings-select" disabled>
+                            <option value="system">System Font (SF Pro)</option>
+                            <option value="Inter">Inter</option>
+                            <option value="Roboto">Roboto</option>
+                            <option value="Open Sans">Open Sans</option>
+                            <option value="Source Sans Pro">Source Sans Pro</option>
+                            <option value="Lato">Lato</option>
+                            <option value="Poppins">Poppins</option>
+                            <option value="JetBrains Mono">JetBrains Mono (Monospace)</option>
+                            <option value="Fira Code">Fira Code (Monospace)</option>
+                            <option value="Monaco">Monaco (Monospace)</option>
+                          </select>
+                          <button id="reset-component-font-family" class="settings-button--secondary" disabled>Reset</button>
+                        </div>
+                      </div>
+                      
+                      <!-- Font Size Setting -->
+                      <div class="settings-item">
+                        <label class="settings-item__label">
+                          <input type="checkbox" id="component-use-global-size" class="settings-checkbox" checked>
+                          Use Global Font Size
+                        </label>
+                        <div class="slider-group" id="component-size-controls">
+                          <input type="range" id="component-font-size-slider" class="settings-slider" min="10" max="20" value="13" step="1" disabled>
+                          <span id="component-font-size-value" class="slider-value">13px</span>
+                          <button id="reset-component-font-size" class="settings-button--secondary" disabled>Reset</button>
+                        </div>
+                      </div>
+                      
+                      <!-- Text Color Setting -->
+                      <div class="settings-item">
+                        <label class="settings-item__label">
+                          <input type="checkbox" id="component-use-global-color" class="settings-checkbox" checked>
+                          Use Global Text Color
+                        </label>
+                        <div class="color-picker-group" id="component-color-controls">
+                          <input type="color" id="component-text-color-picker" class="color-picker" value="#374151" disabled>
+                          <button id="reset-component-text-color" class="settings-button--secondary" disabled>Reset</button>
+                        </div>
+                      </div>
+                      
+                      <!-- Font Style Setting -->
+                      <div class="settings-item">
+                        <label class="settings-item__label">
+                          <input type="checkbox" id="component-use-global-style" class="settings-checkbox" checked>
+                          Use Global Font Style
+                        </label>
+                        <select id="component-font-style-select" class="settings-select" disabled>
+                          <option value="normal">Normal</option>
+                          <option value="italic">Italic</option>
+                          <option value="oblique">Oblique</option>
+                        </select>
+                      </div>
+                      
+                      <!-- Title bar-specific setting removed (macOS titlebar is handled by OS) -->
                     </div>
-                  </div>
-                  
-                  <!-- Text Color Setting -->
-                  <div class="settings-item">
-                    <label class="settings-item__label">
-                      <input type="checkbox" id="component-use-global-color" class="settings-checkbox" checked>
-                      Use Global Text Color
-                    </label>
-                    <div class="color-picker-group" id="component-color-controls">
-                      <input type="color" id="component-text-color-picker" class="color-picker" value="#374151" disabled>
-                      <button id="reset-component-text-color" class="settings-button--secondary" disabled>Reset</button>
+                    
+                    <!-- Status Bar Position Setting -->
+                    <div class="settings-item">
+                      <label class="settings-item__label">Status Bar Position</label>
+                      <select id="status-bar-position-select" class="settings-select">
+                        <option value="bottom">Bottom</option>
+                        <option value="top">Top</option>
+                        <option value="hidden">Hidden</option>
+                        <option value="right">Right</option>
+                        <option value="left">Left</option>
+                      </select>
                     </div>
-                  </div>
-                  
-                  <!-- Font Style Setting -->
-                  <div class="settings-item">
-                    <label class="settings-item__label">
-                      <input type="checkbox" id="component-use-global-style" class="settings-checkbox" checked>
-                      Use Global Font Style
-                    </label>
-                    <select id="component-font-style-select" class="settings-select" disabled>
-                      <option value="normal">Normal</option>
-                      <option value="italic">Italic</option>
-                      <option value="oblique">Oblique</option>
-                    </select>
-                  </div>
-                  
-                  <!-- Title bar-specific setting removed (macOS titlebar is handled by OS) -->
-                </div>
-                
-                <!-- Status Bar Position Setting -->
-                <div class="settings-item">
-                  <label class="settings-item__label">Status Bar Position</label>
-                  <select id="status-bar-position-select" class="settings-select">
-                    <option value="bottom">Bottom</option>
-                    <option value="top">Top</option>
-                    <option value="hidden">Hidden</option>
-                    <option value="right">Right</option>
-                    <option value="left">Left</option>
-                  </select>
-                </div>
-                
-                <!-- New Settings -->
-                <div class="settings-item">
-                  <label class="settings-item__label">Auto-save Interval</label>
-                  <div class="slider-group">
-                    <input type="range" id="autosave-interval-slider" class="settings-slider" min="5" max="300" value="30" step="5">
-                    <span id="autosave-interval-value" class="slider-value">30s</span>
-                    <button id="reset-autosave-interval" class="settings-button--secondary">Reset</button>
-                  </div>
-                </div>
-                
-                <div class="settings-item">
-                  <label class="settings-item__label">Word Wrap</label>
-                  <div class="toggle-group">
-                    <input type="checkbox" id="word-wrap-toggle" class="settings-toggle">
-                    <label for="word-wrap-toggle" class="toggle-label">Enable word wrapping in editor</label>
-                  </div>
-                </div>
-                
-                <div class="settings-item">
-                  <label class="settings-item__label">Default File Extension</label>
-                  <select id="default-file-extension-select" class="settings-select">
-                    <option value=".md">.md (Markdown)</option>
-                    <option value=".txt">.txt (Plain Text)</option>
-                    <option value=".markdown">.markdown</option>
-                  </select>
-                </div>
-                
-                <div class="settings-item">
-                  <label class="settings-item__label">Show Hidden Files</label>
-                  <div class="toggle-group">
-                    <input type="checkbox" id="show-hidden-files-toggle" class="settings-toggle">
-                    <label for="show-hidden-files-toggle" class="toggle-label">Show hidden files in workspace tree</label>
-                  </div>
-                </div>
-                
-                <div class="settings-item">
-                  <label class="settings-item__label">Maximum Recent Files</label>
-                  <div class="slider-group">
-                    <input type="range" id="max-recent-files-slider" class="settings-slider" min="5" max="50" value="20" step="5">
-                    <span id="max-recent-files-value" class="slider-value">20</span>
-                    <button id="reset-max-recent-files" class="settings-button--secondary">Reset</button>
-                  </div>
-                </div>
-                
-                <div class="settings-item">
-                  <label class="settings-item__label">Maximum Image File Size</label>
-                  <div class="slider-group">
-                    <input type="range" id="max-image-size-slider" class="settings-slider" min="1" max="50" value="10" step="1">
-                    <span id="max-image-size-value" class="slider-value">10MB</span>
-                    <button id="reset-max-image-size" class="settings-button--secondary">Reset</button>
-                  </div>
-                </div>
-                
-                <div class="settings-item">
-                  <label class="settings-item__label">Maximum Video File Size</label>
-                  <div class="slider-group">
-                    <input type="range" id="max-video-size-slider" class="settings-slider" min="10" max="500" value="100" step="10">
-                    <span id="max-video-size-value" class="slider-value">100MB</span>
-                    <button id="reset-max-video-size" class="settings-button--secondary">Reset</button>
-                  </div>
-                </div>
-                
-                <div class="settings-item">
-                  <label class="settings-item__label">Maximum Script File Size</label>
-                  <div class="slider-group">
-                    <input type="range" id="max-script-size-slider" class="settings-slider" min="1" max="20" value="5" step="1">
-                    <span id="max-script-size-value" class="slider-value">5MB</span>
-                    <button id="reset-max-script-size" class="settings-button--secondary">Reset</button>
-                  </div>
-                </div>
-                
-                <!-- Super Advanced Toggle -->
-                <div class="settings-item">
-                  <label class="settings-item__label">Super Advanced Settings</label>
-                  <button id="super-advanced-toggle" class="settings-arrow-toggle" data-target="super-advanced">
-                    <span class="toggle-icon">▶</span>
-                  </button>
-                </div>
-                
-                <!-- Super Advanced Settings (Hidden by default) -->
-                <div id="super-advanced" class="settings-advanced" hidden>
-                  <!-- Title bar / traffic-light controls removed -->
-                  <div class="settings-item">
-                    <label class="settings-item__label">Status Bar Size</label>
-                    <div class="slider-group">
-                      <input type="range" id="status-bar-size-slider" class="settings-slider" min="20" max="40" value="28" step="2">
-                      <span id="status-bar-size-value" class="slider-value">28px</span>
-                      <button id="reset-status-bar-size" class="settings-button--secondary">Reset</button>
+                    
+                    <!-- New Settings -->
+                    <div class="settings-item">
+                      <label class="settings-item__label">Auto-save Interval</label>
+                      <div class="slider-group">
+                        <input type="range" id="autosave-interval-slider" class="settings-slider" min="5" max="300" value="30" step="5">
+                        <span id="autosave-interval-value" class="slider-value">30s</span>
+                        <button id="reset-autosave-interval" class="settings-button--secondary">Reset</button>
+                      </div>
                     </div>
-                  </div>
-                  <div class="settings-item">
-                    <label class="settings-item__label">Editor Tab Size</label>
-                    <div class="slider-group">
-                      <input type="range" id="editor-tab-size-slider" class="settings-slider" min="2" max="8" value="4" step="1">
-                      <span id="editor-tab-size-value" class="slider-value">4</span>
-                      <button id="reset-editor-tab-size" class="settings-button--secondary">Reset</button>
+                    
+                    <div class="settings-item">
+                      <label class="settings-item__label">Word Wrap</label>
+                      <div class="toggle-group">
+                        <input type="checkbox" id="word-wrap-toggle" class="settings-toggle">
+                        <label for="word-wrap-toggle" class="toggle-label">Enable word wrapping in editor</label>
+                      </div>
                     </div>
-                  </div>
-                  <div class="settings-item">
-                    <label class="settings-item__label">Import Font</label>
-                    <input type="file" id="font-import" class="settings-file-input" accept=".ttf,.otf,.woff,.woff2">
-                    <button id="font-import-btn" class="settings-button--secondary">Choose Font File</button>
-                  </div>
+                    
+                    <div class="settings-item">
+                      <label class="settings-item__label">Default File Extension</label>
+                      <select id="default-file-extension-select" class="settings-select">
+                        <option value=".md">.md (Markdown)</option>
+                        <option value=".txt">.txt (Plain Text)</option>
+                        <option value=".markdown">.markdown</option>
+                      </select>
+                    </div>
+                    
+                    <div class="settings-item">
+                      <label class="settings-item__label">Show Hidden Files</label>
+                      <div class="toggle-group">
+                        <input type="checkbox" id="show-hidden-files-toggle" class="settings-toggle">
+                        <label for="show-hidden-files-toggle" class="toggle-label">Show hidden files in workspace tree</label>
+                      </div>
+                    </div>
+
+                    <div class="settings-item">
+                      <label class="settings-item__label">Maximum Recent Files</label>
+                      <div class="slider-group">
+                        <input type="range" id="max-recent-files-slider" class="settings-slider" min="5" max="50" value="20" step="5">
+                        <span id="max-recent-files-value" class="slider-value">20</span>
+                        <button id="reset-max-recent-files" class="settings-button--secondary">Reset</button>
+                      </div>
+                    </div>
+                    
+                    <div class="settings-item">
+                      <label class="settings-item__label">Maximum Image File Size</label>
+                      <div class="slider-group">
+                        <input type="range" id="max-image-size-slider" class="settings-slider" min="1" max="50" value="10" step="1">
+                        <span id="max-image-size-value" class="slider-value">10MB</span>
+                        <button id="reset-max-image-size" class="settings-button--secondary">Reset</button>
+                      </div>
+                    </div>
+                    
+                    <div class="settings-item">
+                      <label class="settings-item__label">Maximum Video File Size</label>
+                      <div class="slider-group">
+                        <input type="range" id="max-video-size-slider" class="settings-slider" min="10" max="500" value="100" step="10">
+                        <span id="max-video-size-value" class="slider-value">100MB</span>
+                        <button id="reset-max-video-size" class="settings-button--secondary">Reset</button>
+                      </div>
+                    </div>
+                    
+                    <div class="settings-item">
+                      <label class="settings-item__label">Maximum Script File Size</label>
+                      <div class="slider-group">
+                        <input type="range" id="max-script-size-slider" class="settings-slider" min="1" max="20" value="5" step="1">
+                        <span id="max-script-size-value" class="slider-value">5MB</span>
+                        <button id="reset-max-script-size" class="settings-button--secondary">Reset</button>
+                      </div>
+                    </div>
+                    
+                    <!-- Super Advanced Toggle -->
+                    <div class="settings-item">
+                      <label class="settings-item__label">Super Advanced Settings</label>
+                      <button id="super-advanced-toggle" class="settings-arrow-toggle" data-target="super-advanced">
+                        <span class="toggle-icon">▶</span>
+                      </button>
+                    </div>
+                    
+                    <!-- Super Advanced Settings (Hidden by default) -->
+                    <div id="super-advanced" class="settings-advanced" hidden>
+                      <!-- Title bar / traffic-light controls removed -->
+                      <div class="settings-item">
+                        <label class="settings-item__label">Status Bar Size</label>
+                        <div class="slider-group">
+                          <input type="range" id="status-bar-size-slider" class="settings-slider" min="20" max="40" value="28" step="2">
+                          <span id="status-bar-size-value" class="slider-value">28px</span>
+                          <button id="reset-status-bar-size" class="settings-button--secondary">Reset</button>
+                        </div>
+                      </div>
+                      <div class="settings-item">
+                        <label class="settings-item__label">Editor Tab Size</label>
+                        <div class="slider-group">
+                          <input type="range" id="editor-tab-size-slider" class="settings-slider" min="2" max="8" value="4" step="1">
+                          <span id="editor-tab-size-value" class="slider-value">4</span>
+                          <button id="reset-editor-tab-size" class="settings-button--secondary">Reset</button>
+                        </div>
+                      </div>
+                      <div class="settings-item">
+                        <label class="settings-item__label">Import Font</label>
+                        <input type="file" id="font-import" class="settings-file-input" accept=".ttf,.otf,.woff,.woff2">
+                        <button id="font-import-btn" class="settings-button--secondary">Choose Font File</button>
+                      </div>
+                    </div>
                 </div>
               </div>
             </div>
@@ -1087,7 +1150,8 @@
             <!-- Application Tab -->
             <div class="settings-tab" id="application-tab">
               <div class="settings-section">
-                <div class="settings-item">
+                <div class="settings-grid">
+                  <div class="settings-item">
                       <label class="settings-item__label">Check for Updates</label>
                         <div class="update-check-row">
                           <div class="check-button-column">
@@ -1099,9 +1163,10 @@
                           </div>
                         </div>
                     </div>
-                <div class="settings-item">
-                  <label class="settings-item__label">App Version</label>
-                  <div id="app-version">Loading...</div>
+                  <div class="settings-item">
+                    <label class="settings-item__label">App Version</label>
+                    <div id="app-version">Loading...</div>
+                  </div>
                 </div>
               </div>
             </div>

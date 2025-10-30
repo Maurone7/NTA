@@ -1118,6 +1118,26 @@ ipcMain.handle('terminal:init', (event, payload) => {
   return { success: true };
 });
 
+// Allow renderer to request that the PTY be recreated in a new cwd. This is
+// used when the workspace/folder changes and we want the embedded terminal to
+// open in that folder. This handler will close any existing PTY for the
+// window and create a fresh one with the requested cwd.
+ipcMain.handle('terminal:setCwd', (event, payload) => {
+  const windowId = event.sender.id;
+  const browserWindow = BrowserWindow.fromWebContents(event.sender);
+  const requestedCwd = payload && payload.folderPath ? String(payload.folderPath) : null;
+  try {
+    // Close existing PTY if present
+    closePtyProcess(windowId);
+    if (browserWindow) {
+      getPtyProcess(windowId, browserWindow, requestedCwd);
+    }
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+});
+
 ipcMain.on('terminal:data', (event, data) => {
   const windowId = event.sender.id;
   const ptyProcess = ptyProcesses.get(windowId);
@@ -1148,7 +1168,7 @@ ipcMain.on('terminal:toggleRequest', (_event) => {
 });
 
 // Handle LaTeX installation command - send to terminal
-ipcMain.on('latex:send-install-command', (event, { command, distribution }) => {
+ipcMain.on('latex:send-install-command', (event, { command, distribution, folderPath = null }) => {
   const windowId = event.sender.id;
   let ptyProcess = ptyProcesses.get(windowId);
   
@@ -1160,7 +1180,10 @@ ipcMain.on('latex:send-install-command', (event, { command, distribution }) => {
     console.log(`[LaTeX IPC] PTY not ready, attempting to initialize...`);
     const browserWindow = BrowserWindow.fromWebContents(event.sender);
     if (browserWindow) {
-      ptyProcess = getPtyProcess(windowId, browserWindow, null);
+      // Prefer the folderPath provided by renderer (if any) so the install
+      // command runs in the workspace directory rather than the user's home.
+      const requestedCwd = folderPath ? String(folderPath) : null;
+      ptyProcess = getPtyProcess(windowId, browserWindow, requestedCwd);
       console.log(`[LaTeX IPC] PTY initialized: ${!!ptyProcess}`);
     }
   }
@@ -1207,4 +1230,18 @@ app.on('window-all-closed', () => {
     }
   } catch (e) { try { app.quit(); } catch (err) {} }
 });
+
+// Expose some internals for tests without changing runtime behavior.
+// This is guarded so it only attaches a test-harness object when the file
+// is required as a module in tests. Tests can import main.js and access
+// main.__test__ to inspect or drive PTY lifecycle helpers.
+try {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports.__test__ = {
+      getPtyProcess: typeof getPtyProcess === 'function' ? getPtyProcess : null,
+      closePtyProcess: typeof closePtyProcess === 'function' ? closePtyProcess : null,
+      ptyProcesses
+    };
+  }
+} catch (e) { /* ignore test export errors */ }
 

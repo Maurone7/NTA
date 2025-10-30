@@ -19,7 +19,41 @@ const checkLatexInstalled = () => {
   };
   
   try {
-    // Try pdflatex first (most common)
+    // Try TinyTeX locations first (prefer user installation)
+    const home = process.env.HOME || os.homedir();
+    debugLog(`Checking TinyTeX locations first (HOME=${home})...`);
+    
+    const tinytexLocations = [
+      path.join(home, '.TinyTeX', 'bin', 'pdflatex'),
+      path.join(home, '.TinyTeX', 'bin', 'xelatex'),
+      path.join(home, 'Library', 'TinyTeX', 'bin', 'universal-darwin', 'pdflatex'),
+      path.join(home, 'Library', 'TinyTeX', 'bin', 'universal-darwin', 'xelatex'),
+      path.join(home, '.local', 'bin', 'pdflatex'), // Linux fallback
+      path.join(home, '.local', 'bin', 'xelatex')   // Linux fallback
+    ];
+    
+    for (const binPath of tinytexLocations) {
+      debugLog(`  Checking: ${binPath}`);
+      try {
+        if (fs.existsSync(binPath)) {
+          debugLog(`  ✓ File exists, testing...`);
+          const version = execSync(`"${binPath}" --version 2>&1`, { encoding: 'utf8' });
+          debugLog(`✓ Found TinyTeX: ${version.split('\n')[0]}`);
+          return {
+            installed: true,
+            engine: binPath.includes('xelatex') ? 'xelatex' : 'pdflatex',
+            version: version.split('\n')[0]
+          };
+        } else {
+          debugLog(`  ✗ File not found`);
+        }
+      } catch (e) {
+        debugLog(`  ✗ Error executing: ${e.message}`);
+        // Continue to next location
+      }
+    }
+    
+    // Try pdflatex in PATH (system installation)
     try {
       debugLog('Checking pdflatex in system PATH...');
       const version = execSync('pdflatex --version 2>&1', { encoding: 'utf8' });
@@ -44,40 +78,6 @@ const checkLatexInstalled = () => {
         };
       } catch (e2) {
         debugLog('✗ xelatex not in system PATH');
-        
-        // Try TinyTeX locations (macOS, Linux)
-        // TinyTeX installs to ~/.TinyTeX/bin/
-        const home = process.env.HOME || os.homedir();
-        debugLog(`Checking TinyTeX locations (HOME=${home})...`);
-        
-        const tinytexLocations = [
-          path.join(home, '.TinyTeX', 'bin', 'pdflatex'),
-          path.join(home, '.TinyTeX', 'bin', 'xelatex'),
-          path.join(home, '.local', 'bin', 'pdflatex'), // Linux fallback
-          path.join(home, '.local', 'bin', 'xelatex')   // Linux fallback
-        ];
-        
-        for (const binPath of tinytexLocations) {
-          debugLog(`  Checking: ${binPath}`);
-          try {
-            if (fs.existsSync(binPath)) {
-              debugLog(`  ✓ File exists, testing...`);
-              const version = execSync(`"${binPath}" --version 2>&1`, { encoding: 'utf8' });
-              debugLog(`✓ Found TinyTeX: ${version.split('\n')[0]}`);
-              return {
-                installed: true,
-                engine: binPath.includes('xelatex') ? 'xelatex' : 'pdflatex',
-                version: version.split('\n')[0]
-              };
-            } else {
-              debugLog(`  ✗ File not found`);
-            }
-          } catch (e) {
-            debugLog(`  ✗ Error executing: ${e.message}`);
-            // Continue to next location
-          }
-        }
-        
         debugLog('✗ No LaTeX installation found');
         throw e2; // Re-throw if nothing found
       }

@@ -2,7 +2,7 @@ PWD /Users/mauro/Desktop/NoteTakingApp/documentation
 INPUT /Users/mauro/Library/TinyTeX/texmf.cnf
 INPUT /Users/mauro/Library/TinyTeX/texmf-dist/web2c/texmf.cnf
 INPUT /Users/mauro/Library/TinyTeX/texmf-var/web2c/pdftex/pdflatex.fmt
-INPUT Example.tex
+INPUT /Users/mauro/Desktop/NoteTakingApp/documentation/Example.tex
 OUTPUT Example.log
 INPUT /Users/mauro/Library/TinyTeX/texmf-dist/tex/latex/base/article.cls
 INPUT /Users/mauro/Library/TinyTeX/texmf-dist/tex/latex/base/article.cls

@@ -147,7 +147,7 @@ describe('LaTeX built-in terminal integration', function() {
     const handler = registeredEvents['latex:show-terminal-for-install'];
     assert.ok(typeof handler === 'function', 'renderer should register latex:show-terminal-for-install handler');
 
-    const tinytexCommand = 'curl -fsSL "https://yihui.org/gh/tinytex/tools/install-unx.sh" | sh && ~/.TinyTeX/bin/*/tlmgr path add';
+    const tinytexCommand = 'curl -fsSL "https://yihui.org/gh/tinytex/tools/install-unx.sh" | sh && tlmgr path add && tlmgr install scheme-basic';
 
     await handler({
       command: tinytexCommand,

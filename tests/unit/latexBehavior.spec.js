@@ -244,6 +244,16 @@ describe('LaTeX editor behavior', function() {
     const path = require('path');
     const os = require('os');
     
+    // Add TinyTeX to PATH if it exists
+    const tinyTexBin1 = path.join(os.homedir(), '.TinyTeX', 'bin');
+    const tinyTexBin2 = path.join(os.homedir(), 'Library', 'TinyTeX', 'bin', 'universal-darwin');
+    if (require('fs').existsSync(tinyTexBin1)) {
+      process.env.PATH = tinyTexBin1 + ':' + process.env.PATH;
+    }
+    if (require('fs').existsSync(tinyTexBin2)) {
+      process.env.PATH = tinyTexBin2 + ':' + process.env.PATH;
+    }
+    
     // We'll check by examining PDF internal structure
     // LaTeX-generated PDFs have specific signatures/markers
     

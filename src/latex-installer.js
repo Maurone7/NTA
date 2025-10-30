@@ -9,6 +9,7 @@ const { execSync } = require('child_process');
 const { dialog, shell } = require('electron');
 const os = require('os');
 const fs = require('fs');
+const { spawn } = require('child_process');
 
 /**
  * Find brew executable path
@@ -142,6 +143,152 @@ async function showInstallationDialog(mainWindow) {
 }
 
 /**
+ * Try to locate the tlmgr executable. Prefer which, then common TinyTeX locations.
+ */
+function locateTlmgr() {
+  try {
+    const which = execSync('which tlmgr', { encoding: 'utf8' }).trim();
+    if (which) return which;
+  } catch (e) {}
+
+  const candidates = [
+    `${os.homedir()}/Library/TinyTeX/bin/universal-darwin/tlmgr`,
+    `${os.homedir()}/Library/TinyTeX/bin/*/tlmgr`,
+    `${os.homedir()}/.TinyTeX/bin/universal-darwin/tlmgr`,
+    `${os.homedir()}/.TinyTeX/bin/*/tlmgr`
+  ];
+
+  for (const c of candidates) {
+    // glob-like check: test the directory prefix
+    try {
+      const dir = c.replace(/\/[^/]+$/, '');
+      if (fs.existsSync(dir)) {
+        // try to find any tlmgr under the path
+        const findCmd = `find ${dir} -name tlmgr 2>/dev/null | head -1`;
+        try {
+          const p = execSync(findCmd, { encoding: 'utf8' }).trim();
+          if (p) return p;
+        } catch (e) {}
+      }
+    } catch (e) {}
+  }
+
+  return null;
+}
+
+/**
+ * Spawn a tlmgr command and stream output back to the renderer as progress messages.
+ */
+function spawnTlmgrCommand(args, mainWindow, label) {
+  return new Promise((resolve, reject) => {
+    const tlmgrPath = locateTlmgr() || 'tlmgr';
+    let child;
+    try {
+      child = spawn(tlmgrPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (err) {
+      return reject(err);
+    }
+
+    child.stdout.on('data', (chunk) => {
+      try {
+        mainWindow.webContents.send('latex:installation-progress', {
+          progress: null,
+          message: `${label}: ${chunk.toString()}`
+        });
+      } catch (e) {}
+    });
+    child.stderr.on('data', (chunk) => {
+      try {
+        mainWindow.webContents.send('latex:installation-progress', {
+          progress: null,
+          message: `${label} (err): ${chunk.toString()}`
+        });
+      } catch (e) {}
+    });
+    child.on('close', (code) => {
+      if (code === 0) resolve(); else reject(new Error(`${label} exited with ${code}`));
+    });
+    child.on('error', (err) => reject(err));
+  });
+}
+
+/**
+ * Run repository selection and update maintenance for tlmgr.
+ * - set repository to CTAN redirector (mirror chooser)
+ * - update tlmgr itself and all packages
+ */
+async function runTlmgrMaintenance(mainWindow) {
+  // prefer the CTAN redirector which resolves to nearby up-to-date mirror
+  try {
+    mainWindow.webContents.send('latex:installation-progress', {
+      progress: 96,
+      message: 'Setting tlmgr repository to CTAN redirector...'
+    });
+  } catch (e) {}
+
+  try {
+    await spawnTlmgrCommand(['option', 'repository', 'http://mirror.ctan.org/systems/texlive/tlnet'], mainWindow, 'tlmgr set repository');
+  } catch (e) {
+    // non-fatal: continue
+    console.warn('[LaTeX] failed to set repository:', e && e.message ? e.message : e);
+  }
+
+  try {
+    await spawnTlmgrCommand(['update', '--self'], mainWindow, 'tlmgr update --self');
+  } catch (e) {
+    console.warn('[LaTeX] tlmgr --self update failed:', e && e.message ? e.message : e);
+  }
+
+  try {
+    await spawnTlmgrCommand(['update', '--all'], mainWindow, 'tlmgr update --all');
+  } catch (e) {
+    console.warn('[LaTeX] tlmgr update --all failed:', e && e.message ? e.message : e);
+
+    // Try fallback mirrors if update --all failed (common case: mirror out of sync)
+    const fallbackMirrors = [
+      'https://mirrors.mit.edu/CTAN/systems/texlive/tlnet',
+      'https://ctan.math.illinois.edu/systems/texlive/tlnet',
+      'https://mirror.clarkson.edu/ctan/systems/texlive/tlnet',
+      'https://mirrors.ibiblio.org/pub/mirrors/CTAN/systems/texlive/tlnet'
+    ];
+
+    let lastErr = e;
+    for (const m of fallbackMirrors) {
+      try {
+        try {
+          mainWindow.webContents.send('latex:installation-progress', {
+            progress: null,
+            message: `tlmgr update failed, trying mirror: ${m}`
+          });
+        } catch (er) {}
+
+        await spawnTlmgrCommand(['option', 'repository', m], mainWindow, `tlmgr set repo ${m}`);
+        await spawnTlmgrCommand(['update', '--all'], mainWindow, 'tlmgr update --all');
+        // success
+        try {
+          mainWindow.webContents.send('latex:installation-progress', {
+            progress: 98,
+            message: `tlmgr update succeeded using mirror: ${m}`
+          });
+        } catch (er) {}
+        lastErr = null;
+        break;
+      } catch (err2) {
+        lastErr = err2;
+        console.warn('[LaTeX] retry with mirror failed:', m, err2 && err2.message ? err2.message : err2);
+        // continue to next mirror
+      }
+    }
+
+    if (lastErr) {
+      // All retries failed - propagate original error to caller
+      console.error('[LaTeX] All tlmgr update attempts failed');
+      throw lastErr;
+    }
+  }
+}
+
+/**
  * Show LaTeX distribution picker
  */
 async function showDistributionPicker(mainWindow) {
@@ -154,9 +301,9 @@ async function showDistributionPicker(mainWindow) {
     {
       name: 'TinyTeX',
       size: '150 MB',
-      description: 'Ultra-lightweight LaTeX with auto-install packages',
-      installTime: '1-2 min',
-      command: 'curl -fsSL "https://yihui.org/gh/tinytex/tools/install-unx.sh" | sh && ~/.TinyTeX/bin/*/tlmgr path add',
+      description: 'Lightweight LaTeX with essential packages pre-installed',
+      installTime: '3-4 min',
+      command: 'curl -fsSL "https://yihui.org/gh/tinytex/tools/install-unx.sh" | sh && tlmgr path add && tlmgr install scheme-basic',
       recommended: true
     },
     {
@@ -188,10 +335,11 @@ async function showDistributionPicker(mainWindow) {
     'Choose which LaTeX distribution to install:\n\n' +
     '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
     '⚡ TinyTeX (Recommended - Lightest)\n' +
-    '   • Size: 150 MB | Time: 1-2 minutes\n' +
-    '   • Minimal LaTeX core with essential packages\n' +
+    '   • Size: 150 MB | Time: 3-4 minutes\n' +
+    '   • Essential LaTeX packages pre-installed\n' +
     '   • Auto-installs additional packages as needed\n' +
-    '   • Fastest installation, smallest footprint\n' +
+    '   • Automatically generates format files for immediate use\n' +
+    '   • Fast installation, small footprint\n' +
     '   • Perfect for quick note exports\n\n' +
     '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
     '📦 BasicTeX\n' +
@@ -328,48 +476,80 @@ function monitorInstallationCompletion(mainWindow, distribution) {
   const checkInterval = setInterval(() => {
     checkCount++;
     
-    // Check if LaTeX is now installed (try multiple commands)
+    // Check if LaTeX is now installed and functional (try to compile a small document)
     let isInstalled = false;
     let checkedCmd = '';
     
     try {
-      checkedCmd = 'xelatex --version';
-      require('child_process').execSync('xelatex --version 2>&1', { 
+      // Create a temporary small LaTeX document
+      const tempDir = require('os').tmpdir();
+      const testFile = require('path').join(tempDir, `latex-test-${Date.now()}.tex`);
+      const testContent = '\\documentclass{article}\n\\begin{document}\nHello\n\\end{document}\n';
+      require('fs').writeFileSync(testFile, testContent);
+      
+      // Try to compile it
+      checkedCmd = 'pdflatex --version && pdflatex -interaction=nonstopmode -halt-on-error "' + testFile + '"';
+      require('child_process').execSync(checkedCmd, { 
         stdio: 'pipe',
-        timeout: 5000
+        timeout: 10000
       });
-      isInstalled = true;
-    } catch (e) {
-      // Try pdflatex as fallback
-      try {
-        checkedCmd = 'pdflatex --version';
-        require('child_process').execSync('pdflatex --version 2>&1', { 
-          stdio: 'pipe',
-          timeout: 5000
-        });
+      
+      // Check if PDF was created
+      const pdfFile = testFile.replace('.tex', '.pdf');
+      if (require('fs').existsSync(pdfFile)) {
         isInstalled = true;
-      } catch (e2) {
-        // Still not installed
+        // Clean up
+        try {
+          require('fs').unlinkSync(testFile);
+          require('fs').unlinkSync(pdfFile);
+          const logFile = testFile.replace('.tex', '.log');
+          if (require('fs').existsSync(logFile)) require('fs').unlinkSync(logFile);
+        } catch (e) {}
       }
+    } catch (e) {
+      // Still not installed or not functional
     }
     
     if (isInstalled) {
-      // LaTeX is now installed!
+      // LaTeX is now installed and functional!
       clearInterval(checkInterval);
-      console.log(`[LaTeX] ✓ Installation completed! Detected ${checkedCmd}`);
-      
+      console.log(`[LaTeX] ✓ Installation completed! Verified with compilation test`);
+
       try {
-        mainWindow.webContents.send('latex:installation-complete', {
-          success: true,
-          code: 0,
-          distribution,
-          elapsed: checkCount * 10,
-          message: `✓ ${distribution} installed successfully. Restart the app to use LaTeX export.`
+        mainWindow.webContents.send('latex:installation-progress', {
+          progress: 96,
+          message: `Finalizing ${distribution} setup: updating tlmgr and packages...`,
+          elapsed: checkCount * 10
         });
-      } catch (e) {
-        // Window might have closed
-      }
-      
+      } catch (e) {}
+
+      // Run tlmgr maintenance (set repo, update self & all) and then report completion
+      (async () => {
+        try {
+          await runTlmgrMaintenance(mainWindow);
+          try {
+            mainWindow.webContents.send('latex:installation-complete', {
+              success: true,
+              code: 0,
+              distribution,
+              elapsed: checkCount * 10,
+              message: `✓ ${distribution} installed successfully. LaTeX compilation verified and tlmgr packages updated. Restart the app to use LaTeX export.`
+            });
+          } catch (e) {}
+        } catch (err) {
+          console.error('[LaTeX] tlmgr maintenance failed:', err && err.message ? err.message : err);
+          try {
+            mainWindow.webContents.send('latex:installation-complete', {
+              success: true,
+              code: 0,
+              distribution,
+              elapsed: checkCount * 10,
+              message: `✓ ${distribution} installed successfully. LaTeX compilation verified. However, automatic tlmgr update failed: ${err && err.message ? err.message : err}. You can run 'tlmgr update --self --all' manually.`
+            });
+          } catch (e) {}
+        }
+      })();
+
     } else {
       // LaTeX not installed yet, keep checking
       
@@ -377,7 +557,7 @@ function monitorInstallationCompletion(mainWindow, distribution) {
       const elapsed = checkCount * 10;
       const progress = Math.min(99, Math.round((elapsed / estimatedTotal) * 95) + 1); // 1-99% progress
       
-      console.log(`[LaTeX] Check ${checkCount}/${maxChecks}: not installed yet (${progress}% / ${Math.round(elapsed / 60)}m)`);
+      console.log(`[LaTeX] Check ${checkCount}/${maxChecks}: not functional yet (${progress}% / ${Math.round(elapsed / 60)}m)`);
       
       try {
         mainWindow.webContents.send('latex:installation-progress', {
@@ -400,7 +580,7 @@ function monitorInstallationCompletion(mainWindow, distribution) {
             code: 0,
             distribution,
             elapsed: checkCount * 10,
-            message: `Installation monitoring stopped after ${Math.round(maxChecks * 10 / 60)}m. Please restart the app to verify LaTeX installation.`
+            message: `Installation monitoring stopped after ${Math.round(maxChecks * 10 / 60)}m. LaTeX may still be installing in the background. Please restart the app to verify LaTeX installation.`
           });
         } catch (err) {
           // Window might have closed

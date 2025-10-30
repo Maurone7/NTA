@@ -278,6 +278,16 @@ const elements = {
   resetAutosaveIntervalButton: document.getElementById('reset-autosave-interval') || document.createElement('button'),
   wordWrapToggle: document.getElementById('word-wrap-toggle') || document.createElement('input'),
   defaultFileExtensionSelect: document.getElementById('default-file-extension-select') || document.createElement('select'),
+  // Accessibility-specific controls
+  highContrastToggle: document.getElementById('high-contrast-toggle') || document.createElement('input'),
+  reduceMotionToggle: document.getElementById('reduce-motion-toggle') || document.createElement('input'),
+  dyslexiaFontToggle: document.getElementById('dyslexia-font-toggle') || document.createElement('input'),
+  focusIndicatorsToggle: document.getElementById('focus-indicators-toggle') || document.createElement('input'),
+  uiScaleSelect: document.getElementById('ui-scale-select') || document.createElement('select'),
+  lineHeightSelect: document.getElementById('line-height-select') || document.createElement('select'),
+  textSpacingSelect: document.getElementById('text-spacing-select') || document.createElement('select'),
+  largeCursorToggle: document.getElementById('large-cursor-toggle') || document.createElement('input'),
+  accessibilityPreview: document.getElementById('accessibility-preview') || document.createElement('div'),
   showHiddenFilesToggle: document.getElementById('show-hidden-files-toggle') || document.createElement('input'),
   maxRecentFilesSlider: document.getElementById('max-recent-files-slider') || document.createElement('input'),
   maxRecentFilesValue: document.getElementById('max-recent-files-value') || document.createElement('span'),
@@ -533,7 +543,7 @@ const storageKeys = {
   editorPaneRatio: 'NTA.editorPaneRatio',
   highContrast: 'NTA.highContrast'
   ,
-  // New settings keys
+  // New settings keys (accessibility additions included)
   autosaveEnabled: 'NTA.autosaveEnabled',
   autosaveInterval: 'NTA.autosaveInterval',
   editorSpellcheck: 'NTA.editorSpellcheck',
@@ -543,7 +553,15 @@ const storageKeys = {
   hashtagPanelMinimized: 'NTA.hashtagPanelMinimized',
   hashtagPanelHeight: 'NTA.hashtagPanelHeight',
   hashtagPanelPrevHeight: 'NTA.hashtagPanelPrevHeight',
-  lastOpenedNoteId: 'NTA.lastOpenedNoteId'
+  lastOpenedNoteId: 'NTA.lastOpenedNoteId',
+  // Accessibility keys
+  reduceMotion: 'NTA.reduceMotion',
+  dyslexiaFriendly: 'NTA.dyslexiaFriendly',
+  uiScale: 'NTA.uiScale',
+  focusIndicators: 'NTA.focusIndicators',
+  lineHeight: 'NTA.lineHeight',
+  textSpacing: 'NTA.textSpacing',
+  largeCursor: 'NTA.largeCursor'
 };
 
 let editorSessionRestoreAttempted = false;
@@ -3537,6 +3555,20 @@ const renderVideoInPane = async (note, paneId) => {
     root.appendChild(container);
     video.src = value;
 
+    // Position the container below the tab bar to avoid covering close buttons
+    const tabBar = root.querySelector('.pane-tab-bar');
+    if (tabBar) {
+      const tabBarHeight = tabBar.getBoundingClientRect().height;
+      container.style.position = 'absolute';
+      container.style.top = tabBarHeight + 'px';
+      container.style.bottom = '0';
+      container.style.left = '0';
+      container.style.right = '0';
+    } else {
+      container.style.position = 'absolute';
+      container.style.inset = '0';
+    }
+
     // Wait for metadata to ensure playable
     await new Promise((resolve) => {
       const onLoaded = () => { resolve(true); };
@@ -3988,6 +4020,20 @@ const renderImageInPane = async (note, paneId) => {
   root.appendChild(container);
   // Assign the src after attachment so load events fire reliably
   img.src = value;
+
+  // Position the container below the tab bar to avoid covering close buttons
+  const tabBar = root.querySelector('.pane-tab-bar');
+  if (tabBar) {
+    const tabBarHeight = tabBar.getBoundingClientRect().height;
+    container.style.position = 'absolute';
+    container.style.top = tabBarHeight + 'px';
+    container.style.bottom = '0';
+    container.style.left = '0';
+    container.style.right = '0';
+  } else {
+    container.style.position = 'absolute';
+    container.style.inset = '0';
+  }
 
     // Return only when the image has loaded (or failed) so callers can observe
     // whether the in-pane render succeeded. Use a timeout to avoid hanging.
@@ -11314,6 +11360,15 @@ function safeAdoptWorkspace(payload, preferredActiveId = null) {
     try { window.__nta_debug_push && window.__nta_debug_push({ type: 'safeAdoptWorkspace:called', hasPayload: !!payload, folderPath: payload?.folderPath ?? null }); } catch (e) {}
   try { debugLog('[safeAdoptWorkspace] called', { folderPath: payload?.folderPath ?? null, hasTree: !!payload?.tree }); } catch (e) {}
     adoptWorkspace(payload, preferredActiveId || payload?.preferredActiveId);
+    // Inform main process (terminal) about the current workspace so the PTY
+    // can be created in the correct cwd if needed. This is best-effort and
+    // non-blocking; swallow errors for test environments where IPC may be
+    // unavailable.
+    try {
+      if (typeof safeApi !== 'undefined' && typeof safeApi.invoke === 'function') {
+        void safeApi.invoke('terminal:setCwd', { folderPath: state.currentFolder || null }).catch(() => {});
+      }
+    } catch (e) { /* ignore */ }
     // Collapse all subfolders on startup
     if (state.tree && state.tree.children) {
       function collectDirs(node) {
@@ -11514,12 +11569,58 @@ const ensureEditorPaneVisible = () => {
     if (!wc) return false;
     
     // First try to show the left pane (most common case)
-    const leftPane = wc.querySelector('.editor-pane--left');
+    let leftPane = wc.querySelector('.editor-pane--left');
     if (leftPane) {
       leftPane.hidden = false;
       try { leftPane.style.display = ''; } catch (e) {}
       setActiveEditorPane('left');
       return true;
+    }
+
+    // If the static left pane DOM was removed (e.g. user closed it), recreate
+    // a minimal left pane so subsequent workspace clicks can open editors.
+    try {
+      // create a minimal left pane structure matching expected static markup
+      const section = document.createElement('section');
+      section.className = 'editor-pane editor-pane--left';
+      // Tab bar
+      const paneTabBar = document.createElement('div');
+      paneTabBar.className = 'pane-tab-bar';
+      const tabBarTabs = document.createElement('div');
+      tabBarTabs.className = 'tab-bar__tabs';
+      tabBarTabs.id = 'tab-bar-tabs-left';
+      tabBarTabs.setAttribute('role', 'tablist');
+      paneTabBar.appendChild(tabBarTabs);
+      section.appendChild(paneTabBar);
+      // Textarea
+      const ta = document.createElement('textarea');
+      ta.id = 'note-editor';
+      section.appendChild(ta);
+      // Math overlay placeholder
+      const overlay = document.createElement('div');
+      overlay.id = 'editor-math-overlay';
+      overlay.className = 'editor-math-overlay';
+      overlay.hidden = true;
+      section.appendChild(overlay);
+
+      // Insert left pane at start of workspace content (before other panes)
+      const firstChild = wc.firstElementChild;
+      if (firstChild && firstChild.parentNode) firstChild.parentNode.insertBefore(section, firstChild);
+      else wc.appendChild(section);
+
+      // Reinitialize pane mappings so the new left root is wired up
+      try { reinitializeEditorInstances(); } catch (e) {}
+
+      // Refresh our reference
+      leftPane = wc.querySelector('.editor-pane--left');
+      if (leftPane) {
+        leftPane.hidden = false;
+        try { leftPane.style.display = ''; } catch (e) {}
+        setActiveEditorPane('left');
+        return true;
+      }
+    } catch (e) {
+      // fall through to fallback logic
     }
     
     // Fallback: show any editor pane that's available
@@ -17332,6 +17433,12 @@ const updateWikiSuggestions = (textarea = getActiveEditorInstance().el) => {
   } catch (e) {
   }
 
+  // Ensure accessibility features and keybinding input are initialized
+  // whenever the main initialize() is called (useful for tests that
+  // call hooks.initialize()). Keep it defensive to avoid blowing up if
+  // DOM isn't present in the test environment.
+  // (initialization handled from the main initialize() flow)
+
   if (state.wikiSuggest.open && trigger.start === state.wikiSuggest.start && trigger.query === state.wikiSuggest.query) {
     state.wikiSuggest.end = trigger.end;
     computeWikiSuggestionPosition(textarea, trigger.end);
@@ -20132,11 +20239,43 @@ const openContextMenu = (noteId, x, y) => {
     deleteButton.disabled = !note || !canDeleteNote(note);
   }
 
-  // Position the menu
-  menu.style.left = `${x}px`;
-  menu.style.top = `${y}px`;
-  menu.hidden = false;
-  menu.setAttribute('aria-hidden', 'false');
+  // Position the menu but clamp to viewport so the menu never renders
+  // outside the application window (e.g., when right-clicking near edges).
+  try {
+    // Reset position for consistent measurement
+    menu.style.left = '0px';
+    menu.style.top = '0px';
+    menu.hidden = false;
+    // Keep hidden from view while measuring
+    menu.style.visibility = 'hidden';
+    menu.setAttribute('aria-hidden', 'false');
+
+    const rect = menu.getBoundingClientRect();
+    const menuW = rect.width || menu.offsetWidth || 0;
+    const menuH = rect.height || menu.offsetHeight || 0;
+    const margin = 8;
+
+    let clampedX = x;
+    let clampedY = y;
+    const maxX = Math.max(margin, window.innerWidth - menuW - margin);
+    const maxY = Math.max(margin, window.innerHeight - menuH - margin);
+
+    if (clampedX > maxX) clampedX = maxX;
+    if (clampedY > maxY) clampedY = maxY;
+    if (clampedX < margin) clampedX = margin;
+    if (clampedY < margin) clampedY = margin;
+
+    menu.style.left = `${Math.round(clampedX)}px`;
+    menu.style.top = `${Math.round(clampedY)}px`;
+    // Reveal the menu now that it's positioned
+    menu.style.visibility = '';
+  } catch (e) {
+    // Fallback behavior: direct placement
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+    menu.hidden = false;
+    menu.setAttribute('aria-hidden', 'false');
+  }
 
   // Don't auto-focus to avoid persistent highlight issues
   // Users can navigate with mouse or keyboard as needed
@@ -20559,6 +20698,7 @@ const initialize = () => {
         } catch (e) {}
         window.__nta_debug_push && window.__nta_debug_push({ type: 'initialize:afterAdopt', hasTree: !!state.tree });
         console.log('[TESTHOOK] initialize: after adopt, hasTree=', !!state.tree);
+        
         // Ensure at least one file node is present in the DOM for tests that
         // assert on a rendered file node. Some test environments may prevent
         // the normal renderer from creating nodes; insert a deterministic
@@ -20588,6 +20728,17 @@ const initialize = () => {
       } catch (e) { window.__nta_debug_push && window.__nta_debug_push({ type: 'initialize:testPayloadAdoptError', err: String(e) }); }
     }
   } catch (e) { window.__nta_debug_push && window.__nta_debug_push({ type: 'initialize:testPayloadCheckError', err: String(e) }); }
+  // Initialize accessibility and keybinding wiring now that DOM and elements
+  // should be available; do this in a try/catch to avoid throwing during tests
+  try {
+    initializeAccessibility();
+    initializeKeybindingInput();
+  } catch (e) { /* ignore */ }
+
+  // Initialize settings pane resizer so users can drag to change width.
+  try {
+    initializeSettingsResizer();
+  } catch (e) { /* ignore */ }
 
   configureMarked();
   applyEditorRatio();
@@ -28196,32 +28347,226 @@ const insertCitationWithStyleInternal = (inst, citeKey, start, end) => {
 
 // Initialize accessibility features
 function initializeAccessibility() {
-  // Load high contrast setting (use readStorage helper to be safe in tests)
+  // Load persisted accessibility settings (use readStorage helper to be safe in tests)
   const highContrastEnabled = readStorage(storageKeys.highContrast) === 'true';
+  const reduceMotionEnabled = readStorage(storageKeys.reduceMotion) === 'true';
+  const dyslexiaEnabled = readStorage(storageKeys.dyslexiaFriendly) === 'true';
+  const focusIndicatorsEnabled = readStorage(storageKeys.focusIndicators) === 'true';
+  const uiScale = readStorage(storageKeys.uiScale) || '1';
+  const lineHeight = readStorage(storageKeys.lineHeight) || '1';
+  const textSpacing = readStorage(storageKeys.textSpacing) || 'normal';
+  const largeCursorEnabled = readStorage(storageKeys.largeCursor) === 'true';
+
+  // Initialize UI controls if present
   if (elements.highContrastToggle) {
     elements.highContrastToggle.checked = highContrastEnabled;
     updateHighContrastMode(highContrastEnabled);
   }
-  
+  if (elements.reduceMotionToggle) {
+    elements.reduceMotionToggle.checked = reduceMotionEnabled;
+    updateReduceMotion(reduceMotionEnabled);
+  }
+  if (elements.dyslexiaFontToggle) {
+    elements.dyslexiaFontToggle.checked = dyslexiaEnabled;
+    updateDyslexiaFriendly(dyslexiaEnabled);
+  }
+  if (elements.focusIndicatorsToggle) {
+    elements.focusIndicatorsToggle.checked = focusIndicatorsEnabled;
+    updateFocusIndicators(focusIndicatorsEnabled);
+  }
+  if (elements.uiScaleSelect) {
+    elements.uiScaleSelect.value = uiScale;
+    updateUiScale(uiScale);
+  }
+  if (elements.lineHeightSelect) {
+    elements.lineHeightSelect.value = lineHeight;
+    updateLineHeight(lineHeight);
+  }
+  if (elements.textSpacingSelect) {
+    elements.textSpacingSelect.value = textSpacing;
+    updateTextSpacing(textSpacing);
+  }
+  if (elements.largeCursorToggle) {
+    elements.largeCursorToggle.checked = largeCursorEnabled;
+    updateLargeCursor(largeCursorEnabled);
+  }
+
   // Load keybindings
   loadKeybindings();
   renderKeybindingsList();
-  
-  // Add event listeners
-    if (elements.highContrastToggle) {
+
+  // Add event listeners for accessibility controls
+  if (elements.highContrastToggle) {
     elements.highContrastToggle.addEventListener('change', (e) => {
       const enabled = e.target.checked;
       writeStorage(storageKeys.highContrast, enabled);
       updateHighContrastMode(enabled);
+      updateAccessibilityPreview();
     });
   }
-  
+  if (elements.reduceMotionToggle) {
+    elements.reduceMotionToggle.addEventListener('change', (e) => {
+      const enabled = e.target.checked;
+      writeStorage(storageKeys.reduceMotion, enabled);
+      updateReduceMotion(enabled);
+      updateAccessibilityPreview();
+    });
+  }
+  if (elements.dyslexiaFontToggle) {
+    elements.dyslexiaFontToggle.addEventListener('change', (e) => {
+      const enabled = e.target.checked;
+      writeStorage(storageKeys.dyslexiaFriendly, enabled);
+      updateDyslexiaFriendly(enabled);
+      updateAccessibilityPreview();
+    });
+  }
+  if (elements.focusIndicatorsToggle) {
+    elements.focusIndicatorsToggle.addEventListener('change', (e) => {
+      const enabled = e.target.checked;
+      writeStorage(storageKeys.focusIndicators, enabled);
+      updateFocusIndicators(enabled);
+      updateAccessibilityPreview();
+    });
+  }
+  if (elements.uiScaleSelect) {
+    elements.uiScaleSelect.addEventListener('change', (e) => {
+      const v = e.target.value || '1';
+      writeStorage(storageKeys.uiScale, v);
+      updateUiScale(v);
+      updateAccessibilityPreview();
+    });
+  }
+  if (elements.lineHeightSelect) {
+    elements.lineHeightSelect.addEventListener('change', (e) => {
+      const v = e.target.value || '1';
+      writeStorage(storageKeys.lineHeight, v);
+      updateLineHeight(v);
+      updateAccessibilityPreview();
+    });
+  }
+  if (elements.textSpacingSelect) {
+    elements.textSpacingSelect.addEventListener('change', (e) => {
+      const v = e.target.value || 'normal';
+      writeStorage(storageKeys.textSpacing, v);
+      updateTextSpacing(v);
+      updateAccessibilityPreview();
+    });
+  }
+  if (elements.largeCursorToggle) {
+    elements.largeCursorToggle.addEventListener('change', (e) => {
+      const enabled = e.target.checked;
+      writeStorage(storageKeys.largeCursor, enabled);
+      updateLargeCursor(enabled);
+      updateAccessibilityPreview();
+    });
+  }
+
   if (elements.resetKeybindingsBtn) {
     elements.resetKeybindingsBtn.addEventListener('click', resetKeybindings);
   }
-  
+
   // Add global keydown listener for keybindings
   document.addEventListener('keydown', handleKeybinding);
+
+  // Add touch / pointer / wheel handlers so the accessibility preview text
+  // can be swiped up and down in the Accessibility tab. This gives users
+  // a direct feel for line-height / spacing / scale adjustments.
+  (function setupAccessibilityPreviewGestures() {
+    try {
+      const preview = document.getElementById('accessibility-preview');
+      if (!preview) return;
+
+      const sample = preview.querySelector('.preview-sample-text');
+      // If the preview text isn't present, nothing to do.
+      if (!sample) return;
+
+      let startY = 0;
+      let initialOffset = 0;
+      let currentOffset = 0; // px
+      const maxOffset = 220; // allow movement range
+      const minOffset = -220;
+      const wheelSensitivity = 0.45; // adjust wheel-to-px mapping
+
+      const clamp = (v) => Math.max(minOffset, Math.min(maxOffset, v));
+
+      const applyOffset = (offset, smooth = false) => {
+        currentOffset = clamp(Math.round(offset));
+        sample.style.transition = smooth ? 'transform 160ms ease' : 'none';
+        sample.style.transform = `translateY(${currentOffset}px)`;
+        // expose for debug / persistence if needed
+        preview.dataset.accessibilityPreviewOffset = String(currentOffset);
+      };
+
+      // Touch handlers (mobile / trackpad swipes)
+      preview.addEventListener('touchstart', (ev) => {
+        const t = ev.touches && ev.touches[0];
+        if (!t) return;
+        startY = t.clientY;
+        initialOffset = currentOffset;
+      }, { passive: true });
+
+      preview.addEventListener('touchmove', (ev) => {
+        const t = ev.touches && ev.touches[0];
+        if (!t) return;
+        const dy = t.clientY - startY;
+        applyOffset(initialOffset + dy, false);
+      }, { passive: false });
+
+      preview.addEventListener('touchend', () => {
+        // add a small smoothing on release
+        applyOffset(currentOffset, true);
+      });
+
+      // Pointer (mouse drag) handlers for desktop
+      let pointerDown = false;
+      preview.addEventListener('pointerdown', (e) => {
+        // only handle primary button drags
+        if (e.button !== 0) return;
+        pointerDown = true;
+        startY = e.clientY;
+        initialOffset = currentOffset;
+        try { preview.setPointerCapture && preview.setPointerCapture(e.pointerId); } catch (err) {}
+      });
+
+      preview.addEventListener('pointermove', (e) => {
+        if (!pointerDown) return;
+        const dy = e.clientY - startY;
+        applyOffset(initialOffset + dy, false);
+      });
+
+      const endPointer = (e) => {
+        if (!pointerDown) return;
+        pointerDown = false;
+        applyOffset(currentOffset, true);
+        try { preview.releasePointerCapture && preview.releasePointerCapture(e && e.pointerId); } catch (err) {}
+      };
+      preview.addEventListener('pointerup', endPointer);
+      preview.addEventListener('pointercancel', endPointer);
+
+      // Wheel for quick adjustments
+      // NOTE: by default we let wheel events bubble so the settings tab can scroll.
+      // Only when the user intentionally holds Ctrl/Cmd do we intercept the wheel
+      // to adjust the preview offset. This matches expected UX where scrolling
+      // inside the preview moves the page unless a modifier is used.
+      preview.addEventListener('wheel', (e) => {
+        // only vertical wheel matters here
+        if (!e.deltaY) return;
+        // require Ctrl (or Cmd on macOS) to adjust preview; otherwise let parent scroll
+        if (!(e.ctrlKey || e.metaKey)) return;
+        e.preventDefault();
+        applyOffset(currentOffset - e.deltaY * wheelSensitivity, false);
+      }, { passive: false });
+
+      // ensure preview reflects currentOffset when classes change
+      const mo = new MutationObserver(() => {
+        sample.style.transform = `translateY(${currentOffset}px)`;
+      });
+      mo.observe(preview, { attributes: true, attributeFilter: ['class'] });
+
+    } catch (e) {
+      // swallow errors to avoid interfering with settings initialization
+    }
+  })();
 
   // Populate citation style select if present
   try {
@@ -28247,6 +28592,64 @@ function updateHighContrastMode(enabled) {
   } else {
     document.body.removeAttribute('data-high-contrast');
   }
+}
+
+function updateReduceMotion(enabled) {
+  try {
+    if (enabled) document.documentElement.classList.add('reduce-motion'); else document.documentElement.classList.remove('reduce-motion');
+  } catch (e) { }
+}
+
+function updateDyslexiaFriendly(enabled) {
+  try {
+    if (enabled) document.documentElement.classList.add('dyslexia-friendly'); else document.documentElement.classList.remove('dyslexia-friendly');
+  } catch (e) { }
+}
+
+function updateFocusIndicators(enabled) {
+  try {
+    if (enabled) document.documentElement.classList.add('show-focus-ring'); else document.documentElement.classList.remove('show-focus-ring');
+  } catch (e) { }
+}
+
+function updateUiScale(value) {
+  try {
+    // Use CSS zoom for cross-platform electron rendering. Value is a string like '1.25'
+    document.documentElement.style.zoom = value;
+  } catch (e) { }
+}
+
+function updateLineHeight(value) {
+  try {
+    document.documentElement.style.setProperty('--content-line-height', value);
+  } catch (e) { }
+}
+
+function updateTextSpacing(value) {
+  try {
+    if (value === 'wide') {
+      document.documentElement.style.setProperty('--content-letter-spacing', '0.02em');
+    } else {
+      document.documentElement.style.setProperty('--content-letter-spacing', 'normal');
+    }
+  } catch (e) { }
+}
+
+function updateLargeCursor(enabled) {
+  try {
+    if (enabled) document.documentElement.classList.add('large-cursor'); else document.documentElement.classList.remove('large-cursor');
+  } catch (e) { }
+}
+
+function updateAccessibilityPreview() {
+  try {
+    const preview = document.getElementById('accessibility-preview');
+    if (!preview) return;
+    // Mirror a few classes from root to the preview so user sees effects
+    preview.classList.toggle('dyslexia-friendly', document.documentElement.classList.contains('dyslexia-friendly'));
+    preview.classList.toggle('reduce-motion', document.documentElement.classList.contains('reduce-motion'));
+    preview.classList.toggle('large-cursor', document.documentElement.classList.contains('large-cursor'));
+  } catch (e) { }
 }
 
 // --- Keybindings: minimal safe stubs to avoid startup errors ---
@@ -28443,14 +28846,17 @@ function initializeKeybindingInput() {
 }
 
 // Initialize accessibility features when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
+// Only auto-run these when not in a test (module.exports present in tests).
+if (typeof module === 'undefined' || !module.exports) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      initializeAccessibility();
+      initializeKeybindingInput();
+    });
+  } else {
     initializeAccessibility();
     initializeKeybindingInput();
-  });
-} else {
-  initializeAccessibility();
-  initializeKeybindingInput();
+  }
 }
 
 // Export functionality - delegates to existing export functions based on format
@@ -28629,9 +29035,10 @@ function setupLatexProgressListeners() {
         await new Promise(r => setTimeout(r, 300));
       } else {
         console.log(`[LaTeX Renderer] Terminal already visible, ensuring PTY is ready...`);
-        // Terminal is already open, just make sure PTY is initialized
+        // Terminal is already open, just make sure PTY is initialized and use
+        // the current workspace folder as the requested cwd when available.
         try {
-          await safeApi.invoke('terminal:init', { folderPath: null });
+          await safeApi.invoke('terminal:init', { folderPath: state.currentFolder || null });
         } catch (err) {
           console.error(`[LaTeX Renderer] Error initializing PTY: ${err}`);
         }
@@ -28639,8 +29046,10 @@ function setupLatexProgressListeners() {
       }
       
       // Send the install command to terminal
-      console.log(`[LaTeX Renderer] Sending install command to terminal: ${command}`);
-      safeApi.send('latex:send-install-command', { command, distribution });
+  console.log(`[LaTeX Renderer] Sending install command to terminal: ${command}`);
+  // Provide the current workspace folder so the main process can spawn the
+  // PTY in the correct working directory if it needs to (fallback case).
+  safeApi.send('latex:send-install-command', { command, distribution, folderPath: state.currentFolder || null });
       
       showStatusMessage(`${distribution} installation in progress. Check terminal for details.`, 'info');
     } catch (err) {
@@ -28942,6 +29351,81 @@ function initializeExportHandlers() {
   setupTerminal();
 }
 
+// Settings pane resizer: allow user to drag the right edge to resize
+function initializeSettingsResizer() {
+  try {
+    const resizer = document.getElementById('settings-resizer');
+    const content = document.querySelector('.settings-modal__content');
+    if (!resizer || !content) return;
+
+    // Restore any persisted width
+    try {
+      const saved = readStorage('NTA.settingsModalWidth');
+      if (saved) content.style.width = saved;
+    } catch (e) {}
+
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    const onMouseDown = (e) => {
+      isResizing = true;
+      startX = e.clientX;
+      startWidth = content.getBoundingClientRect().width;
+      content.classList.add('resizing');
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      // prevent iframe drag issues
+      e.preventDefault();
+    };
+
+    const onMouseMove = (e) => {
+      if (!isResizing) return;
+      const dx = startX - e.clientX;
+      const newWidth = Math.max(420, Math.min(window.innerWidth - 48, startWidth - dx));
+      content.style.width = `${newWidth}px`;
+    };
+
+    const onMouseUp = (e) => {
+      if (!isResizing) return;
+      isResizing = false;
+      content.classList.remove('resizing');
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      try { writeStorage('NTA.settingsModalWidth', content.style.width || ''); } catch (err) {}
+    };
+
+    resizer.addEventListener('mousedown', onMouseDown);
+    // Touch support
+    resizer.addEventListener('touchstart', (ev) => {
+      const t = ev.touches && ev.touches[0];
+      if (!t) return;
+      isResizing = true;
+      startX = t.clientX;
+      startWidth = content.getBoundingClientRect().width;
+      content.classList.add('resizing');
+      const onTouchMove = (moveEv) => {
+        const tt = moveEv.touches && moveEv.touches[0];
+        if (!tt) return;
+        const dx = startX - tt.clientX;
+        const newWidth = Math.max(420, Math.min(window.innerWidth - 48, startWidth - dx));
+        content.style.width = `${newWidth}px`;
+      };
+      const onTouchEnd = () => {
+        isResizing = false;
+        content.classList.remove('resizing');
+        try { writeStorage('NTA.settingsModalWidth', content.style.width || ''); } catch (err) {}
+        document.removeEventListener('touchmove', onTouchMove);
+        document.removeEventListener('touchend', onTouchEnd);
+      };
+      document.addEventListener('touchmove', onTouchMove, { passive: false });
+      document.addEventListener('touchend', onTouchEnd);
+    }, { passive: false });
+  } catch (e) {
+    // ignore in test environments
+  }
+}
+
 // Initialize export handlers when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
@@ -29046,6 +29530,8 @@ try {
       // Expose the main app initializer so tests can wire up DOM event listeners
       // and run the same initialization steps as the real app.
       initialize: typeof initialize === 'function' ? initialize : null,
+        initializeSettingsTabs: typeof initializeSettingsTabs === 'function' ? initializeSettingsTabs : null,
+        initializeAdvancedToggles: typeof initializeAdvancedToggles === 'function' ? initializeAdvancedToggles : null,
       reinitializeEditorInstances: typeof reinitializeEditorInstances === 'function' ? reinitializeEditorInstances : null,
       configureMarked: typeof configureMarked === 'function' ? configureMarked : null,
       handleExport: typeof handleExport === 'function' ? handleExport : null,
@@ -29072,6 +29558,100 @@ try {
     };
   }
 } catch (e) { /* ignore */ }
+
+// Apply a small, opt-in visual improvements stylesheet at runtime.
+// This injector is intentionally lightweight and non-invasive so it
+// won't alter app behavior; it only adjusts small visual details like
+// menu shadows, radii, tree hover background and focus outlines.
+function applyVisualImprovements() {
+  try {
+    if (!document || document.getElementById('visual-improvements')) return;
+    const style = document.createElement('style');
+    style.id = 'visual-improvements';
+    style.textContent = `
+      :root {
+        --nta-radius: 10px;
+        --nta-elevation: 0 8px 24px rgba(16,24,40,0.12);
+        --nta-accent: #2563eb;
+      }
+
+      /* Context menu visuals (applies to common menu selectors) */
+      .workspace-context-menu,
+      .context-menu,
+      .menu {
+        border-radius: var(--nta-radius);
+        box-shadow: var(--nta-elevation);
+        border: 1px solid rgba(0,0,0,0.06);
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(250,250,250,0.98));
+        padding: 6px 0;
+        min-width: 160px;
+        z-index: 99990;
+      }
+
+      .workspace-context-menu .menu-item,
+      .context-menu .menu-item,
+      .menu .menu-item {
+        padding: 8px 14px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .workspace-context-menu .menu-item:hover,
+      .context-menu .menu-item:hover,
+      .menu .menu-item:hover {
+        background: rgba(37,99,235,0.06);
+        color: var(--nta-accent);
+      }
+
+      /* Tree node hover & selection */
+      .tree-node__label {
+        transition: background-color 140ms ease, color 140ms ease;
+      }
+      .tree-node:hover .tree-node__label {
+        background-color: rgba(15,23,42,0.04);
+        border-radius: 6px;
+      }
+      .tree-node--selected .tree-node__label {
+        background-color: rgba(37,99,235,0.08);
+        color: var(--nta-accent);
+        border-radius: 6px;
+      }
+
+      /* Buttons & icon-button subtle polish */
+      .button, button, .icon-button {
+        transition: transform 120ms ease, box-shadow 120ms ease;
+        border-radius: 8px;
+      }
+      .button:active, button:active, .icon-button:active {
+        transform: translateY(1px);
+      }
+
+      /* Focus-visible outline for keyboard users */
+      :focus-visible {
+        outline: 3px solid rgba(37,99,235,0.18);
+        outline-offset: 2px;
+        border-radius: 6px;
+      }
+
+      /* Improve small inputs and selects for readability */
+      input, select, textarea {
+        border-radius: 6px;
+      }
+
+      /* Status bar elevated look */
+      .status-bar {
+        box-shadow: 0 -2px 6px rgba(16,24,40,0.04);
+      }
+    `;
+    document.head.appendChild(style);
+  } catch (e) { /* ignore in tests */ }
+}
+
+try {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('load', applyVisualImprovements);
+  }
+} catch (e) {}
 
 // For deterministic tests it's helpful to expose context menu helpers
 try {

@@ -217,10 +217,48 @@ export const createTreeModule = ({ state, elements, imageExtensions, videoExtens
     setDisabled('[data-action="reveal"]', !(note && note.absolutePath));
     setDisabled('[data-action="delete"]', !(actions.canDeleteNote ? actions.canDeleteNote(note) : false));
 
-    menu.style.left = `${x}px`;
-    menu.style.top = `${y}px`;
-    menu.hidden = false;
-    menu.setAttribute('aria-hidden', 'false');
+    // Position the menu, but clamp it to the viewport so it never appears
+    // outside the visible app bounds (e.g. when near the right/bottom edges).
+    // We'll make the menu temporarily invisible but measurable so we can
+    // compute its dimensions before settling on a final clamped position.
+    try {
+      // Reset position so measurement is consistent
+      menu.style.left = '0px';
+      menu.style.top = '0px';
+      // Show the element but keep it invisible to measure size
+      menu.hidden = false;
+      menu.style.visibility = 'hidden';
+      menu.setAttribute('aria-hidden', 'false');
+
+      // Measure
+      const rect = menu.getBoundingClientRect();
+      const menuW = rect.width || menu.offsetWidth || 0;
+      const menuH = rect.height || menu.offsetHeight || 0;
+      const margin = 8; // small padding from window edges
+
+      let clampedX = x;
+      let clampedY = y;
+
+      const maxX = Math.max(margin, window.innerWidth - menuW - margin);
+      const maxY = Math.max(margin, window.innerHeight - menuH - margin);
+
+      if (clampedX > maxX) clampedX = maxX;
+      if (clampedY > maxY) clampedY = maxY;
+      if (clampedX < margin) clampedX = margin;
+      if (clampedY < margin) clampedY = margin;
+
+      menu.style.left = `${Math.round(clampedX)}px`;
+      menu.style.top = `${Math.round(clampedY)}px`;
+
+      // Reveal the menu normally
+      menu.style.visibility = '';
+    } catch (e) {
+      // Fallback to direct placement if anything goes wrong measuring
+      menu.style.left = `${x}px`;
+      menu.style.top = `${y}px`;
+      menu.hidden = false;
+      menu.setAttribute('aria-hidden', 'false');
+    }
   };
 
   const closeContextMenu = () => {
